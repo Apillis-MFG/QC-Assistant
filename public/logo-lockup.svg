@@ -1,0 +1,19 @@
+<svg width="520" height="160" viewBox="0 0 520 160" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">QC Assistant logo</title>
+  <desc id="desc">QC Assistant wordmark with inspection document and quality check logo mark.</desc>
+  <rect x="12" y="12" width="136" height="136" rx="20" fill="#161A22"/>
+  <path d="M47 32H96L122 58V128H47V32Z" fill="#F8FAFC"/>
+  <path d="M96 32V59H122" fill="#D8DEE8"/>
+  <path d="M58 77H111" stroke="#B9C2D0" stroke-width="7" stroke-linecap="round"/>
+  <path d="M58 96H99" stroke="#D8DEE8" stroke-width="7" stroke-linecap="round"/>
+  <path d="M73 51H91" stroke="#294B77" stroke-width="6" stroke-linecap="round"/>
+  <path d="M82 42V60" stroke="#294B77" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="48" cy="104" r="23" fill="#D82020"/>
+  <circle cx="48" cy="104" r="15" fill="#F8FAFC"/>
+  <path d="M39 104.5L45.5 111L58 96" stroke="#D82020" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M63 92L91 65" stroke="#D82020" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="91" cy="65" r="5.5" fill="#D82020"/>
+  <path d="M100 111L110 121L129 98" stroke="#147A42" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="178" y="77" fill="#161A22" font-family="Inter, Arial, sans-serif" font-size="42" font-weight="800" letter-spacing="0">QC Assistant</text>
+  <text x="180" y="111" fill="#657085" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" letter-spacing="0">Drawing ballooning and inspection report builder</text>
+</svg>
