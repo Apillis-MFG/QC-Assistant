@@ -674,6 +674,36 @@ textarea:focus {
   box-shadow: 0 0 0 4px rgba(216, 32, 32, 0.16);
 }
 
+.balloon-actions {
+  position: absolute;
+  z-index: 6;
+  transform: translate(-50%, calc(-100% - 18px));
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow);
+}
+
+.balloon-actions input {
+  width: 52px;
+  min-height: 28px;
+  padding: 3px 6px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 850;
+  text-align: center;
+}
+
+.balloon-actions .icon-button {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+}
+
 .upload-empty,
 .table-empty {
   min-height: 320px;
@@ -926,6 +956,24 @@ td select:focus {
   color: var(--accent);
   font-weight: 850;
   text-align: center;
+}
+
+.id-cell input {
+  color: var(--accent);
+  font-weight: 850;
+  text-align: center;
+}
+
+.row-actions {
+  width: 46px;
+  text-align: center;
+}
+
+.row-actions .icon-button {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  margin: 0 auto;
 }
 
 .readonly {

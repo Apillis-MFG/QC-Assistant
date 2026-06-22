@@ -248,7 +248,7 @@ export default function App() {
 
     if (pdfDoc || characteristics.length || metadata.drawingNo) {
       const confirmed = window.confirm(
-        "Upload a new drawing PDF? Existing balloons and measurements stay in the session, but they may no longer match the new drawing.",
+        "Upload a new drawing PDF? Existing balloons, measurements, and drawing metadata will be cleared.",
       );
       if (!confirmed) {
         event.target.value = "";
@@ -263,13 +263,17 @@ export default function App() {
     setPdfDoc(loadedPdf);
     setPageCount(loadedPdf.numPages);
     setPageNumber(1);
+    setCharacteristics([]);
+    setSelectedId(null);
+    setPendingTarget(null);
+    setSelectedText("");
+    setOcrRect(null);
+    setSampleCount(5);
     setMessage(`Loaded ${file.name}`);
 
     const baseName = file.name.replace(/\.[^/.]+$/, "");
-    setMetadata((current) => ({
-      ...current,
-      drawingNo: current.drawingNo || baseName,
-    }));
+    setMetadata({ ...emptyMetadata, drawingNo: baseName });
+    event.target.value = "";
   }, [characteristics.length, metadata.drawingNo, pdfDoc]);
 
   const handleCanvasClick = useCallback(
@@ -305,6 +309,27 @@ export default function App() {
 
   const updateCharacteristic = useCallback((id, patch) => {
     setCharacteristics((items) => items.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }, []);
+
+  const reassignBalloonNo = useCallback((id, rawValue) => {
+    const nextNo = Number.parseInt(rawValue, 10);
+    if (!Number.isFinite(nextNo) || nextNo < 1) {
+      setMessage("Balloon number must be a positive whole number.");
+      return;
+    }
+
+    setCharacteristics((items) => {
+      const current = items.find((item) => item.id === id);
+      if (!current || current.balloonNo === nextNo) return items;
+
+      const currentNo = current.balloonNo;
+      return items.map((item) => {
+        if (item.id === id) return { ...item, balloonNo: nextNo };
+        if (item.balloonNo === nextNo) return { ...item, balloonNo: currentNo };
+        return item;
+      });
+    });
+    setMessage(`Reassigned balloon to ${nextNo}.`);
   }, []);
 
   const updateSample = useCallback((id, sampleIndex, value) => {
@@ -513,12 +538,16 @@ export default function App() {
     setMessage("Session cleared. Upload a drawing PDF to begin.");
   }, []);
 
-  const deleteSelected = useCallback(() => {
-    if (!selectedId) return;
-    setCharacteristics((items) => renumber(items.filter((item) => item.id !== selectedId)));
-    setSelectedId(null);
+  const deleteCharacteristic = useCallback((id) => {
+    if (!id) return;
+    setCharacteristics((items) => renumber(items.filter((item) => item.id !== id)));
+    setSelectedId((current) => (current === id ? null : current));
     setMessage("Deleted selected balloon and renumbered the table.");
-  }, [selectedId]);
+  }, []);
+
+  const deleteSelected = useCallback(() => {
+    deleteCharacteristic(selectedId);
+  }, [deleteCharacteristic, selectedId]);
 
   const exportPdf = useCallback(async () => {
     try {
@@ -857,6 +886,28 @@ export default function App() {
                     {item.balloonNo}
                   </button>
                 ))}
+                {selected?.page === pageNumber ? (
+                  <div
+                    className="balloon-actions"
+                    style={{
+                      left: `${selected.x * 100}%`,
+                      top: `${selected.y * 100}%`,
+                    }}
+                    onClick={(event) => event.stopPropagation()}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      type="number"
+                      min="1"
+                      value={selected.balloonNo}
+                      aria-label="Reassign balloon number"
+                      onChange={(event) => reassignBalloonNo(selected.id, event.target.value)}
+                    />
+                    <button className="icon-button danger" onClick={deleteSelected} title="Delete selected balloon">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>
@@ -912,6 +963,7 @@ export default function App() {
                 item={selected}
                 sampleCount={sampleCount}
                 onChange={(patch) => updateCharacteristic(selected.id, patch)}
+                onReassign={(value) => reassignBalloonNo(selected.id, value)}
                 onSampleChange={(index, value) => updateSample(selected.id, index, value)}
               />
             ) : (
@@ -975,7 +1027,9 @@ export default function App() {
           sampleCount={sampleCount}
           onSelect={setSelectedId}
           onChange={updateCharacteristic}
+          onReassign={reassignBalloonNo}
           onSampleChange={updateSample}
+          onDelete={deleteCharacteristic}
         />
       </section>
 
@@ -1108,13 +1162,18 @@ function getLeaderLine({ x, y, targetX, targetY }) {
   };
 }
 
-function BalloonEditor({ item, sampleCount, onChange, onSampleChange }) {
+function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampleChange }) {
   const { usl, lsl } = getLimits(item);
   return (
     <div className="editor-grid">
       <label>
-        ID
-        <input value={item.balloonNo} onChange={(event) => onChange({ balloonNo: Number(event.target.value) || item.balloonNo })} />
+        Balloon #
+        <input
+          type="number"
+          min="1"
+          value={item.balloonNo}
+          onChange={(event) => onReassign(event.target.value)}
+        />
       </label>
       <label>
         Type
@@ -1160,7 +1219,16 @@ function BalloonEditor({ item, sampleCount, onChange, onSampleChange }) {
   );
 }
 
-function CharacteristicTable({ characteristics, selectedId, sampleCount, onSelect, onChange, onSampleChange }) {
+function CharacteristicTable({
+  characteristics,
+  selectedId,
+  sampleCount,
+  onSelect,
+  onChange,
+  onReassign,
+  onSampleChange,
+  onDelete,
+}) {
   const sorted = useMemo(
     () => characteristics.slice().sort((a, b) => a.balloonNo - b.balloonNo),
     [characteristics],
@@ -1190,6 +1258,7 @@ function CharacteristicTable({ characteristics, selectedId, sampleCount, onSelec
             {Array.from({ length: sampleCount }, (_, index) => <th key={index}>#{index + 1}</th>)}
             <th>Method</th>
             <th>Status</th>
+            <th aria-label="Row actions"></th>
           </tr>
         </thead>
         <tbody>
@@ -1203,7 +1272,16 @@ function CharacteristicTable({ characteristics, selectedId, sampleCount, onSelec
                   className={selectedId === item.id ? "row-selected" : ""}
                   onClick={() => onSelect(item.id)}
                 >
-                  <td className="id-cell">{item.balloonNo}</td>
+                  <td className="id-cell">
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.balloonNo}
+                      aria-label={`Reassign balloon ${item.balloonNo}`}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={(event) => onReassign(item.id, event.target.value)}
+                    />
+                  </td>
                   <td>
                     <select value={item.type} onChange={(event) => onChange(item.id, { type: event.target.value })}>
                       {types.map((type) => <option key={type} value={type}>{type}</option>)}
@@ -1225,6 +1303,18 @@ function CharacteristicTable({ characteristics, selectedId, sampleCount, onSelec
                     </select>
                   </td>
                   <td><span className={`status mini ${status.toLowerCase()}`}>{status}</span></td>
+                  <td className="row-actions">
+                    <button
+                      className="icon-button danger"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDelete(item.id);
+                      }}
+                      title={`Delete balloon ${item.balloonNo}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
                 </tr>
               );
             })}
