@@ -13,8 +13,14 @@
   --blue-hover: #f2f6fc;
   --blue-line: #cdd9ec;
   --ok: #147a42;
+  --ok-soft: #eaf7f0;
+  --ok-soft-strong: #ddf2e7;
   --open: #85600f;
   --fail: #b91c1c;
+  --fail-dark: #991b1b;
+  --fail-line: #f4b4b4;
+  --fail-soft: #fff0f0;
+  --fail-soft-strong: #ffe5e5;
   --shadow: 0 12px 34px rgba(17, 24, 39, 0.08);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -69,16 +75,164 @@ button:disabled {
 .layout-bar {
   background: var(--panel);
   border-bottom: 1px solid var(--line);
-  padding: 0 18px;
+  padding: 8px 18px;
   display: flex;
   align-items: center;
-  gap: 0;
+  justify-content: space-between;
+  gap: 14px;
+  overflow-x: auto;
+}
+
+.project-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.project-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.project-field select {
+  width: 170px;
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 12px;
+  text-transform: none;
+}
+
+.drawing-field select {
+  width: 190px;
+}
+
+.project-name-input {
+  width: 180px;
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.file-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  white-space: nowrap;
+}
+
+.file-button input {
+  display: none;
+}
+
+.project-action {
+  border-width: 1px;
+  font-weight: 850;
+}
+
+.project-action.create,
+.project-action.add {
+  border-color: var(--blue-line);
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.project-action.create:hover,
+.project-action.add:hover {
+  border-color: var(--blue);
+  background: var(--blue-hover);
+}
+
+.project-action.save {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.project-action.save:hover {
+  border-color: var(--ok);
+  background: var(--ok-soft-strong);
+}
+
+.project-action.delete-drawing {
+  border-color: var(--fail-line);
+  background: var(--fail-soft);
+  color: var(--fail);
+}
+
+.project-action.delete-drawing:hover {
+  border-color: var(--fail);
+  background: var(--fail-soft-strong);
+}
+
+.project-action.delete-project {
+  border-color: var(--fail);
+  background: var(--fail);
+  color: #fff;
+}
+
+.project-action.delete-project:hover {
+  border-color: var(--fail-dark);
+  background: var(--fail-dark);
+}
+
+.project-action.delete-project:disabled,
+.project-action.delete-drawing:disabled,
+.project-action.save:disabled,
+.project-action.create:disabled,
+.project-action.add:disabled {
+  opacity: 0.48;
+}
+
+.save-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 9px;
+  color: var(--muted);
+  background: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.save-state.saving {
+  color: var(--blue);
+  background: var(--blue-soft);
+  border-color: var(--blue-line);
+}
+
+.save-state.saved {
+  color: var(--ok);
+  background: #eaf7f0;
+}
+
+.save-state.warning {
+  color: var(--open);
+  background: #fff8e8;
+}
+
+.save-state.error {
+  color: var(--fail);
+  background: #fff0f0;
 }
 
 .layout-tabs {
   display: flex;
   align-items: center;
   gap: 2px;
+  flex: 0 0 auto;
 }
 
 .layout-tab {
@@ -1102,6 +1256,19 @@ td select:focus {
 
   .layout-bar {
     padding: 0 12px;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .project-controls {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .project-field select,
+  .drawing-field select,
+  .project-name-input {
+    width: min(220px, 100%);
   }
 
   .metadata-grid {
