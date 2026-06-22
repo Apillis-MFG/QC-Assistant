@@ -174,13 +174,8 @@ button:disabled {
 .brand-mark {
   width: 42px;
   height: 42px;
-  border-radius: 6px;
-  display: grid;
-  place-items: center;
-  color: white;
-  background: linear-gradient(135deg, #1f2a3a, #40516a);
-  font-weight: 800;
-  letter-spacing: 0;
+  display: block;
+  flex: 0 0 auto;
 }
 
 .brand h1,

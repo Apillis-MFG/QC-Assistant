@@ -459,7 +459,7 @@ export default function App() {
     <div className="app-shell" data-layout={layoutMode}>
       <header className="topbar">
         <div className="brand">
-          <div className="brand-mark">QC</div>
+          <img className="brand-mark" src="/logo-mark.svg" alt="" aria-hidden="true" />
           <div>
             <div className="brand-title-row">
               <h1>QC Assistant</h1>
