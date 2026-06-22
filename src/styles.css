@@ -70,6 +70,160 @@ button:disabled {
   z-index: 20;
 }
 
+.dashboard-shell {
+  min-height: 100vh;
+  background: var(--bg);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.dashboard-main {
+  padding: 18px;
+  min-height: 0;
+}
+
+.dashboard-panel {
+  max-width: 1120px;
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.dashboard-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dashboard-title h2,
+.dashboard-title p,
+.project-card h3,
+.project-card p,
+.dialog-title h2 {
+  margin: 0;
+}
+
+.dashboard-title h2 {
+  font-size: 16px;
+}
+
+.dashboard-title p,
+.project-card p {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.project-list {
+  display: grid;
+}
+
+.project-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.project-card:last-child {
+  border-bottom: 0;
+}
+
+.project-card-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+}
+
+.project-card h3 {
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.project-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-empty {
+  min-height: 320px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.dashboard-empty h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.dashboard-empty p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(22, 26, 34, 0.28);
+}
+
+.project-dialog {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.dialog-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dialog-title h2 {
+  font-size: 16px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 /* ── Layout switcher bar ──────────────────────────────────────── */
 
 .layout-bar {
@@ -139,6 +293,7 @@ button:disabled {
   font-weight: 850;
 }
 
+.project-action.dashboard-link,
 .project-action.create,
 .project-action.add {
   border-color: var(--blue-line);
@@ -146,6 +301,7 @@ button:disabled {
   color: var(--blue);
 }
 
+.project-action.dashboard-link:hover,
 .project-action.create:hover,
 .project-action.add:hover {
   border-color: var(--blue);
@@ -188,6 +344,7 @@ button:disabled {
 .project-action.delete-project:disabled,
 .project-action.delete-drawing:disabled,
 .project-action.save:disabled,
+.project-action.dashboard-link:disabled,
 .project-action.create:disabled,
 .project-action.add:disabled {
   opacity: 0.48;

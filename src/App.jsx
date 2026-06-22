@@ -120,6 +120,8 @@ export default function App() {
   const [drawings, setDrawings] = useState([]);
   const [activeDrawingId, setActiveDrawingId] = useState(null);
   const [projectsReady, setProjectsReady] = useState(false);
+  const [dashboardVisible, setDashboardVisible] = useState(true);
+  const [projectDialog, setProjectDialog] = useState({ open: false, mode: "create", projectId: null, name: "" });
   const [saveState, setSaveState] = useState({ status: "idle", label: "Not saved" });
   const [metadata, setMetadata] = useState(emptyMetadata);
   const [sampleCount, setSampleCount] = useState(5);
@@ -314,17 +316,16 @@ export default function App() {
         if (cancelled) return;
         setProjectSummaries(summaries);
 
-        const remembered = readRememberedProject();
-        const projectId = summaries.some((project) => project.id === remembered?.projectId)
-          ? remembered.projectId
-          : summaries[0]?.id;
-
-        if (projectId) {
-          await openProjectWorkspace(projectId, remembered?.drawingId || null);
-        } else {
-          resetDrawingState("Create a project or upload a drawing PDF to begin.");
-          setSaveState({ status: "idle", label: "Not saved" });
-        }
+        setActiveProject(null);
+        setDrawings([]);
+        setActiveDrawingId(null);
+        setDashboardVisible(true);
+        resetDrawingState(
+          summaries.length
+            ? "Open a project from the dashboard to continue."
+            : "Create a project to begin.",
+        );
+        setSaveState({ status: "idle", label: "Not saved" });
       } catch (error) {
         if (!cancelled) {
           setMessage(`Project storage could not load: ${error.message}`);
@@ -339,7 +340,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [openProjectWorkspace, resetDrawingState]);
+  }, [resetDrawingState]);
 
   useEffect(() => {
     let cancelled = false;
@@ -535,23 +536,68 @@ export default function App() {
     return project;
   }, [refreshProjectList, rememberActiveProject, resetDrawingState]);
 
-  const handleNewProject = useCallback(async () => {
-    try {
-      await createProject("Untitled Project");
-    } catch (error) {
-      setMessage(`Could not create project: ${error.message}`);
+  const handleNewProject = useCallback(() => {
+    setProjectDialog({ open: true, mode: "create", projectId: null, name: "" });
+  }, []);
+
+  const handleOpenProjectDialog = useCallback((project) => {
+    setProjectDialog({ open: true, mode: "rename", projectId: project.id, name: project.name || "" });
+  }, []);
+
+  const handleCloseProjectDialog = useCallback(() => {
+    setProjectDialog((current) => ({ ...current, open: false }));
+  }, []);
+
+  const handleProjectDialogSubmit = useCallback(async (event) => {
+    event.preventDefault();
+    const name = projectDialog.name.trim();
+    if (!name) {
+      setMessage("Project name is required.");
+      return;
     }
-  }, [createProject]);
+
+    try {
+      if (projectDialog.mode === "create") {
+        const project = await createProject(name);
+        setProjectDialog({ open: false, mode: "create", projectId: null, name: "" });
+        setDashboardVisible(false);
+        await openProjectWorkspace(project.id);
+        return;
+      }
+
+      const currentProject = projectSummaries.find((project) => project.id === projectDialog.projectId);
+      if (!currentProject) {
+        setMessage("Project could not be found for rename.");
+        return;
+      }
+
+      const updatedProject = {
+        id: currentProject.id,
+        name,
+        createdAt: currentProject.createdAt,
+        updatedAt: new Date().toISOString(),
+      };
+      await saveProject(updatedProject);
+      if (activeProject?.id === updatedProject.id) setActiveProject(updatedProject);
+      await refreshProjectList();
+      setProjectDialog({ open: false, mode: "create", projectId: null, name: "" });
+      setSaveState({ status: "saved", label: "Project renamed locally" });
+      setMessage(`Renamed project to ${name}.`);
+    } catch (error) {
+      setMessage(`Could not save project name: ${error.message}`);
+    }
+  }, [activeProject?.id, createProject, openProjectWorkspace, projectDialog, projectSummaries, refreshProjectList]);
 
   const handleOpenProject = useCallback(async (projectId) => {
-    if (!projectId || projectId === activeProject?.id) return;
+    if (!projectId) return;
     try {
       await openProjectWorkspace(projectId);
+      setDashboardVisible(false);
       await refreshProjectList();
     } catch (error) {
       setMessage(`Could not open project: ${error.message}`);
     }
-  }, [activeProject?.id, openProjectWorkspace, refreshProjectList]);
+  }, [openProjectWorkspace, refreshProjectList]);
 
   const handleProjectNameChange = useCallback((name) => {
     setActiveProject((current) => (current ? { ...current, name } : current));
@@ -952,6 +998,26 @@ export default function App() {
     }
   }, [activeProject, openProjectWorkspace, refreshProjectList, rememberActiveProject, resetDrawingState]);
 
+  const handleDeleteProjectFromDashboard = useCallback(async (project) => {
+    const confirmed = window.confirm(`Delete project "${project.name}" and all local drawings?`);
+    if (!confirmed) return;
+
+    try {
+      await deleteProject(project.id);
+      if (activeProject?.id === project.id) {
+        setActiveProject(null);
+        setDrawings([]);
+        setActiveDrawingId(null);
+        resetDrawingState("Project deleted. Open or create another project.");
+      }
+      await refreshProjectList();
+      setSaveState({ status: "saved", label: "Project deleted locally" });
+      setMessage(`Deleted ${project.name}.`);
+    } catch (error) {
+      setMessage(`Could not delete project: ${error.message}`);
+    }
+  }, [activeProject?.id, refreshProjectList, resetDrawingState]);
+
   const deleteCharacteristic = useCallback((id) => {
     if (!id) return;
     setCharacteristics((items) => renumber(items.filter((item) => item.id !== id)));
@@ -1102,6 +1168,23 @@ export default function App() {
     });
   }, [layoutMode]);
 
+  if (dashboardVisible) {
+    return (
+      <ProjectDashboard
+        projectsReady={projectsReady}
+        projects={projectSummaries}
+        projectDialog={projectDialog}
+        onNewProject={handleNewProject}
+        onOpenProject={handleOpenProject}
+        onRenameProject={handleOpenProjectDialog}
+        onDeleteProject={handleDeleteProjectFromDashboard}
+        onDialogChange={(name) => setProjectDialog((current) => ({ ...current, name }))}
+        onDialogSubmit={handleProjectDialogSubmit}
+        onDialogClose={handleCloseProjectDialog}
+      />
+    );
+  }
+
   return (
     <div className="app-shell" data-layout={layoutMode}>
       <header className="topbar">
@@ -1146,6 +1229,7 @@ export default function App() {
 
       <div className="layout-bar">
         <div className="project-controls">
+          <button className="small-button project-action dashboard-link" onClick={() => setDashboardVisible(true)}>Projects</button>
           <label className="project-field">
             <span>Project</span>
             <select value={activeProject?.id || ""} onChange={(event) => handleOpenProject(event.target.value)} disabled={!projectSummaries.length}>
@@ -1497,6 +1581,114 @@ export default function App() {
   );
 }
 
+function ProjectDashboard({
+  projectsReady,
+  projects,
+  projectDialog,
+  onNewProject,
+  onOpenProject,
+  onRenameProject,
+  onDeleteProject,
+  onDialogChange,
+  onDialogSubmit,
+  onDialogClose,
+}) {
+  return (
+    <div className="dashboard-shell">
+      <header className="dashboard-header">
+        <div className="brand">
+          <img className="brand-mark" src="/logo-mark.svg" alt="" aria-hidden="true" />
+          <div>
+            <div className="brand-title-row">
+              <h1>QC Assistant</h1>
+              <span className="version-badge">{APP_VERSION}</span>
+            </div>
+            <p>Local inspection projects</p>
+          </div>
+        </div>
+        <button className="button primary" onClick={onNewProject}>
+          <Plus size={16} />
+          New Project
+        </button>
+      </header>
+
+      <main className="dashboard-main">
+        <section className="dashboard-panel">
+          <div className="dashboard-title">
+            <div>
+              <h2>Projects</h2>
+              <p>{projects.length} local projects</p>
+            </div>
+          </div>
+
+          {!projectsReady ? (
+            <div className="dashboard-empty">
+              <FilePlus2 size={34} />
+              <p>Loading projects...</p>
+            </div>
+          ) : projects.length ? (
+            <div className="project-list">
+              {projects.map((project) => (
+                <article key={project.id} className="project-card">
+                  <div className="project-card-main">
+                    <div>
+                      <h3>{project.name}</h3>
+                      <p>
+                        {project.drawingCount} drawings · {formatBytes(project.totalBytes)} · Updated {formatDate(project.updatedAt)}
+                      </p>
+                    </div>
+                    <strong className={`status ${project.status.toLowerCase()}`}>{project.status}</strong>
+                  </div>
+                  <div className="project-card-actions">
+                    <button className="button primary" onClick={() => onOpenProject(project.id)}>Open</button>
+                    <button className="small-button project-action add" onClick={() => onRenameProject(project)}>Edit Name</button>
+                    <button className="small-button project-action delete-project" onClick={() => onDeleteProject(project)}>Delete Project</button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="dashboard-empty">
+              <FilePlus2 size={38} />
+              <h2>No projects yet</h2>
+              <button className="button primary" onClick={onNewProject}>
+                <Plus size={16} />
+                New Project
+              </button>
+            </div>
+          )}
+        </section>
+      </main>
+
+      {projectDialog.open ? (
+        <div className="dialog-backdrop" role="presentation">
+          <form className="project-dialog" onSubmit={onDialogSubmit}>
+            <div className="dialog-title">
+              <h2>{projectDialog.mode === "create" ? "New Project" : "Edit Project Name"}</h2>
+              <button type="button" className="icon-button" onClick={onDialogClose} aria-label="Close project dialog">×</button>
+            </div>
+            <label className="stacked-label">
+              Project Name
+              <input
+                autoFocus
+                value={projectDialog.name}
+                onChange={(event) => onDialogChange(event.target.value)}
+                placeholder="Example: BS-Extrusion"
+              />
+            </label>
+            <div className="dialog-actions">
+              <button type="button" className="button secondary" onClick={onDialogClose}>Cancel</button>
+              <button type="submit" className="button primary" disabled={!projectDialog.name.trim()}>
+                {projectDialog.mode === "create" ? "Create Project" : "Save Name"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function Field({ label, value, onChange, compact = false, wide = false }) {
   return (
     <label className={`field ${compact ? "compact" : ""} ${wide ? "wide" : ""}`}>
@@ -1783,15 +1975,6 @@ function CharacteristicTable({
   );
 }
 
-function readRememberedProject() {
-  try {
-    const raw = localStorage.getItem(ACTIVE_PROJECT_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
 function buildDrawingSnapshot({
   drawing,
   activeDrawingId,
@@ -1872,6 +2055,13 @@ function formatBytes(bytes) {
     unitIndex += 1;
   }
   return `${value >= 10 || unitIndex === 0 ? Math.round(value) : value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function formatDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 function setMetadataValue(setMetadata, key, value) {
