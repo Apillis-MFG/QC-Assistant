@@ -32,6 +32,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 const methods = ["DC", "CMM", "VS", "VMS", "HG", "MIC", "CG", "PP", "TG", "PG"];
 const types = ["dimension", "gdt", "note", "visual"];
 const CHARACTERISTIC_FIELDS = ["nominal", "tolerance", "notes"];
+const APP_VERSION = "v0.1-alpha";
 
 const STORAGE_KEY = "qca_v1";
 
@@ -460,7 +461,10 @@ export default function App() {
         <div className="brand">
           <div className="brand-mark">QC</div>
           <div>
-            <h1>QC Assistant</h1>
+            <div className="brand-title-row">
+              <h1>QC Assistant</h1>
+              <span className="version-badge">{APP_VERSION}</span>
+            </div>
             <p>Drawing ballooning and inspection report builder</p>
           </div>
         </div>
