@@ -32,7 +32,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 const methods = ["DC", "CMM", "VS", "VMS", "HG", "MIC", "CG", "PP", "TG", "PG"];
 const types = ["dimension", "gdt", "note", "visual"];
 const CHARACTERISTIC_FIELDS = ["nominal", "tolerance", "notes"];
-const APP_VERSION = "v0.1-alpha";
+const APP_VERSION = "v0.1.2";
 
 const STORAGE_KEY = "qca_v1";
 const PANEL_STORAGE_KEY = "qca_panel_sizes_v1";

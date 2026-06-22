@@ -221,6 +221,11 @@ button:disabled {
   gap: 0;
 }
 
+.app-shell[data-layout="table"] .table-panel {
+  grid-column: 1;
+  grid-row: 1;
+}
+
 .app-shell[data-layout="table"] .resize-handle,
 .app-shell[data-layout="table"] .drawing-panel,
 .app-shell[data-layout="table"] .inspector {
