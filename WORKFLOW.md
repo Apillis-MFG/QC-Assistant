@@ -1,6 +1,12 @@
 ---
 tracker:
-  kind: none
+  kind: github
+  repo: Apillis-MFG/QC-Assistant
+  project:
+    owner: Apillis-MFG
+    number: 1
+    title: QC-Assistant
+    url: https://github.com/orgs/Apillis-MFG/projects/1
 polling:
   interval_ms: 30000
 workspace:
@@ -23,6 +29,33 @@ agent:
 # QC Assistant Autonomous Workflow
 
 You are an autonomous implementation agent working on `QC Assistant` from an issue or task description.
+
+## Mandatory GitHub Issue Loop
+
+Before doing any implementation, fix, debug, refactor, or documentation change:
+
+1. Identify the relevant GitHub issue in `Apillis-MFG/QC-Assistant`, or create one if no suitable issue exists.
+2. Add or update the issue so it has a clear user outcome, scope, non-goals, acceptance criteria, and trust/distribution/activation rationale.
+3. Add the issue to the GitHub Project `QC-Assistant` at `https://github.com/orgs/Apillis-MFG/projects/1`.
+4. Move the project item to `In Progress` before editing files or running implementation work.
+
+While working:
+
+- Keep the issue as the source of truth for scope and acceptance criteria.
+- If implementation changes direction, update the issue description or add a comment before continuing.
+- If the task does not clearly improve trust, distribution, or activation, add a comment explaining the concern and wait for confirmation before building it.
+
+After implementation:
+
+1. Add a completion comment to the issue with:
+   - what changed
+   - verification performed
+   - pass/fail result
+   - math branches checked, when relevant
+   - remaining risk or follow-up
+2. Move the project item to `In Review` when that status exists.
+3. If the project does not have `In Review`, keep the item in `In Progress` and state in the completion comment that it is ready for review.
+4. Do not move the item to `Done` unless acceptance criteria are satisfied, verification is documented, and the work has been merged or explicitly accepted.
 
 ## Product North Star
 

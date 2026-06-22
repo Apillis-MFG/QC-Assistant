@@ -27,6 +27,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 const methods = ["DC", "CMM", "VS", "VMS", "HG", "MIC", "CG", "PP", "TG", "PG"];
 const types = ["dimension", "gdt", "note", "visual"];
+const CHARACTERISTIC_FIELDS = ["nominal", "tolerance", "notes"];
+
+const STORAGE_KEY = "qca_v1";
 
 const emptyMetadata = {
   drawingNo: "",
@@ -34,6 +37,15 @@ const emptyMetadata = {
   supplier: "",
   description: "",
 };
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
 
 function createCharacteristic({ balloonNo, x = 0.5, y = 0.5, targetX = x, targetY = y, page = 1, seed = {} }) {
   return {
@@ -55,8 +67,8 @@ function createCharacteristic({ balloonNo, x = 0.5, y = 0.5, targetX = x, target
 }
 
 export default function App() {
-  const [metadata, setMetadata] = useState(emptyMetadata);
-  const [sampleCount, setSampleCount] = useState(5);
+  const [metadata, setMetadata] = useState(() => loadSession()?.metadata ?? emptyMetadata);
+  const [sampleCount, setSampleCount] = useState(() => loadSession()?.sampleCount ?? 5);
   const [pdfBytes, setPdfBytes] = useState(null);
   const [pdfName, setPdfName] = useState("");
   const [pdfDoc, setPdfDoc] = useState(null);
@@ -64,7 +76,7 @@ export default function App() {
   const [pageCount, setPageCount] = useState(0);
   const [zoom, setZoom] = useState(1.15);
   const [mode, setMode] = useState("select");
-  const [characteristics, setCharacteristics] = useState([]);
+  const [characteristics, setCharacteristics] = useState(() => loadSession()?.characteristics ?? []);
   const [selectedId, setSelectedId] = useState(null);
   const [pendingTarget, setPendingTarget] = useState(null);
   const [textItems, setTextItems] = useState([]);
@@ -72,7 +84,9 @@ export default function App() {
   const [ocrRect, setOcrRect] = useState(null);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
-  const [message, setMessage] = useState("Upload a drawing PDF to begin.");
+  const [message, setMessage] = useState(() =>
+    loadSession() !== null ? "Restored previous session. Upload your PDF to continue." : "Upload a drawing PDF to begin.",
+  );
   const canvasRef = useRef(null);
   const scrollRef = useRef(null);
   const overlayRef = useRef(null);
@@ -141,6 +155,14 @@ export default function App() {
     if (mode !== "text") window.getSelection()?.removeAllRanges();
     if (mode !== "text") setOcrRect(null);
   }, [mode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ metadata, characteristics, sampleCount }));
+    } catch {
+      // storage quota exceeded or private browsing — fail silently
+    }
+  }, [metadata, characteristics, sampleCount]);
 
   const handlePdfUpload = useCallback(async (event) => {
     const file = event.target.files?.[0];
@@ -346,6 +368,7 @@ export default function App() {
       return;
     }
 
+    if (!CHARACTERISTIC_FIELDS.includes(destination)) return;
     updateCharacteristic(selectedId, { [destination]: text });
     setMessage(`Filled selected row ${fieldLabel(destination)} from PDF text.`);
   }, [selectedId, selectedText, updateCharacteristic]);
@@ -392,6 +415,15 @@ export default function App() {
     setMessage("Loaded demo QC characteristics. Adjust positions and values for your drawing.");
   }, []);
 
+  const clearSession = useCallback(() => {
+    localStorage.removeItem(STORAGE_KEY);
+    setMetadata(emptyMetadata);
+    setSampleCount(5);
+    setCharacteristics([]);
+    setSelectedId(null);
+    setMessage("Session cleared. Upload a drawing PDF to begin.");
+  }, []);
+
   const deleteSelected = useCallback(() => {
     if (!selectedId) return;
     setCharacteristics((items) => renumber(items.filter((item) => item.id !== selectedId)));
@@ -409,8 +441,12 @@ export default function App() {
   }, [characteristics, pdfBytes, pdfName]);
 
   const exportExcel = useCallback(() => {
-    exportInspectionWorkbook({ metadata, characteristics, sampleCount });
-    setMessage("Exported QC/FAI Excel workbook.");
+    try {
+      exportInspectionWorkbook({ metadata, characteristics, sampleCount });
+      setMessage("Exported QC/FAI Excel workbook.");
+    } catch (error) {
+      setMessage(error.message);
+    }
   }, [characteristics, metadata, sampleCount]);
 
   return (
@@ -654,6 +690,13 @@ export default function App() {
                 Demo Rows
               </button>
             </div>
+            <button
+              className="button secondary"
+              onClick={clearSession}
+              disabled={!characteristics.length && !metadata.drawingNo}
+            >
+              Clear Session
+            </button>
           </div>
 
           <div className="message">{message}</div>
@@ -828,6 +871,11 @@ function BalloonEditor({ item, sampleCount, onChange, onSampleChange }) {
 }
 
 function CharacteristicTable({ characteristics, selectedId, sampleCount, onSelect, onChange, onSampleChange }) {
+  const sorted = useMemo(
+    () => characteristics.slice().sort((a, b) => a.balloonNo - b.balloonNo),
+    [characteristics],
+  );
+
   if (!characteristics.length) {
     return (
       <div className="table-empty">
@@ -855,9 +903,7 @@ function CharacteristicTable({ characteristics, selectedId, sampleCount, onSelec
           </tr>
         </thead>
         <tbody>
-          {characteristics
-            .slice()
-            .sort((a, b) => a.balloonNo - b.balloonNo)
+          {sorted
             .map((item) => {
               const { usl, lsl } = getLimits(item);
               const status = getStatus(item, sampleCount);
@@ -909,7 +955,9 @@ function mapTextItem(item, index, viewport, zoom) {
   const [left, baselineY] = viewport.convertToViewportPoint(item.transform[4], item.transform[5]);
   const rawHeight = Math.abs(item.height || item.transform[3] || 8) * zoom;
   const height = Math.max(7, rawHeight);
-  const width = Math.max(4, Math.abs(item.width || text.length * height * 0.45) * zoom);
+  const width = item.width
+    ? Math.max(4, Math.abs(item.width) * zoom)
+    : Math.max(4, text.length * height * 0.45);
   const fontSize = Math.max(6, height * 0.94);
   const angle = Math.atan2(item.transform[1] || 0, item.transform[0] || 1);
 

@@ -679,6 +679,39 @@ td select:focus {
   font-weight: 700;
 }
 
+.error-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  padding: 24px;
+}
+
+.error-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 32px 28px;
+  max-width: 420px;
+  text-align: center;
+  display: grid;
+  gap: 12px;
+}
+
+.error-card h2 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--fail);
+}
+
+.error-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 @media (max-width: 1100px) {
   .topbar {
     grid-template-columns: 1fr;
