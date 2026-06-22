@@ -16,7 +16,6 @@ export function getLimits(characteristic) {
   const text = String(characteristic.tolerance || "").toUpperCase();
 
   if (nominal === null || tolerance === null) {
-    if (text.includes("MAX") && tolerance !== null) return { usl: tolerance, lsl: "" };
     return { usl: "", lsl: "" };
   }
 
@@ -32,7 +31,9 @@ export function getStatus(characteristic, sampleCount) {
   const values = Array.from({ length: sampleCount }, (_, index) => characteristic.samples[index] ?? "");
   if (values.every((value) => value === "")) return "OPEN";
   if (characteristic.type === "note" || characteristic.type === "visual") {
-    return values.every((value) => String(value).toUpperCase() === "OK") ? "OK" : "NG";
+    if (values.some((v) => v !== "" && String(v).toUpperCase() !== "OK")) return "NG";
+    if (values.every((v) => String(v).toUpperCase() === "OK")) return "OK";
+    return "OPEN";
   }
 
   const { usl, lsl } = getLimits(characteristic);
@@ -97,7 +98,8 @@ export async function exportBalloonedPdf({ pdfBytes, characteristics, fileName }
   });
 
   const bytes = await pdfDoc.save();
-  downloadBlob(bytes, "application/pdf", `${withoutExtension(fileName || "drawing")}_ballooned.pdf`);
+  const base = withoutExtension(fileName || "drawing") || "drawing";
+  downloadBlob(bytes, "application/pdf", `${base}_ballooned.pdf`);
 }
 
 export function exportInspectionWorkbook({ metadata, characteristics, sampleCount }) {

@@ -1,0 +1,12 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="QC Assistant">
+  <rect x="4" y="4" width="56" height="56" rx="12" fill="#161A22"/>
+  <path d="M22 13H40L51 24V52H22V13Z" fill="#F8FAFC"/>
+  <path d="M40 13V25H51" fill="#D8DEE8"/>
+  <path d="M27 32H44" stroke="#B9C2D0" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="20" cy="42" r="11" fill="#D82020"/>
+  <circle cx="20" cy="42" r="7" fill="#F8FAFC"/>
+  <path d="M16 42L19 45L25 38" stroke="#D82020" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M27 36L39 24" stroke="#D82020" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="39" cy="24" r="3" fill="#D82020"/>
+  <path d="M37 45L42 50L51 39" stroke="#147A42" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
