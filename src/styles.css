@@ -114,33 +114,36 @@ button:disabled {
   flex-shrink: 0;
 }
 
-/* ── Content area (wraps workspace + table-panel) ─────────────── */
+/* ── Content area: main layout grid ─────────────────────────────── */
 
 .content-area {
   min-height: 0;
   display: grid;
-  /* split-v default: workspace fills remaining, table fixed height below */
+  gap: 14px;
+  padding: 14px;
+  /* Default / split-v: drawing(1fr) + inspector(330px) top, table full-width below */
+  grid-template-columns: minmax(0, 1fr) 330px;
   grid-template-rows: minmax(0, 1fr) 290px;
-  grid-template-columns: 1fr;
 }
 
-/* Side by side */
+/* Side by side: [drawing | table] top, inspector full-width bottom */
 .app-shell[data-layout="split-h"] .content-area {
-  grid-template-rows: minmax(0, 1fr);
-  grid-template-columns: minmax(0, 55fr) minmax(0, 45fr);
-}
-
-.app-shell[data-layout="split-h"] .workspace {
-  grid-template-columns: minmax(0, 1fr) 260px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
 }
 
 .app-shell[data-layout="split-h"] .table-panel {
-  margin: 14px 14px 14px 0;
-  /* override fixed height — table fills full height in this mode */
-  height: auto;
+  grid-column: 2;
+  grid-row: 1;
 }
 
-/* Drawing only */
+.app-shell[data-layout="split-h"] .inspector {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  max-height: 260px;
+}
+
+/* Drawing only: drawing + inspector side by side, no table */
 .app-shell[data-layout="drawing"] .content-area {
   grid-template-rows: minmax(0, 1fr);
 }
@@ -151,15 +154,13 @@ button:disabled {
 
 /* Table only */
 .app-shell[data-layout="table"] .content-area {
+  grid-template-columns: 1fr;
   grid-template-rows: minmax(0, 1fr);
 }
 
-.app-shell[data-layout="table"] .workspace {
+.app-shell[data-layout="table"] .drawing-panel,
+.app-shell[data-layout="table"] .inspector {
   display: none;
-}
-
-.app-shell[data-layout="table"] .table-panel {
-  margin: 14px;
 }
 
 /* ── End layout modes ─────────────────────────────────────────── */
@@ -316,13 +317,7 @@ textarea:focus {
   font-weight: 700;
 }
 
-.workspace {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(520px, 1fr) 330px;
-  gap: 14px;
-  padding: 14px;
-}
+/* .workspace removed — content-area is now the layout grid */
 
 .drawing-panel,
 .inspector,
@@ -690,9 +685,10 @@ textarea:focus {
 }
 
 .table-panel {
-  margin: 0 14px 14px;
+  grid-column: 1 / -1; /* span all columns by default (split-v) */
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
 }
 
 .table-header {
@@ -823,36 +819,45 @@ td select:focus {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .workspace {
+  /* split-v: collapse 2-column to single column */
+  .content-area {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto 290px;
   }
 
   .inspector {
     max-height: 420px;
   }
 
-  /* Collapse side-by-side into stacked on narrow viewports */
-  .app-shell[data-layout="split-h"] .content-area {
-    grid-template-rows: minmax(0, 1fr) 290px;
+  /* drawing mode: single column, no table row */
+  .app-shell[data-layout="drawing"] .content-area {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 
-  .app-shell[data-layout="split-h"] .workspace {
+  /* side-by-side: collapse to stacked with inspector at bottom */
+  .app-shell[data-layout="split-h"] .content-area {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) 290px auto;
   }
 
   .app-shell[data-layout="split-h"] .table-panel {
-    margin: 0 14px 14px;
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .app-shell[data-layout="split-h"] .inspector {
+    grid-column: 1;
+    grid-row: 3;
+    max-height: 420px;
   }
 }
 
 @media (max-width: 720px) {
   .content-area {
-    grid-template-rows: minmax(0, 1fr) 320px;
-  }
-
-  .workspace {
     padding: 8px;
+    gap: 8px;
+    grid-template-rows: minmax(0, 1fr) auto 320px;
   }
 
   .topbar {
@@ -870,9 +875,5 @@ td select:focus {
   .actions,
   .panel-toolbar {
     flex-wrap: wrap;
-  }
-
-  .table-panel {
-    margin: 0 8px 8px;
   }
 }

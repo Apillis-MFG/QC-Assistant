@@ -513,7 +513,6 @@ export default function App() {
 
       <div className="content-area">
 
-      <main className="workspace">
         <section className="drawing-panel">
           <div className="panel-toolbar">
             <div className="tool-group">
@@ -730,9 +729,8 @@ export default function App() {
 
           <div className="message">{message}</div>
         </aside>
-      </main>
 
-      <section className="table-panel">
+        <section className="table-panel">
         <div className="table-header">
           <div>
             <h2>QC / FAI Characteristics</h2>
