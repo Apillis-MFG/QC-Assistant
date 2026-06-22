@@ -35,6 +35,19 @@ const CHARACTERISTIC_FIELDS = ["nominal", "tolerance", "notes"];
 const APP_VERSION = "v0.1-alpha";
 
 const STORAGE_KEY = "qca_v1";
+const PANEL_STORAGE_KEY = "qca_panel_sizes_v1";
+const RESIZE_HANDLE_SIZE = 14;
+
+const defaultPanelSizes = {
+  splitV: {
+    inspectorWidth: 330,
+    tableHeight: 290,
+  },
+  splitH: {
+    drawingWidth: null,
+    inspectorHeight: 260,
+  },
+};
 
 const emptyMetadata = {
   drawingNo: "",
@@ -49,6 +62,33 @@ function loadSession() {
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
+  }
+}
+
+function loadPanelSizes() {
+  try {
+    const raw = localStorage.getItem(PANEL_STORAGE_KEY);
+    const saved = raw ? JSON.parse(raw) : {};
+    return {
+      splitV: {
+        inspectorWidth: Number.isFinite(saved?.splitV?.inspectorWidth)
+          ? saved.splitV.inspectorWidth
+          : defaultPanelSizes.splitV.inspectorWidth,
+        tableHeight: Number.isFinite(saved?.splitV?.tableHeight)
+          ? saved.splitV.tableHeight
+          : defaultPanelSizes.splitV.tableHeight,
+      },
+      splitH: {
+        drawingWidth: Number.isFinite(saved?.splitH?.drawingWidth)
+          ? saved.splitH.drawingWidth
+          : defaultPanelSizes.splitH.drawingWidth,
+        inspectorHeight: Number.isFinite(saved?.splitH?.inspectorHeight)
+          ? saved.splitH.inspectorHeight
+          : defaultPanelSizes.splitH.inspectorHeight,
+      },
+    };
+  } catch {
+    return defaultPanelSizes;
   }
 }
 
@@ -90,15 +130,21 @@ export default function App() {
   const [ocrBusy, setOcrBusy] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [layoutMode, setLayoutMode] = useState("split-v");
+  const [panelSizes, setPanelSizes] = useState(loadPanelSizes);
   const [message, setMessage] = useState(() =>
     loadSession() !== null ? "Restored previous session. Upload your PDF to continue." : "Upload a drawing PDF to begin.",
   );
   const canvasRef = useRef(null);
+  const contentAreaRef = useRef(null);
+  const drawingPanelRef = useRef(null);
+  const inspectorRef = useRef(null);
+  const tablePanelRef = useRef(null);
   const scrollRef = useRef(null);
   const overlayRef = useRef(null);
   const dragRef = useRef(null);
   const panRef = useRef(null);
   const ocrRef = useRef(null);
+  const panelResizeRef = useRef(null);
 
   const selected = useMemo(
     () => characteristics.find((item) => item.id === selectedId) || null,
@@ -117,6 +163,15 @@ export default function App() {
     if (statuses.includes("OPEN")) return "OPEN";
     return "PASS";
   }, [characteristics, sampleCount]);
+
+  const contentAreaStyle = useMemo(() => ({
+    "--split-v-inspector-width": `${panelSizes.splitV.inspectorWidth}px`,
+    "--split-v-table-height": `${panelSizes.splitV.tableHeight}px`,
+    "--split-h-drawing-track": panelSizes.splitH.drawingWidth
+      ? `${panelSizes.splitH.drawingWidth}px`
+      : "calc((100% - var(--resize-handle-size)) / 2)",
+    "--split-h-inspector-height": `${panelSizes.splitH.inspectorHeight}px`,
+  }), [panelSizes]);
 
   useEffect(() => {
     let cancelled = false;
@@ -170,9 +225,37 @@ export default function App() {
     }
   }, [metadata, characteristics, sampleCount]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(panelSizes));
+    } catch {
+      // panel sizing is a convenience; do not block the inspection workflow
+    }
+  }, [panelSizes]);
+
+  const getContentMetrics = useCallback(() => {
+    const element = contentAreaRef.current;
+    if (!element) return null;
+    const styles = window.getComputedStyle(element);
+    const width = element.clientWidth - parseFloat(styles.paddingLeft) - parseFloat(styles.paddingRight);
+    const height = element.clientHeight - parseFloat(styles.paddingTop) - parseFloat(styles.paddingBottom);
+    return { width, height };
+  }, []);
+
   const handlePdfUpload = useCallback(async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    if (pdfDoc || characteristics.length || metadata.drawingNo) {
+      const confirmed = window.confirm(
+        "Upload a new drawing PDF? Existing balloons and measurements stay in the session, but they may no longer match the new drawing.",
+      );
+      if (!confirmed) {
+        event.target.value = "";
+        return;
+      }
+    }
+
     const bytes = await file.arrayBuffer();
     const loadedPdf = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
     setPdfBytes(bytes);
@@ -187,7 +270,7 @@ export default function App() {
       ...current,
       drawingNo: current.drawingNo || baseName,
     }));
-  }, []);
+  }, [characteristics.length, metadata.drawingNo, pdfDoc]);
 
   const handleCanvasClick = useCallback(
     (event) => {
@@ -455,6 +538,127 @@ export default function App() {
     }
   }, [characteristics, metadata, sampleCount]);
 
+  const beginPanelResize = useCallback((event, axis) => {
+    if (layoutMode !== "split-v" && layoutMode !== "split-h") return;
+    const metrics = getContentMetrics();
+    if (!metrics) return;
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    panelResizeRef.current = {
+      axis,
+      layoutMode,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      metrics,
+      drawingWidth: drawingPanelRef.current?.getBoundingClientRect().width ?? defaultPanelSizes.splitH.drawingWidth,
+      inspectorWidth: inspectorRef.current?.getBoundingClientRect().width ?? panelSizes.splitV.inspectorWidth,
+      tableHeight: tablePanelRef.current?.getBoundingClientRect().height ?? panelSizes.splitV.tableHeight,
+      inspectorHeight: inspectorRef.current?.getBoundingClientRect().height ?? panelSizes.splitH.inspectorHeight,
+    };
+  }, [getContentMetrics, layoutMode, panelSizes]);
+
+  const resizePanelsBy = useCallback((axis, deltaX, deltaY, baseline = null) => {
+    const metrics = baseline?.metrics ?? getContentMetrics();
+    if (!metrics) return;
+    const activeLayout = baseline?.layoutMode ?? layoutMode;
+    const drawingWidth = baseline?.drawingWidth ?? drawingPanelRef.current?.getBoundingClientRect().width ?? panelSizes.splitH.drawingWidth ?? 520;
+    const inspectorWidth = baseline?.inspectorWidth ?? inspectorRef.current?.getBoundingClientRect().width ?? panelSizes.splitV.inspectorWidth;
+    const tableHeight = baseline?.tableHeight ?? tablePanelRef.current?.getBoundingClientRect().height ?? panelSizes.splitV.tableHeight;
+    const inspectorHeight = baseline?.inspectorHeight ?? inspectorRef.current?.getBoundingClientRect().height ?? panelSizes.splitH.inspectorHeight;
+
+    setPanelSizes((current) => {
+      if (activeLayout === "split-v" && axis === "column") {
+        const maxInspectorWidth = Math.max(280, Math.min(460, metrics.width - 520 - RESIZE_HANDLE_SIZE));
+        return {
+          ...current,
+          splitV: {
+            ...current.splitV,
+            inspectorWidth: clamp(inspectorWidth - deltaX, 280, maxInspectorWidth),
+          },
+        };
+      }
+
+      if (activeLayout === "split-v" && axis === "row") {
+        const maxTableHeight = Math.max(220, Math.min(metrics.height * 0.6, metrics.height - 260 - RESIZE_HANDLE_SIZE));
+        return {
+          ...current,
+          splitV: {
+            ...current.splitV,
+            tableHeight: clamp(tableHeight - deltaY, 220, maxTableHeight),
+          },
+        };
+      }
+
+      if (activeLayout === "split-h" && axis === "column") {
+        const maxDrawingWidth = Math.max(520, metrics.width - 360 - RESIZE_HANDLE_SIZE);
+        return {
+          ...current,
+          splitH: {
+            ...current.splitH,
+            drawingWidth: clamp(drawingWidth + deltaX, 520, maxDrawingWidth),
+          },
+        };
+      }
+
+      if (activeLayout === "split-h" && axis === "row") {
+        const maxInspectorHeight = Math.max(180, Math.min(420, metrics.height - 260 - RESIZE_HANDLE_SIZE));
+        return {
+          ...current,
+          splitH: {
+            ...current.splitH,
+            inspectorHeight: clamp(inspectorHeight - deltaY, 180, maxInspectorHeight),
+          },
+        };
+      }
+
+      return current;
+    });
+  }, [getContentMetrics, layoutMode, panelSizes]);
+
+  const movePanelResize = useCallback((event) => {
+    const resize = panelResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    resizePanelsBy(resize.axis, event.clientX - resize.startX, event.clientY - resize.startY, resize);
+  }, [resizePanelsBy]);
+
+  const endPanelResize = useCallback((event) => {
+    const resize = panelResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    panelResizeRef.current = null;
+  }, []);
+
+  const handlePanelResizeKey = useCallback((event, axis) => {
+    const horizontalKey = event.key === "ArrowLeft" || event.key === "ArrowRight";
+    const verticalKey = event.key === "ArrowUp" || event.key === "ArrowDown";
+    if ((axis === "column" && !horizontalKey) || (axis === "row" && !verticalKey)) return;
+
+    event.preventDefault();
+    const step = event.shiftKey ? 80 : 24;
+    const deltaX = event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0;
+    const deltaY = event.key === "ArrowDown" ? step : event.key === "ArrowUp" ? -step : 0;
+    resizePanelsBy(axis, deltaX, deltaY);
+  }, [resizePanelsBy]);
+
+  const resetPanelResize = useCallback((axis) => {
+    setPanelSizes((current) => {
+      if (layoutMode === "split-v" && axis === "column") {
+        return { ...current, splitV: { ...current.splitV, inspectorWidth: defaultPanelSizes.splitV.inspectorWidth } };
+      }
+      if (layoutMode === "split-v" && axis === "row") {
+        return { ...current, splitV: { ...current.splitV, tableHeight: defaultPanelSizes.splitV.tableHeight } };
+      }
+      if (layoutMode === "split-h" && axis === "column") {
+        return { ...current, splitH: { ...current.splitH, drawingWidth: defaultPanelSizes.splitH.drawingWidth } };
+      }
+      if (layoutMode === "split-h" && axis === "row") {
+        return { ...current, splitH: { ...current.splitH, inspectorHeight: defaultPanelSizes.splitH.inspectorHeight } };
+      }
+      return current;
+    });
+  }, [layoutMode]);
+
   return (
     <div className="app-shell" data-layout={layoutMode}>
       <header className="topbar">
@@ -477,19 +681,23 @@ export default function App() {
         </div>
 
         <div className="actions">
-          <label className="button secondary">
-            <Upload size={16} />
-            Upload PDF
-            <input type="file" accept="application/pdf" onChange={handlePdfUpload} />
-          </label>
-          <button className="button secondary" onClick={exportPdf} disabled={!pdfBytes || !characteristics.length}>
-            <Download size={16} />
-            PDF
-          </button>
-          <button className="button primary" onClick={exportExcel} disabled={!characteristics.length}>
-            <Save size={16} />
-            Excel
-          </button>
+          <div className="action-group upload-action">
+            <label className="button secondary">
+              <Upload size={16} />
+              Upload PDF
+              <input type="file" accept="application/pdf" onChange={handlePdfUpload} />
+            </label>
+          </div>
+          <div className="action-group export-actions">
+            <button className="button secondary" onClick={exportPdf} disabled={!pdfBytes || !characteristics.length}>
+              <Download size={16} />
+              PDF
+            </button>
+            <button className="button primary" onClick={exportExcel} disabled={!characteristics.length}>
+              <Save size={16} />
+              Excel
+            </button>
+          </div>
         </div>
       </header>
 
@@ -515,9 +723,9 @@ export default function App() {
         </div>
       </div>
 
-      <div className="content-area">
+      <div ref={contentAreaRef} className="content-area" style={contentAreaStyle}>
 
-        <section className="drawing-panel">
+        <section ref={drawingPanelRef} className="drawing-panel">
           <div className="panel-toolbar">
             <div className="tool-group">
               <ToolButton active={mode === "select"} title="Select" onClick={() => setMode("select")} icon={<MousePointer2 size={17} />} />
@@ -654,7 +862,17 @@ export default function App() {
           </div>
         </section>
 
-        <aside className="inspector">
+        <ResizeHandle
+          axis="column"
+          onPointerDown={beginPanelResize}
+          onPointerMove={movePanelResize}
+          onPointerUp={endPanelResize}
+          onPointerCancel={endPanelResize}
+          onKeyDown={handlePanelResizeKey}
+          onDoubleClick={resetPanelResize}
+        />
+
+        <aside ref={inspectorRef} className="inspector">
           <div className="status-card">
             <span>Package Status</span>
             <strong className={`status ${projectStatus.toLowerCase()}`}>{projectStatus}</strong>
@@ -734,7 +952,17 @@ export default function App() {
           <div className="message">{message}</div>
         </aside>
 
-        <section className="table-panel">
+        <ResizeHandle
+          axis="row"
+          onPointerDown={beginPanelResize}
+          onPointerMove={movePanelResize}
+          onPointerUp={endPanelResize}
+          onPointerCancel={endPanelResize}
+          onKeyDown={handlePanelResizeKey}
+          onDoubleClick={resetPanelResize}
+        />
+
+        <section ref={tablePanelRef} className="table-panel">
         <div className="table-header">
           <div>
             <h2>QC / FAI Characteristics</h2>
@@ -770,6 +998,35 @@ function ToolButton({ active, title, onClick, icon }) {
     <button className={`icon-button ${active ? "active" : ""}`} onClick={onClick} title={title}>
       {icon}
     </button>
+  );
+}
+
+function ResizeHandle({
+  axis,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+  onKeyDown,
+  onDoubleClick,
+}) {
+  const isColumn = axis === "column";
+  return (
+    <div
+      className={`resize-handle ${isColumn ? "column" : "row"}`}
+      role="separator"
+      tabIndex={0}
+      aria-orientation={isColumn ? "vertical" : "horizontal"}
+      title="Drag to resize. Double-click to reset."
+      onPointerDown={(event) => onPointerDown(event, axis)}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onKeyDown={(event) => onKeyDown(event, axis)}
+      onDoubleClick={() => onDoubleClick(axis)}
+    >
+      <span />
+    </div>
   );
 }
 
