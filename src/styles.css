@@ -46,7 +46,7 @@ button:disabled {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) 290px;
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
 
 .topbar {
@@ -61,6 +61,108 @@ button:disabled {
   top: 0;
   z-index: 20;
 }
+
+/* ── Layout switcher bar ──────────────────────────────────────── */
+
+.layout-bar {
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.layout-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.layout-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  min-height: 34px;
+  white-space: nowrap;
+}
+
+.layout-tab:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.layout-tab.active {
+  color: var(--ink);
+  background: var(--bg);
+  border-color: var(--line);
+}
+
+.layout-tab-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--line);
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+/* ── Content area (wraps workspace + table-panel) ─────────────── */
+
+.content-area {
+  min-height: 0;
+  display: grid;
+  /* split-v default: workspace fills remaining, table fixed height below */
+  grid-template-rows: minmax(0, 1fr) 290px;
+  grid-template-columns: 1fr;
+}
+
+/* Side by side */
+.app-shell[data-layout="split-h"] .content-area {
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 55fr) minmax(0, 45fr);
+}
+
+.app-shell[data-layout="split-h"] .workspace {
+  grid-template-columns: minmax(0, 1fr) 260px;
+}
+
+.app-shell[data-layout="split-h"] .table-panel {
+  margin: 14px 14px 14px 0;
+  /* override fixed height — table fills full height in this mode */
+  height: auto;
+}
+
+/* Drawing only */
+.app-shell[data-layout="drawing"] .content-area {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.app-shell[data-layout="drawing"] .table-panel {
+  display: none;
+}
+
+/* Table only */
+.app-shell[data-layout="table"] .content-area {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.app-shell[data-layout="table"] .workspace {
+  display: none;
+}
+
+.app-shell[data-layout="table"] .table-panel {
+  margin: 14px;
+}
+
+/* ── End layout modes ─────────────────────────────────────────── */
 
 .brand {
   display: flex;
@@ -728,11 +830,25 @@ td select:focus {
   .inspector {
     max-height: 420px;
   }
+
+  /* Collapse side-by-side into stacked on narrow viewports */
+  .app-shell[data-layout="split-h"] .content-area {
+    grid-template-rows: minmax(0, 1fr) 290px;
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell[data-layout="split-h"] .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell[data-layout="split-h"] .table-panel {
+    margin: 0 14px 14px;
+  }
 }
 
 @media (max-width: 720px) {
-  .app-shell {
-    grid-template-rows: auto minmax(0, 1fr) 320px;
+  .content-area {
+    grid-template-rows: minmax(0, 1fr) 320px;
   }
 
   .workspace {
@@ -741,6 +857,10 @@ td select:focus {
 
   .topbar {
     padding: 12px;
+  }
+
+  .layout-bar {
+    padding: 0 12px;
   }
 
   .metadata-grid {

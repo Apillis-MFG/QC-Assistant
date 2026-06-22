@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeftRight,
+  ArrowUpDown,
   Circle,
   Download,
   FilePlus2,
   Hand,
   MousePointer2,
+  PanelLeft,
   Plus,
   Save,
+  Table2,
   TextSelect,
   Trash2,
   Upload,
@@ -84,6 +88,7 @@ export default function App() {
   const [ocrRect, setOcrRect] = useState(null);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [layoutMode, setLayoutMode] = useState("split-v");
   const [message, setMessage] = useState(() =>
     loadSession() !== null ? "Restored previous session. Upload your PDF to continue." : "Upload a drawing PDF to begin.",
   );
@@ -450,7 +455,7 @@ export default function App() {
   }, [characteristics, metadata, sampleCount]);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-layout={layoutMode}>
       <header className="topbar">
         <div className="brand">
           <div className="brand-mark">QC</div>
@@ -483,6 +488,30 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      <div className="layout-bar">
+        <div className="layout-tabs">
+          <button className={`layout-tab ${layoutMode === "drawing" ? "active" : ""}`} onClick={() => setLayoutMode("drawing")} title="Drawing canvas only">
+            <PanelLeft size={14} />
+            Drawing
+          </button>
+          <button className={`layout-tab ${layoutMode === "table" ? "active" : ""}`} onClick={() => setLayoutMode("table")} title="QC table only">
+            <Table2 size={14} />
+            Table
+          </button>
+          <div className="layout-tab-divider" />
+          <button className={`layout-tab ${layoutMode === "split-h" ? "active" : ""}`} onClick={() => setLayoutMode("split-h")} title="Side by side">
+            <ArrowLeftRight size={14} />
+            Side by Side
+          </button>
+          <button className={`layout-tab ${layoutMode === "split-v" ? "active" : ""}`} onClick={() => setLayoutMode("split-v")} title="Stacked">
+            <ArrowUpDown size={14} />
+            Stacked
+          </button>
+        </div>
+      </div>
+
+      <div className="content-area">
 
       <main className="workspace">
         <section className="drawing-panel">
@@ -719,6 +748,8 @@ export default function App() {
           onSampleChange={updateSample}
         />
       </section>
+
+      </div>
     </div>
   );
 }
