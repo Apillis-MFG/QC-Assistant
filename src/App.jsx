@@ -11,6 +11,7 @@ import {
   PanelLeft,
   Plus,
   Save,
+  ScanSearch,
   Table2,
   TextSelect,
   Trash2,
@@ -53,6 +54,12 @@ const PANEL_STORAGE_KEY = "qca_panel_sizes_v1";
 const RESIZE_HANDLE_SIZE = 14;
 const BALLOON_OFFSET = { x: 0.0375, y: -0.0275 };
 const BALLOON_MARGIN = 0.025;
+const AUTO_BALLOON_EDGE_OFFSET = 0.055;
+const AUTO_BALLOON_LEADER_RATIO = 0.5;
+const AUTO_BALLOON_MIN_SPACING = 0.04;
+const AUTO_BALLOON_MIN_CONFIDENCE = 45;
+const AUTO_BALLOON_MAX_LABEL_LENGTH = 28;
+const DRAWING_NUMBER_PATTERN = /(?:^|[\s(])(?:[+-]?\d+(?:\.\d+)?x?|[rm]\s*\d+(?:\.\d+)?|[øØ]\s*\d+(?:\.\d+)?|\+\/-\s*\d+(?:\.\d+)?)(?:$|[\s),;:]|max|min)/i;
 
 const defaultPanelSizes = {
   splitV: {
@@ -144,6 +151,10 @@ export default function App() {
   const [selectedText, setSelectedText] = useState("");
   const [ocrRect, setOcrRect] = useState(null);
   const [ocrBusy, setOcrBusy] = useState(false);
+  const [autoBalloonRect, setAutoBalloonRect] = useState(null);
+  const [autoBalloonBusy, setAutoBalloonBusy] = useState(false);
+  const [autoBalloonCandidates, setAutoBalloonCandidates] = useState([]);
+  const [autoBalloonReviewOpen, setAutoBalloonReviewOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [layoutMode, setLayoutMode] = useState("split-v");
@@ -159,6 +170,7 @@ export default function App() {
   const dragRef = useRef(null);
   const panRef = useRef(null);
   const ocrRef = useRef(null);
+  const autoBalloonRef = useRef(null);
   const panelResizeRef = useRef(null);
   const saveTimerRef = useRef(null);
   const applyingDrawingRef = useRef(false);
@@ -227,6 +239,10 @@ export default function App() {
     setTextItems([]);
     setSelectedText("");
     setOcrRect(null);
+    setAutoBalloonRect(null);
+    setAutoBalloonBusy(false);
+    setAutoBalloonCandidates([]);
+    setAutoBalloonReviewOpen(false);
     setCanvasSize({ width: 0, height: 0 });
     setMessage(nextMessage);
   }, []);
@@ -280,6 +296,10 @@ export default function App() {
       setTextItems([]);
       setSelectedText("");
       setOcrRect(null);
+      setAutoBalloonRect(null);
+      setAutoBalloonBusy(false);
+      setAutoBalloonCandidates([]);
+      setAutoBalloonReviewOpen(false);
       setCanvasSize({ width: 0, height: 0 });
       setSaveState({ status: "saved", label: "Saved locally" });
       setMessage(options.message || `Opened ${drawing.name || drawing.pdfName || "drawing"}.`);
@@ -390,8 +410,19 @@ export default function App() {
   }, [mode, pageNumber]);
 
   useEffect(() => {
+    autoBalloonRef.current = null;
+    setAutoBalloonRect(null);
+    setAutoBalloonCandidates([]);
+    setAutoBalloonReviewOpen(false);
+  }, [pageNumber]);
+
+  useEffect(() => {
     if (mode !== "text") window.getSelection()?.removeAllRanges();
     if (mode !== "text") setOcrRect(null);
+    if (mode !== "autoBalloon") {
+      setAutoBalloonRect(null);
+      autoBalloonRef.current = null;
+    }
   }, [mode]);
 
   const switchMode = useCallback((nextMode) => {
@@ -400,6 +431,7 @@ export default function App() {
     const messages = {
       select: "Select balloons to inspect, drag, or press E to edit actions.",
       balloon: "Click a dimension target to place the next balloon. Drag later to adjust.",
+      autoBalloon: "Drag around drawing numbers to review detected balloon candidates.",
       pan: "Drag the drawing to pan around the page.",
       text: "Click embedded PDF text or drag an OCR box, then send it to metadata or the selected QC row.",
     };
@@ -420,12 +452,15 @@ export default function App() {
 
       const key = event.key.toLowerCase();
       if (key === "escape") {
-        if (helpOpen || editingBalloonId || ocrRect || pendingTarget) {
+        if (helpOpen || editingBalloonId || ocrRect || autoBalloonRect || autoBalloonReviewOpen || pendingTarget) {
           event.preventDefault();
           setHelpOpen(false);
           setEditingBalloonId(null);
           setPendingTarget(null);
           setOcrRect(null);
+          setAutoBalloonRect(null);
+          setAutoBalloonCandidates([]);
+          setAutoBalloonReviewOpen(false);
         }
         return;
       }
@@ -436,6 +471,7 @@ export default function App() {
         v: "select",
         h: "pan",
         t: "text",
+        a: "autoBalloon",
       };
       if (shortcutModes[key]) {
         event.preventDefault();
@@ -452,7 +488,7 @@ export default function App() {
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [editingBalloonId, helpOpen, ocrRect, pageNumber, pendingTarget, selected, switchMode]);
+  }, [autoBalloonRect, autoBalloonReviewOpen, editingBalloonId, helpOpen, ocrRect, pageNumber, pendingTarget, selected, switchMode]);
 
   const persistActiveDrawing = useCallback(async (reason = "auto") => {
     if (!projectsReady || !activeProject?.id || !activeDrawingId) return;
@@ -741,6 +777,10 @@ export default function App() {
       setPendingTarget(null);
       setSelectedText("");
       setOcrRect(null);
+      setAutoBalloonRect(null);
+      setAutoBalloonBusy(false);
+      setAutoBalloonCandidates([]);
+      setAutoBalloonReviewOpen(false);
       setCanvasSize({ width: 0, height: 0 });
       rememberActiveProject(project.id, savedDrawing.id);
       await refreshProjectList();
@@ -891,18 +931,114 @@ export default function App() {
     setMessage(`Captured text: ${text}`);
   }, []);
 
+  const recognizeSelectedArea = useCallback(async (rect) => {
+    if (!canvasRef.current) return;
+
+    try {
+      setOcrBusy(true);
+      setMessage("Reading selected drawing area...");
+      const { dataUrl } = cropCanvasArea(canvasRef.current, rect);
+      const { recognize } = await import("tesseract.js");
+      const result = await recognize(dataUrl, "eng");
+      const text = result.data.text.replace(/\s+/g, " ").trim();
+      setSelectedText(text);
+      setMessage(text ? `OCR captured: ${text}` : "No readable text found in selected area.");
+    } catch (error) {
+      setMessage(`OCR failed: ${error.message}`);
+    } finally {
+      setOcrBusy(false);
+      setOcrRect(null);
+    }
+  }, []);
+
+  const detectAutoBalloonCandidates = useCallback(async (rect) => {
+    if (!canvasRef.current || !canvasSize.width || !canvasSize.height) return;
+
+    try {
+      setAutoBalloonBusy(true);
+      setAutoBalloonCandidates([]);
+      setAutoBalloonReviewOpen(false);
+      setMessage("Reviewing selected area for balloon candidates...");
+
+      let rawCandidates = getEmbeddedAutoBalloonCandidates({ textItems, canvasSize, selectionRect: rect });
+      let sourceLabel = "PDF text";
+
+      if (!rawCandidates.length) {
+        const crop = cropCanvasArea(canvasRef.current, rect);
+        const { createWorker } = await import("tesseract.js");
+        const worker = await createWorker("eng");
+
+        try {
+          await worker.setParameters({
+            preserve_interword_spaces: "1",
+            tessedit_pageseg_mode: "11",
+          });
+          const result = await worker.recognize(crop.dataUrl, {}, { blocks: true });
+          rawCandidates = getOcrAutoBalloonCandidates({
+            blocks: result.data.blocks,
+            selectionRect: rect,
+            imageWidth: crop.width,
+            imageHeight: crop.height,
+          });
+          sourceLabel = "OCR";
+        } finally {
+          await worker.terminate();
+        }
+      }
+
+      const startNo = nextBalloonNo(characteristics);
+      const candidates = buildAutoBalloonCandidates({
+        rawCandidates,
+        selectionRect: rect,
+        startNo,
+        pageCount,
+        pageAspectRatio: canvasSize.width / canvasSize.height,
+      });
+
+      setAutoBalloonCandidates(candidates);
+      setAutoBalloonReviewOpen(candidates.length > 0);
+      setMessage(
+        candidates.length
+          ? `Review ${candidates.length} ${sourceLabel} candidate${candidates.length === 1 ? "" : "s"} before adding balloons.`
+          : "No numeric balloon candidates found in the selected area.",
+      );
+    } catch (error) {
+      setMessage(`Candidate review failed: ${error.message}`);
+    } finally {
+      setAutoBalloonBusy(false);
+      setAutoBalloonRect(null);
+    }
+  }, [canvasSize, characteristics, pageCount, textItems]);
+
   const beginTextAreaSelection = useCallback((event) => {
-    if (mode !== "text" || !overlayRef.current) return;
+    const isTextMode = mode === "text";
+    const isAutoBalloonMode = mode === "autoBalloon";
+    if ((!isTextMode && !isAutoBalloonMode) || !overlayRef.current) return;
     if (event.button !== 0) return;
-    if (event.target.closest(".pdf-text-item")) return;
+    if (isTextMode && event.target.closest(".pdf-text-item")) return;
 
     const point = getNormalizedPoint(event, overlayRef.current);
-    ocrRef.current = { pointerId: event.pointerId, startX: point.x, startY: point.y };
-    setOcrRect({ x: point.x, y: point.y, width: 0, height: 0 });
+    const selection = { pointerId: event.pointerId, startX: point.x, startY: point.y };
+    if (isAutoBalloonMode) {
+      autoBalloonRef.current = selection;
+      setAutoBalloonCandidates([]);
+      setAutoBalloonReviewOpen(false);
+      setAutoBalloonRect({ x: point.x, y: point.y, width: 0, height: 0 });
+    } else {
+      ocrRef.current = selection;
+      setOcrRect({ x: point.x, y: point.y, width: 0, height: 0 });
+    }
     event.currentTarget.setPointerCapture(event.pointerId);
   }, [mode]);
 
   const moveTextAreaSelection = useCallback((event) => {
+    const autoSelection = autoBalloonRef.current;
+    if (autoSelection?.pointerId === event.pointerId && overlayRef.current) {
+      const point = getNormalizedPoint(event, overlayRef.current);
+      setAutoBalloonRect(normalizeRect(autoSelection.startX, autoSelection.startY, point.x, point.y));
+      return;
+    }
+
     const selection = ocrRef.current;
     if (!selection || selection.pointerId !== event.pointerId || !overlayRef.current) return;
 
@@ -911,6 +1047,21 @@ export default function App() {
   }, []);
 
   const endTextAreaSelection = useCallback(async (event) => {
+    const autoSelection = autoBalloonRef.current;
+    if (autoSelection?.pointerId === event.pointerId && overlayRef.current) {
+      const point = getNormalizedPoint(event, overlayRef.current);
+      const rect = normalizeRect(autoSelection.startX, autoSelection.startY, point.x, point.y);
+      autoBalloonRef.current = null;
+
+      if (rect.width < 0.012 || rect.height < 0.012) {
+        setAutoBalloonRect(null);
+        return;
+      }
+
+      await detectAutoBalloonCandidates(rect);
+      return;
+    }
+
     const selection = ocrRef.current;
     if (!selection || selection.pointerId !== event.pointerId || !overlayRef.current) return;
 
@@ -924,27 +1075,7 @@ export default function App() {
     }
 
     await recognizeSelectedArea(rect);
-  }, []);
-
-  const recognizeSelectedArea = useCallback(async (rect) => {
-    if (!canvasRef.current) return;
-
-    try {
-      setOcrBusy(true);
-      setMessage("Reading selected drawing area...");
-      const dataUrl = cropCanvasArea(canvasRef.current, rect);
-      const { recognize } = await import("tesseract.js");
-      const result = await recognize(dataUrl, "eng");
-      const text = result.data.text.replace(/\s+/g, " ").trim();
-      setSelectedText(text);
-      setMessage(text ? `OCR captured: ${text}` : "No readable text found in selected area.");
-    } catch (error) {
-      setMessage(`OCR failed: ${error.message}`);
-    } finally {
-      setOcrBusy(false);
-      setOcrRect(null);
-    }
-  }, []);
+  }, [detectAutoBalloonCandidates, recognizeSelectedArea]);
 
   const applyCapturedText = useCallback((destination) => {
     const text = selectedText.trim();
@@ -973,6 +1104,46 @@ export default function App() {
     setEditingBalloonId(null);
     setMessage(`Added row ${next.balloonNo}. Click the drawing to place its balloon later.`);
   }, [characteristics, pageNumber]);
+
+  const cancelAutoBalloonReview = useCallback(() => {
+    setAutoBalloonRect(null);
+    setAutoBalloonCandidates([]);
+    setAutoBalloonReviewOpen(false);
+    setMessage("Canceled candidate review.");
+  }, []);
+
+  const removeAutoBalloonCandidate = useCallback((id) => {
+    setAutoBalloonCandidates((items) =>
+      renumberAutoBalloonCandidates(
+        items.filter((item) => item.id !== id),
+        nextBalloonNo(characteristics),
+      ),
+    );
+  }, [characteristics]);
+
+  const commitAutoBalloonCandidates = useCallback(() => {
+    if (!autoBalloonCandidates.length) return;
+
+    const startNo = nextBalloonNo(characteristics);
+    const rows = autoBalloonCandidates.map((candidate, index) =>
+      createCharacteristic({
+        balloonNo: startNo + index,
+        x: candidate.x,
+        y: candidate.y,
+        targetX: candidate.targetX,
+        targetY: candidate.targetY,
+        page: pageNumber,
+      }),
+    );
+
+    setCharacteristics((items) => [...items, ...rows]);
+    setSelectedId(rows[0]?.id || null);
+    setEditingBalloonId(null);
+    setAutoBalloonRect(null);
+    setAutoBalloonCandidates([]);
+    setAutoBalloonReviewOpen(false);
+    setMessage(`Added ${rows.length} reviewed balloon${rows.length === 1 ? "" : "s"}. Drag any balloon or target to refine placement.`);
+  }, [autoBalloonCandidates, characteristics, pageNumber]);
 
   const loadDemoRows = useCallback(() => {
     const positions = [
@@ -1019,6 +1190,10 @@ export default function App() {
     setPendingTarget(null);
     setSelectedText("");
     setOcrRect(null);
+    setAutoBalloonRect(null);
+    setAutoBalloonBusy(false);
+    setAutoBalloonCandidates([]);
+    setAutoBalloonReviewOpen(false);
     setMessage("Cleared inspection data for the active drawing.");
   }, []);
 
@@ -1383,6 +1558,12 @@ export default function App() {
                 icon={<Circle size={17} />}
               />
               <ToolButton
+                active={mode === "autoBalloon"}
+                title="Review balloon candidates (A)"
+                onClick={() => switchMode("autoBalloon")}
+                icon={<ScanSearch size={17} />}
+              />
+              <ToolButton
                 active={mode === "text"}
                 title="Text select (T)"
                 onClick={() => switchMode("text")}
@@ -1428,7 +1609,7 @@ export default function App() {
             ) : (
               <div
                 ref={overlayRef}
-                className={`pdf-stage ${mode === "balloon" ? "placing" : ""}`}
+                className={`pdf-stage ${mode === "balloon" || mode === "autoBalloon" ? "placing" : ""}`}
                 style={{ width: canvasSize.width, height: canvasSize.height }}
                 onClick={handleCanvasClick}
                 onPointerDown={beginTextAreaSelection}
@@ -1459,6 +1640,22 @@ export default function App() {
                     }}
                   />
                 ) : null}
+                {autoBalloonRect ? (
+                  <div
+                    className="auto-balloon-selection"
+                    style={{
+                      left: `${autoBalloonRect.x * 100}%`,
+                      top: `${autoBalloonRect.y * 100}%`,
+                      width: `${autoBalloonRect.width * 100}%`,
+                      height: `${autoBalloonRect.height * 100}%`,
+                    }}
+                  />
+                ) : null}
+                <AutoBalloonPreview
+                  candidates={autoBalloonCandidates}
+                  width={canvasSize.width}
+                  height={canvasSize.height}
+                />
                 {selected?.page === pageNumber ? (
                   <button
                     className="target-handle"
@@ -1562,6 +1759,21 @@ export default function App() {
               </div>
               {ocrBusy ? <p className="muted compact-note">OCR is reading the selected area...</p> : null}
             </div>
+          </div>
+
+          <div className="inspector-section">
+            <div className="section-title">
+              <h2>Review Candidates</h2>
+              {autoBalloonCandidates.length ? <span className="candidate-count">{autoBalloonCandidates.length}</span> : null}
+            </div>
+            <AutoBalloonReview
+              busy={autoBalloonBusy}
+              open={autoBalloonReviewOpen}
+              candidates={autoBalloonCandidates}
+              onRemove={removeAutoBalloonCandidate}
+              onCancel={cancelAutoBalloonReview}
+              onCommit={commitAutoBalloonCandidates}
+            />
           </div>
 
           <div className="inspector-section">
@@ -1768,6 +1980,7 @@ function HelpDialog({ open, onClose }) {
 
   const shortcuts = [
     ["B", "Balloon tool"],
+    ["A", "Review balloon candidates (Auto Balloon)"],
     ["V", "Select tool"],
     ["H", "Pan tool"],
     ["T", "Text Select / OCR"],
@@ -1797,17 +2010,16 @@ function HelpDialog({ open, onClose }) {
         <div className="help-content">
           <section className="help-section help-hero">
             <div>
-              <h3>Quick Workflow</h3>
-              <ol className="help-flow">
-                <li>Upload PDF</li>
-                <li>Balloon requirements</li>
-                <li>Capture text or OCR</li>
-                <li>Enter samples</li>
-                <li>Export PDF and Excel</li>
-              </ol>
-            </div>
-            <HelpDrawingPreview />
-          </section>
+	              <h3>Quick Workflow</h3>
+	              <ol className="help-flow">
+	                <li>Upload drawing PDF</li>
+	                <li>Select Balloon or Review Candidates (Auto Balloon)</li>
+	                <li>Add nominal, tolerance, and inspection values</li>
+	                <li>Export ballooned drawing PDF</li>
+	                <li>Export Excel with balloon list and values</li>
+	              </ol>
+	            </div>
+	          </section>
 
           <section className="help-section">
             <h3>Tool Shortcuts</h3>
@@ -1821,6 +2033,7 @@ function HelpDialog({ open, onClose }) {
             </div>
             <div className="help-toolbar-preview" aria-hidden="true">
               <span className="help-tool active">B</span>
+              <span className="help-tool">A</span>
               <span className="help-tool">V</span>
               <span className="help-tool">H</span>
               <span className="help-tool">T</span>
@@ -1833,6 +2046,7 @@ function HelpDialog({ open, onClose }) {
             <div>
               <h3>Balloon Behavior</h3>
               <p>Press <kbd>B</kbd>, then click each dimension target once. QC Assistant places the numbered balloon with a default leader line. Drag the circle or target later to adjust placement.</p>
+              <p>Press <kbd>A</kbd>, drag around drawing numbers, review the candidates, then add the confirmed balloons.</p>
               <p>Single-click selects a balloon. Double-click or press <kbd>E</kbd> to open the small edit/delete actions.</p>
             </div>
             <div>
@@ -1846,27 +2060,6 @@ function HelpDialog({ open, onClose }) {
           </section>
         </div>
       </section>
-    </div>
-  );
-}
-
-function HelpDrawingPreview() {
-  return (
-    <div className="help-drawing-preview" aria-hidden="true">
-      <div className="help-drawing-sheet">
-        <div className="help-dim-line horizontal" />
-        <div className="help-dim-line vertical" />
-        <span className="help-dim-text">25.00 +/- 0.13</span>
-        <span className="help-dim-text small">2X R3 MAX</span>
-        <svg className="help-leader" viewBox="0 0 220 132">
-          <line x1="145" y1="45" x2="92" y2="66" />
-          <line x1="59" y1="96" x2="112" y2="84" />
-        </svg>
-        <span className="help-balloon selected">1</span>
-        <span className="help-balloon">2</span>
-        <span className="help-target one" />
-        <span className="help-target two" />
-      </div>
     </div>
   );
 }
@@ -1972,6 +2165,83 @@ function LeaderLayer({ balloons, selectedId, width, height }) {
         );
       })}
     </svg>
+  );
+}
+
+function AutoBalloonPreview({ candidates, width, height }) {
+  if (!width || !height || !candidates.length) return null;
+
+  return (
+    <div className="auto-balloon-preview" aria-hidden="true">
+      <svg className="auto-balloon-leader-layer" viewBox={`0 0 ${width} ${height}`}>
+        {candidates.map((item) => {
+          const geometry = getLeaderLine({
+            x: item.x * width,
+            y: item.y * height,
+            targetX: item.targetX * width,
+            targetY: item.targetY * height,
+          });
+          return (
+            <line
+              key={`leader-${item.id}`}
+              className="auto-balloon-leader"
+              x1={geometry.startX}
+              y1={geometry.startY}
+              x2={geometry.endX}
+              y2={geometry.endY}
+            />
+          );
+        })}
+      </svg>
+      {candidates.map((item) => (
+        <span
+          key={item.id}
+          className="auto-balloon-ghost"
+          style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%` }}
+        >
+          {item.balloonNo}
+        </span>
+      ))}
+      {candidates.map((item) => (
+        <span
+          key={`target-${item.id}`}
+          className="auto-balloon-target"
+          style={{ left: `${item.targetX * 100}%`, top: `${item.targetY * 100}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AutoBalloonReview({ busy, open, candidates, onRemove, onCancel, onCommit }) {
+  if (busy) {
+    return <p className="muted compact-note">Reviewing selected area...</p>;
+  }
+
+  if (!open && !candidates.length) {
+    return <p className="muted">Choose the review tool, then drag around drawing numbers to preview balloon candidates.</p>;
+  }
+
+  return (
+    <div className="candidate-review">
+      <div className="candidate-list">
+        {candidates.map((candidate) => (
+          <div className="candidate-row" key={candidate.id}>
+            <span className="candidate-number">{candidate.balloonNo}</span>
+            <span className="candidate-label" title={candidate.label}>{candidate.label}</span>
+            <button className="icon-button" onClick={() => onRemove(candidate.id)} title={`Remove candidate ${candidate.balloonNo}`}>
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="candidate-actions">
+        <button className="small-button" onClick={onCancel}>Cancel</button>
+        <button className="small-button primary-compact" disabled={!candidates.length} onClick={onCommit}>
+          Add balloons
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -2346,7 +2616,247 @@ function cropCanvasArea(canvas, rect) {
     output.height,
   );
 
-  return output.toDataURL("image/png");
+  return {
+    dataUrl: output.toDataURL("image/png"),
+    width: output.width,
+    height: output.height,
+  };
+}
+
+function getEmbeddedAutoBalloonCandidates({ textItems, canvasSize, selectionRect }) {
+  return textItems
+    .map((item) => {
+      const bounds = {
+        x: item.left / canvasSize.width,
+        y: item.top / canvasSize.height,
+        width: item.width / canvasSize.width,
+        height: item.height / canvasSize.height,
+      };
+      if (!rectsIntersect(bounds, selectionRect)) return null;
+      const label = getAutoBalloonLabel(item.text);
+      if (!label) return null;
+      return {
+        label,
+        confidence: 100,
+        source: "text",
+        targetX: clamp(bounds.x + bounds.width / 2, 0, 1),
+        targetY: clamp(bounds.y + bounds.height / 2, 0, 1),
+        bounds,
+      };
+    })
+    .filter(Boolean);
+}
+
+function getOcrAutoBalloonCandidates({ blocks, selectionRect, imageWidth, imageHeight }) {
+  if (!Array.isArray(blocks) || !imageWidth || !imageHeight) return [];
+
+  return blocks.flatMap((block) =>
+    (block.paragraphs || []).flatMap((paragraph) =>
+      (paragraph.lines || []).flatMap((line) =>
+        (line.words || []).map((word) => {
+          const label = getAutoBalloonLabel(word.text);
+          if (!label || word.confidence < AUTO_BALLOON_MIN_CONFIDENCE) return null;
+          const width = Math.max(1, word.bbox.x1 - word.bbox.x0) / imageWidth * selectionRect.width;
+          const height = Math.max(1, word.bbox.y1 - word.bbox.y0) / imageHeight * selectionRect.height;
+          const x = selectionRect.x + (word.bbox.x0 / imageWidth) * selectionRect.width;
+          const y = selectionRect.y + (word.bbox.y0 / imageHeight) * selectionRect.height;
+          return {
+            label,
+            confidence: word.confidence,
+            source: "ocr",
+            targetX: clamp(x + width / 2, 0, 1),
+            targetY: clamp(y + height / 2, 0, 1),
+            bounds: { x, y, width, height },
+          };
+        }).filter(Boolean),
+      ),
+    ),
+  );
+}
+
+function buildAutoBalloonCandidates({ rawCandidates, selectionRect, startNo, pageCount, pageAspectRatio = 1 }) {
+  const filtered = dedupeAutoBalloonCandidates(
+    rawCandidates
+      .filter((candidate) => !isLikelyPageNoise(candidate, pageCount))
+      .sort((a, b) => (a.targetY - b.targetY) || (a.targetX - b.targetX)),
+  );
+
+  return positionAutoBalloonCandidates(filtered, selectionRect, startNo, pageAspectRatio);
+}
+
+function getAutoBalloonLabel(value) {
+  const label = String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/^[,;:]+|[,;:]+$/g, "")
+    .trim();
+
+  if (!label || label.length > AUTO_BALLOON_MAX_LABEL_LENGTH) return "";
+  if (!DRAWING_NUMBER_PATTERN.test(label)) return "";
+  return label;
+}
+
+function isLikelyPageNoise(candidate, pageCount) {
+  if (!/^\d+$/.test(candidate.label)) return false;
+  const pageNumberValue = Number(candidate.label);
+  if (!Number.isFinite(pageNumberValue) || pageNumberValue > Math.max(pageCount, 20)) return false;
+
+  const nearVerticalEdge = candidate.targetY < 0.07 || candidate.targetY > 0.93;
+  const nearHorizontalEdge = candidate.targetX < 0.16 || candidate.targetX > 0.84;
+  const nearFooterCenter = candidate.targetY > 0.93 && candidate.targetX > 0.38 && candidate.targetX < 0.62;
+  return nearVerticalEdge && (nearHorizontalEdge || nearFooterCenter);
+}
+
+function dedupeAutoBalloonCandidates(candidates) {
+  const accepted = [];
+  candidates.forEach((candidate) => {
+    const duplicate = accepted.some((item) => {
+      const sameLabel = item.label.toUpperCase() === candidate.label.toUpperCase();
+      const close = Math.hypot(item.targetX - candidate.targetX, item.targetY - candidate.targetY) < 0.025;
+      return sameLabel && close;
+    });
+    if (!duplicate) accepted.push(candidate);
+  });
+  return accepted;
+}
+
+function positionAutoBalloonCandidates(candidates, selectionRect, startNo, pageAspectRatio) {
+  const candidatesWithEdges = candidates.map((candidate) => ({
+    ...candidate,
+    edge: getNearestAutoBalloonEdge(candidate, selectionRect, pageAspectRatio),
+  }));
+  const positionsByCandidate = new Map();
+
+  ["top", "right", "bottom", "left"].forEach((edge) => {
+    const group = candidatesWithEdges
+      .filter((candidate) => candidate.edge === edge)
+      .sort((a, b) =>
+        edge === "left" || edge === "right"
+          ? (a.targetY - b.targetY) || (a.targetX - b.targetX)
+          : (a.targetX - b.targetX) || (a.targetY - b.targetY),
+      );
+    const axisPositions = spreadAutoBalloonEdgePositions(group, selectionRect, edge);
+
+    group.forEach((candidate, index) => {
+      positionsByCandidate.set(candidate, getAutoBalloonPosition({
+        candidate,
+        selectionRect,
+        edge,
+        axisPosition: axisPositions[index],
+      }));
+    });
+  });
+
+  return candidatesWithEdges
+    .map((candidate) => ({
+      ...candidate,
+      id: crypto.randomUUID(),
+      ...positionsByCandidate.get(candidate),
+    }))
+    .sort(compareAutoBalloonClockwise)
+    .map((candidate, index) => {
+      const { edge, ...candidateWithoutEdge } = candidate;
+      return {
+        ...candidateWithoutEdge,
+        balloonNo: startNo + index,
+      };
+    });
+}
+
+function getNearestAutoBalloonEdge(candidate, rect, pageAspectRatio) {
+  const xScale = Number.isFinite(pageAspectRatio) && pageAspectRatio > 0 ? pageAspectRatio : 1;
+  const distances = {
+    left: Math.abs(candidate.targetX - rect.x) * xScale,
+    right: Math.abs(rect.x + rect.width - candidate.targetX) * xScale,
+    top: Math.abs(candidate.targetY - rect.y),
+    bottom: Math.abs(rect.y + rect.height - candidate.targetY),
+  };
+  const edgePriority = ["top", "bottom", "left", "right"];
+  return edgePriority.reduce((nearest, edge) =>
+    distances[edge] < distances[nearest] ? edge : nearest,
+  );
+}
+
+function spreadAutoBalloonEdgePositions(group, rect, edge) {
+  if (!group.length) return [];
+  const vertical = edge === "left" || edge === "right";
+  const min = vertical ? rect.y : rect.x;
+  const max = vertical ? rect.y + rect.height : rect.x + rect.width;
+  const desired = group.map((candidate) => vertical ? candidate.targetY : candidate.targetX);
+  const spacing = AUTO_BALLOON_MIN_SPACING;
+  const positions = desired.map((value) => clamp(value, min, max));
+
+  for (let index = 1; index < positions.length; index += 1) {
+    positions[index] = Math.max(positions[index], positions[index - 1] + spacing);
+  }
+
+  const overflow = positions[positions.length - 1] - max;
+  if (overflow > 0) {
+    positions[positions.length - 1] -= overflow;
+    for (let index = positions.length - 2; index >= 0; index -= 1) {
+      positions[index] = Math.min(positions[index], positions[index + 1] - spacing);
+    }
+  }
+
+  const underflow = min - positions[0];
+  if (underflow > 0) {
+    positions[0] += underflow;
+    for (let index = 1; index < positions.length; index += 1) {
+      positions[index] = Math.max(positions[index], positions[index - 1] + spacing);
+    }
+  }
+
+  return positions.map((value) => clamp(value, BALLOON_MARGIN, 1 - BALLOON_MARGIN));
+}
+
+function getAutoBalloonPosition({ candidate, selectionRect, edge, axisPosition }) {
+  const offset = AUTO_BALLOON_EDGE_OFFSET;
+  const shorten = (target, edgeValue) =>
+    clamp(target + (edgeValue - target) * AUTO_BALLOON_LEADER_RATIO, BALLOON_MARGIN, 1 - BALLOON_MARGIN);
+
+  if (edge === "left") {
+    const edgeX = selectionRect.x - offset;
+    return {
+      x: shorten(candidate.targetX, edgeX),
+      y: clamp(axisPosition, BALLOON_MARGIN, 1 - BALLOON_MARGIN),
+    };
+  }
+
+  if (edge === "right") {
+    const edgeX = selectionRect.x + selectionRect.width + offset;
+    return {
+      x: shorten(candidate.targetX, edgeX),
+      y: clamp(axisPosition, BALLOON_MARGIN, 1 - BALLOON_MARGIN),
+    };
+  }
+
+  const edgeY = edge === "top" ? selectionRect.y - offset : selectionRect.y + selectionRect.height + offset;
+  return {
+    x: clamp(axisPosition, BALLOON_MARGIN, 1 - BALLOON_MARGIN),
+    y: shorten(candidate.targetY, edgeY),
+  };
+}
+
+function compareAutoBalloonClockwise(a, b) {
+  const edgeOrder = { top: 0, right: 1, bottom: 2, left: 3 };
+  const edgeDelta = edgeOrder[a.edge] - edgeOrder[b.edge];
+  if (edgeDelta !== 0) return edgeDelta;
+
+  if (a.edge === "top") return (a.x - b.x) || (a.targetX - b.targetX);
+  if (a.edge === "right") return (a.y - b.y) || (a.targetY - b.targetY);
+  if (a.edge === "bottom") return (b.x - a.x) || (b.targetX - a.targetX);
+  if (a.edge === "left") return (b.y - a.y) || (b.targetY - a.targetY);
+  return (a.y - b.y) || (a.x - b.x);
+}
+
+function renumberAutoBalloonCandidates(candidates, startNo) {
+  return candidates.map((candidate, index) => ({ ...candidate, balloonNo: startNo + index }));
+}
+
+function rectsIntersect(a, b) {
+  return a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y;
 }
 
 function nextBalloonNo(items) {
