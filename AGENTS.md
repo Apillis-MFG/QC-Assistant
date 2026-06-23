@@ -25,7 +25,7 @@ Default response shape for meaningful work:
 
 - Product: `QC Assistant`
 - Main implementation root: `src/`
-- Issue tracker: none yet
+- Issue tracker: GitHub repo `Apillis-MFG/QC-Assistant`, Project `QC-Assistant`
 - Active spec: `SPEC.md`
 - Design system: `DESIGN.md`
 - Workflow: `WORKFLOW.md`
@@ -140,6 +140,8 @@ When changing characteristic data shape:
 - Update `exporters.js` and the Excel column layout if new fields are exported.
 
 ## Design And Spec Workflow
+
+Before any feature, update, fix, refactor, or documentation change, follow the mandatory GitHub issue loop in `WORKFLOW.md`: identify or create the issue, add it to the GitHub Project, move it to `In Progress`, keep scope aligned with the issue, then document verification and move it to `In Review` after implementation.
 
 Use `DESIGN.md` for visual system, component behavior, interaction rules, and trust boundaries.
 
