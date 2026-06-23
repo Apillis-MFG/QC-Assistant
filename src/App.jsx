@@ -29,7 +29,6 @@ import {
 } from "./lib/exporters.js";
 import {
   ACTIVE_PROJECT_KEY,
-  PROJECT_LIMITS,
   deleteDrawing,
   deleteProject,
   getStorageEstimate,
@@ -44,6 +43,7 @@ import {
   APP_VERSION,
   CHARACTERISTIC_FIELDS,
   PANEL_STORAGE_KEY,
+  PROJECT_LIMITS,
   RESIZE_HANDLE_SIZE,
   defaultPanelSizes,
   emptyMetadata,
@@ -109,7 +109,6 @@ export default function App() {
   const [characteristics, setCharacteristics] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [editingBalloonId, setEditingBalloonId] = useState(null);
-  const [pendingTarget, setPendingTarget] = useState(null);
   const [textItems, setTextItems] = useState([]);
   const [selectedText, setSelectedText] = useState("");
   const [ocrRect, setOcrRect] = useState(null);
@@ -198,7 +197,6 @@ export default function App() {
     setCharacteristics([]);
     setSelectedId(null);
     setEditingBalloonId(null);
-    setPendingTarget(null);
     setTextItems([]);
     setSelectedText("");
     setOcrRect(null);
@@ -255,7 +253,6 @@ export default function App() {
       setCharacteristics(Array.isArray(drawing.characteristics) ? drawing.characteristics : []);
       setSelectedId(null);
       setEditingBalloonId(null);
-      setPendingTarget(null);
       setTextItems([]);
       setSelectedText("");
       setOcrRect(null);
@@ -369,10 +366,6 @@ export default function App() {
   }, [pdfDoc, pageNumber, workspaceMode, zoom]);
 
   useEffect(() => {
-    setPendingTarget(null);
-  }, [mode, pageNumber]);
-
-  useEffect(() => {
     autoBalloonRef.current = null;
     setAutoBalloonRect(null);
     setAutoBalloonCandidates([]);
@@ -404,7 +397,6 @@ export default function App() {
   const switchWorkspaceMode = useCallback((nextMode) => {
     setWorkspaceMode(nextMode);
     setEditingBalloonId(null);
-    setPendingTarget(null);
     setOcrRect(null);
     setAutoBalloonRect(null);
     setAutoBalloonCandidates([]);
@@ -437,11 +429,10 @@ export default function App() {
 
       const key = event.key.toLowerCase();
       if (key === "escape") {
-        if (helpOpen || editingBalloonId || ocrRect || autoBalloonRect || autoBalloonReviewOpen || pendingTarget) {
+        if (helpOpen || editingBalloonId || ocrRect || autoBalloonRect || autoBalloonReviewOpen) {
           event.preventDefault();
           setHelpOpen(false);
           setEditingBalloonId(null);
-          setPendingTarget(null);
           setOcrRect(null);
           setAutoBalloonRect(null);
           setAutoBalloonCandidates([]);
@@ -474,7 +465,7 @@ export default function App() {
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [autoBalloonRect, autoBalloonReviewOpen, editingBalloonId, helpOpen, ocrRect, pageNumber, pendingTarget, selected, switchMode, workspaceMode]);
+  }, [autoBalloonRect, autoBalloonReviewOpen, editingBalloonId, helpOpen, ocrRect, pageNumber, selected, switchMode, workspaceMode]);
 
   const persistActiveDrawing = useCallback(async (reason = "auto") => {
     if (!projectsReady || !activeProject?.id || !activeDrawingId) return;
@@ -756,7 +747,6 @@ export default function App() {
       setCharacteristics([]);
       setSelectedId(null);
       setEditingBalloonId(null);
-      setPendingTarget(null);
       setSelectedText("");
       setOcrRect(null);
       setAutoBalloonRect(null);
@@ -797,7 +787,6 @@ export default function App() {
         setCharacteristics((items) => [...items, next]);
         setSelectedId(next.id);
         setEditingBalloonId(null);
-        setPendingTarget(null);
         setMessage(`Added balloon ${next.balloonNo}. Drag the balloon or target to adjust; double-click or press E to edit.`);
       } else if (mode === "select") {
         setEditingBalloonId(null);
@@ -1169,7 +1158,6 @@ export default function App() {
     setCharacteristics([]);
     setSelectedId(null);
     setEditingBalloonId(null);
-    setPendingTarget(null);
     setSelectedText("");
     setOcrRect(null);
     setAutoBalloonRect(null);

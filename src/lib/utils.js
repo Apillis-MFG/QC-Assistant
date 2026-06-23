@@ -3,8 +3,8 @@ import {
   defaultPanelSizes,
   BALLOON_OFFSET,
   BALLOON_MARGIN,
+  PROJECT_LIMITS,
 } from "./constants.js";
-import { PROJECT_LIMITS } from "./projectStore.js";
 
 export function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -163,7 +163,7 @@ export function mapTextItem(item, index, viewport, zoom) {
   const angle = Math.atan2(item.transform[1] || 0, item.transform[0] || 1);
 
   return {
-    id: `${index}-${text}-${Math.round(left)}-${Math.round(baselineY)}`,
+    id: `${index}-${item.transform.join(",")}`,
     text,
     left,
     top: baselineY - height,
@@ -219,12 +219,11 @@ export function getDefaultBalloonPosition(target) {
   };
 }
 
-export function cropCanvasArea(canvas, rect) {
+export function cropCanvasArea(canvas, rect, scale = 2) {
   const sourceX = Math.floor(rect.x * canvas.width);
   const sourceY = Math.floor(rect.y * canvas.height);
   const sourceWidth = Math.max(1, Math.floor(rect.width * canvas.width));
   const sourceHeight = Math.max(1, Math.floor(rect.height * canvas.height));
-  const scale = 2;
   const output = document.createElement("canvas");
   output.width = sourceWidth * scale;
   output.height = sourceHeight * scale;
@@ -261,4 +260,19 @@ export function renumber(items) {
     .slice()
     .sort((a, b) => a.balloonNo - b.balloonNo)
     .map((item, index) => ({ ...item, balloonNo: index + 1 }));
+}
+
+export function computeLeaderLine(x, y, targetX, targetY, startOffset, endGap) {
+  const dx = targetX - x;
+  const dy = targetY - y;
+  const distance = Math.hypot(dx, dy);
+  if (distance <= startOffset + endGap) return null;
+  const ux = dx / distance;
+  const uy = dy / distance;
+  return {
+    startX: x + ux * startOffset,
+    startY: y + uy * startOffset,
+    endX: targetX - ux * endGap,
+    endY: targetY - uy * endGap,
+  };
 }

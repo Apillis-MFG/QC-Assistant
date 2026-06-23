@@ -6,11 +6,8 @@ const PDF_STORE = "pdfs";
 
 export const ACTIVE_PROJECT_KEY = "qca_active_project_v1";
 
-export const PROJECT_LIMITS = {
-  maxDrawings: 25,
-  largePdfBytes: 25 * 1024 * 1024,
-  projectWarningBytes: 500 * 1024 * 1024,
-};
+let _dbPromise = null;
+let _lastPdfSave = null; // { drawingId, byteLength }
 
 export async function listProjects() {
   const db = await openDb();
@@ -82,12 +79,23 @@ export async function loadDrawing(drawingId) {
 export async function saveDrawing(projectId, drawing) {
   const db = await openDb();
   const normalized = normalizeDrawing(projectId, drawing);
+  const pdfBytes = normalized.pdfBytes;
+  const skipPdf = !pdfBytes
+    || (_lastPdfSave
+        && _lastPdfSave.drawingId === normalized.id
+        && _lastPdfSave.byteLength === normalized.pdfByteLength);
+
   await transact(db, [DRAWING_STORE, PDF_STORE], "readwrite", (stores) => {
     stores[DRAWING_STORE].put(withoutPdfBytes(normalized));
-    if (normalized.pdfBytes) {
-      stores[PDF_STORE].put({ drawingId: normalized.id, pdfBytes: normalized.pdfBytes });
+    if (!skipPdf) {
+      stores[PDF_STORE].put({ drawingId: normalized.id, pdfBytes });
     }
   });
+
+  if (!skipPdf) {
+    _lastPdfSave = { drawingId: normalized.id, byteLength: normalized.pdfByteLength };
+  }
+
   return withoutPdfBytes(normalized);
 }
 
@@ -118,7 +126,8 @@ export async function requestPersistentStorage() {
 }
 
 function openDb() {
-  return new Promise((resolve, reject) => {
+  if (_dbPromise) return _dbPromise;
+  _dbPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = () => {
@@ -140,9 +149,21 @@ function openDb() {
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => {
+        db.close();
+        _dbPromise = null;
+      };
+      resolve(db);
+    };
+
+    request.onerror = () => {
+      _dbPromise = null;
+      reject(request.error);
+    };
   });
+  return _dbPromise;
 }
 
 function transact(db, storeNames, mode, run) {

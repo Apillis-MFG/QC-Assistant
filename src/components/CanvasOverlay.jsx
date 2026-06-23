@@ -1,21 +1,8 @@
-function getLeaderLine({ x, y, targetX, targetY }) {
-  const radius = 13;
-  const targetGap = 3;
-  const dx = targetX - x;
-  const dy = targetY - y;
-  const distance = Math.hypot(dx, dy);
-  if (distance < radius + targetGap) {
-    return { startX: x, startY: y, endX: targetX, endY: targetY };
-  }
+import { computeLeaderLine } from "../lib/utils.js";
 
-  const ux = dx / distance;
-  const uy = dy / distance;
-  return {
-    startX: x + ux * radius,
-    startY: y + uy * radius,
-    endX: targetX - ux * targetGap,
-    endY: targetY - uy * targetGap,
-  };
+function getLeaderLine({ x, y, targetX, targetY }) {
+  return computeLeaderLine(x, y, targetX, targetY, 13, 3)
+    ?? { startX: x, startY: y, endX: targetX, endY: targetY };
 }
 
 export function TextLayer({ active, items, onCapture }) {

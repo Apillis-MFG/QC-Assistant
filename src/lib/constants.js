@@ -31,3 +31,9 @@ export const emptyMetadata = {
   supplier: "",
   description: "",
 };
+
+export const PROJECT_LIMITS = {
+  maxDrawings: 25,
+  largePdfBytes: 25 * 1024 * 1024,
+  projectWarningBytes: 500 * 1024 * 1024,
+};

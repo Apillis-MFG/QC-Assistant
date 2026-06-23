@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import * as XLSX from "xlsx";
+import { computeLeaderLine } from "./utils.js";
 
 const red = rgb(1, 0, 0);
 const black = rgb(0.08, 0.09, 0.11);
@@ -22,8 +23,8 @@ export function getLimits(characteristic) {
   if (text.includes("MAX")) return { usl: tolerance, lsl: "" };
   if (text.includes("MIN")) return { usl: "", lsl: tolerance };
   return {
-    usl: round(nominal + tolerance),
-    lsl: round(nominal - tolerance),
+    usl: round(nominal + Math.abs(tolerance)),
+    lsl: round(nominal - Math.abs(tolerance)),
   };
 }
 
@@ -40,7 +41,8 @@ export function getStatus(characteristic, sampleCount) {
   const hasNumericLimits = usl !== "" || lsl !== "";
   if (!hasNumericLimits) return values.every((value) => value !== "") ? "OK" : "OPEN";
 
-  const failed = values.some((value) => {
+  const filled = values.filter((v) => v !== "");
+  const failed = filled.some((value) => {
     const n = parseNumber(value);
     if (n === null) return true;
     if (usl !== "" && n > Number(usl)) return true;
@@ -48,7 +50,8 @@ export function getStatus(characteristic, sampleCount) {
     return false;
   });
 
-  return failed ? "NG" : "OK";
+  if (failed) return "NG";
+  return filled.length === values.length ? "OK" : "OPEN";
 }
 
 export async function exportBalloonedPdf({ pdfBytes, characteristics, fileName }) {
@@ -197,21 +200,7 @@ function withoutExtension(fileName) {
 }
 
 function getLeaderGeometry({ x, y, targetX, targetY, radius }) {
-  const dx = targetX - x;
-  const dy = targetY - y;
-  const distance = Math.hypot(dx, dy);
-  if (distance < radius + 4) return null;
-
-  const targetGap = 2.4;
-  const ux = dx / distance;
-  const uy = dy / distance;
-
-  return {
-    startX: x + ux * (radius + 1.5),
-    startY: y + uy * (radius + 1.5),
-    endX: targetX - ux * targetGap,
-    endY: targetY - uy * targetGap,
-  };
+  return computeLeaderLine(x, y, targetX, targetY, radius + 1.5, 2.4);
 }
 
 function downloadBlob(bytes, type, name) {
