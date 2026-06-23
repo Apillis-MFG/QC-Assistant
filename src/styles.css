@@ -277,6 +277,43 @@ button:disabled {
   font-size: 14px;
 }
 
+.version-history summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.version-history summary::marker {
+  color: var(--muted);
+}
+
+.version-history summary strong {
+  color: var(--blue);
+  font-size: 12px;
+}
+
+.release-note {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.release-note ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.release-note li + li {
+  margin-top: 7px;
+}
+
 .help-hero {
   display: block;
 }

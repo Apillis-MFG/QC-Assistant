@@ -48,7 +48,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 const methods = ["DC", "CMM", "VS", "VMS", "HG", "MIC", "CG", "PP", "TG", "PG"];
 const types = ["dimension", "gdt", "note", "visual"];
 const CHARACTERISTIC_FIELDS = ["nominal", "tolerance", "notes"];
-const APP_VERSION = "v0.1.2";
+const APP_VERSION = "v0.2.0";
 
 const PANEL_STORAGE_KEY = "qca_panel_sizes_v1";
 const RESIZE_HANDLE_SIZE = 14;
@@ -1988,6 +1988,12 @@ function HelpDialog({ open, onClose }) {
     ["Esc", "Close help, cancel selection UI"],
   ];
 
+  const releaseNotes = [
+    "Project management support with local projects and up to 25 drawings per project. Large PDFs over 25 MB show a storage warning, and projects over 500 MB show a project storage warning.",
+    "Auto Balloon support: drag a selected area, review detected balloon candidates, then add confirmed balloons with aligned leaders.",
+    "Shortcuts added for faster workflow: B Balloon, A Auto Balloon candidate review, V Select, H Pan, T Text/OCR, E Edit selected balloon, Esc cancel/close.",
+  ];
+
   return (
     <div className="dialog-backdrop help-backdrop" role="presentation" onMouseDown={onClose}>
       <section
@@ -2057,8 +2063,23 @@ function HelpDialog({ open, onClose }) {
               <h3>Export</h3>
               <p>Export the ballooned PDF for distribution and the Excel workbook for the inspection report. Status remains conservative: incomplete rows stay OPEN.</p>
             </div>
-          </section>
-        </div>
+	          </section>
+
+          <details className="help-section version-history">
+            <summary>
+              <span>Version History</span>
+              <strong>v0.2.0</strong>
+            </summary>
+            <div className="release-note">
+              <h3>v0.2.0</h3>
+              <ul>
+                {releaseNotes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
+          </details>
+	        </div>
       </section>
     </div>
   );
