@@ -53,9 +53,8 @@ After implementation:
    - pass/fail result
    - math branches checked, when relevant
    - remaining risk or follow-up
-2. Move the project item to `In Review` when that status exists.
-3. If the project does not have `In Review`, keep the item in `In Progress` and state in the completion comment that it is ready for review.
-4. Do not move the item to `Done` unless acceptance criteria are satisfied, verification is documented, and the work has been merged or explicitly accepted.
+2. Move the project item to `In Review`.
+3. Do not move the item to `Done` unless acceptance criteria are satisfied, verification is documented, and the work has been merged or explicitly accepted.
 
 ## Product North Star
 
