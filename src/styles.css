@@ -559,6 +559,43 @@ kbd {
   flex: 0 0 auto;
 }
 
+.workspace-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--paper);
+  flex: 0 0 auto;
+}
+
+.workspace-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.workspace-tab:hover {
+  background: var(--blue-hover);
+  color: var(--blue);
+}
+
+.workspace-tab.active {
+  border-color: var(--blue-line);
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
 .layout-tab {
   display: inline-flex;
   align-items: center;
@@ -635,6 +672,122 @@ kbd {
 .table-panel {
   grid-column: 1 / -1;
   grid-row: 3;
+}
+
+.measurement-area {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(520px, 0.95fr) minmax(520px, 1.05fr);
+  gap: 14px;
+  padding: 14px;
+}
+
+.measurement-drawing-panel,
+.measurement-entry-panel {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.measurement-drawing-panel {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.measurement-entry-panel {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.measurement-scroll {
+  border: 0;
+  border-radius: 0;
+}
+
+.measurement-readonly {
+  cursor: default;
+}
+
+.measurement-balloon {
+  cursor: pointer;
+}
+
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.measurement-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.measurement-header h2,
+.measurement-header p {
+  margin: 0;
+}
+
+.measurement-header h2 {
+  font-size: 15px;
+}
+
+.measurement-header p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.measurement-controls {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.measurement-controls .stacked-label {
+  max-width: 150px;
+}
+
+.measurement-table-scroll {
+  min-height: 0;
+  overflow: auto;
+}
+
+.measurement-table {
+  min-width: 1180px;
+}
+
+.measurement-table th,
+.measurement-table td {
+  white-space: nowrap;
+}
+
+.measurement-table td:nth-child(4),
+.measurement-table td:nth-child(10) {
+  min-width: 190px;
+}
+
+.measurement-table .locked-id {
+  font-size: 14px;
 }
 
 /* Side by side: [drawing | table] top, inspector full-width bottom */
@@ -1642,6 +1795,11 @@ td select:focus {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .measurement-area {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(420px, 1fr) minmax(360px, 0.95fr);
+  }
+
   /* split-v: collapse 2-column to single column */
   .content-area {
     grid-template-columns: 1fr;
@@ -1725,6 +1883,23 @@ td select:focus {
 
   .layout-bar {
     padding: 0 12px;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .workspace-tabs,
+  .layout-tabs {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .measurement-area {
+    padding: 8px;
+    grid-template-rows: minmax(320px, 0.8fr) minmax(360px, 1fr);
+  }
+
+  .measurement-header,
+  .measurement-controls {
     align-items: flex-start;
     flex-direction: column;
   }
