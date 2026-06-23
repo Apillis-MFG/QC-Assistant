@@ -12,8 +12,9 @@ Interactive drawing ballooning and QC/FAI inspection report builder. Upload an e
 - Pan mode for navigating large drawings
 
 ### Ballooning
-- **Balloon tool** — click the dimension target on the drawing, then click where the balloon circle should sit; a red leader line connects them automatically
+- **Balloon tool** — click a dimension target once; QC Assistant places the next numbered balloon with a default red leader line
 - Drag balloons and leader targets independently to reposition after placement
+- Single-click selects a balloon; double-click or press `E` to open edit/delete actions
 - Balloons are numbered sequentially and renumber automatically on deletion
 
 ### Text Extraction
@@ -40,6 +41,10 @@ Overall package status rolls up to **PASS / OPEN / FAIL** based on all character
 ### Exports
 - **Ballooned PDF** — original drawing with red numbered circles and leader lines burned in (via pdf-lib)
 - **Excel QC/FAI Workbook** — Final Inspection Report sheet with header metadata, all characteristics, per-sample measurements, MIN/MAX columns, and a measurement equipment abbreviation legend (via SheetJS)
+
+### Help And Shortcuts
+- In-app Help explains the upload → balloon → capture → measure → export workflow
+- Keyboard shortcuts are documented in [SHORTCUTS.md](SHORTCUTS.md)
 
 ---
 
@@ -72,7 +77,7 @@ Output goes to `dist/`.
 
 1. **Upload** a drawing PDF using the toolbar button or the drop zone.
 2. Fill in **Drawing No**, **Rev**, **Supplier**, and **Description** in the header (or use Text Select to pull values directly from the PDF).
-3. Select the **Balloon tool** and click each dimension target, then click where the balloon should appear. Repeat for every characteristic.
+3. Select the **Balloon tool** and click each dimension target once. Repeat for every characteristic, then drag balloons or targets to adjust leader placement.
 4. For each balloon row in the table, set the type, unit, nominal, tolerance, and measurement method. Use the **Text Select** tool to copy values from the drawing rather than typing them.
 5. Set the **Samples** count and enter measured values in the table or the inspector panel. Status updates automatically.
 6. Export the **Ballooned PDF** and the **Excel** workbook when all characteristics are complete.

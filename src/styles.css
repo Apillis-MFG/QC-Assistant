@@ -8,6 +8,7 @@
   --line-strong: #b9c2d0;
   --accent: #d82020;
   --accent-dark: #a91313;
+  --accent-soft: #fff4f4;
   --blue: #294b77;
   --blue-soft: #e8eef7;
   --blue-hover: #f2f6fc;
@@ -21,6 +22,8 @@
   --fail-line: #f4b4b4;
   --fail-soft: #fff0f0;
   --fail-soft-strong: #ffe5e5;
+  --paper: #ffffff;
+  --grid-line: #eef2f7;
   --shadow: 0 12px 34px rgba(17, 24, 39, 0.08);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -224,6 +227,264 @@ button:disabled {
   gap: 8px;
 }
 
+.help-backdrop {
+  align-items: start;
+  overflow: auto;
+}
+
+.help-dialog {
+  width: min(920px, 100%);
+  max-height: calc(100vh - 40px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.help-title {
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.help-title p,
+.help-section p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.help-content {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.help-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--panel);
+}
+
+.help-section h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.help-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 14px;
+  align-items: center;
+}
+
+.help-flow {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.shortcut-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.shortcut-row {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+kbd {
+  min-width: 34px;
+  min-height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.help-toolbar-preview {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.help-tool,
+.help-export {
+  min-width: 34px;
+  min-height: 30px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.help-tool.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.help-export {
+  padding: 0 12px;
+  min-width: auto;
+}
+
+.help-export.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--paper);
+}
+
+.help-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.help-drawing-preview {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 18px 18px;
+  padding: 14px;
+}
+
+.help-drawing-sheet {
+  position: relative;
+  height: 160px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.08);
+}
+
+.help-dim-line,
+.help-dim-text,
+.help-balloon,
+.help-target,
+.help-leader {
+  position: absolute;
+}
+
+.help-dim-line {
+  background: var(--ink);
+  opacity: 0.55;
+}
+
+.help-dim-line.horizontal {
+  left: 34px;
+  top: 70px;
+  width: 98px;
+  height: 1px;
+}
+
+.help-dim-line.vertical {
+  left: 64px;
+  top: 40px;
+  width: 1px;
+  height: 72px;
+}
+
+.help-dim-text {
+  left: 36px;
+  top: 50px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.help-dim-text.small {
+  left: 96px;
+  top: 90px;
+  font-size: 10px;
+}
+
+.help-leader {
+  inset: 14px 0 0 26px;
+  width: 220px;
+  height: 132px;
+  pointer-events: none;
+}
+
+.help-leader line {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.help-balloon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.help-balloon.selected {
+  right: 70px;
+  top: 38px;
+  background: var(--accent);
+  color: var(--paper);
+  box-shadow: 0 0 0 4px rgba(216, 32, 32, 0.16);
+}
+
+.help-balloon:not(.selected) {
+  left: 46px;
+  bottom: 48px;
+}
+
+.help-target {
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  background: var(--panel);
+  transform: translate(-50%, -50%);
+}
+
+.help-target.one {
+  left: 118px;
+  top: 81px;
+}
+
+.help-target.two {
+  left: 138px;
+  top: 98px;
+}
+
 /* ── Layout switcher bar ──────────────────────────────────────── */
 
 .layout-bar {
@@ -333,7 +594,7 @@ button:disabled {
 .project-action.delete-project {
   border-color: var(--fail);
   background: var(--fail);
-  color: #fff;
+  color: var(--paper);
 }
 
 .project-action.delete-project:hover {
@@ -358,7 +619,7 @@ button:disabled {
   border-radius: 999px;
   padding: 0 9px;
   color: var(--muted);
-  background: #fff;
+  background: var(--paper);
   font-size: 11px;
   font-weight: 800;
   white-space: nowrap;
@@ -620,7 +881,7 @@ input,
 select,
 textarea {
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--paper);
   color: var(--ink);
   border-radius: 5px;
   min-height: 32px;
@@ -674,7 +935,7 @@ textarea:focus {
 .small-button,
 .icon-button {
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--paper);
   color: var(--ink);
   border-radius: 6px;
   min-height: 34px;
@@ -698,7 +959,7 @@ textarea:focus {
 .button.primary {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--paper);
 }
 
 .button.primary:hover {
@@ -722,7 +983,7 @@ textarea:focus {
 .icon-button.active {
   color: var(--accent);
   border-color: var(--accent);
-  background: #fff4f4;
+  background: var(--accent-soft);
 }
 
 .icon-button.danger {
@@ -823,8 +1084,8 @@ textarea:focus {
   overflow: auto;
   padding: 22px;
   background:
-    linear-gradient(#eef2f7 1px, transparent 1px),
-    linear-gradient(90deg, #eef2f7 1px, transparent 1px);
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 24px 24px;
 }
 
@@ -918,7 +1179,7 @@ textarea:focus {
   transform: translate(-50%, -50%);
   border-radius: 999px;
   border: 2px solid var(--accent);
-  background: #fff;
+  background: var(--paper);
 }
 
 .pending-target {
@@ -1399,6 +1660,11 @@ td select:focus {
     grid-row: 4;
     max-height: none;
   }
+
+  .help-hero,
+  .help-columns {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1435,5 +1701,29 @@ td select:focus {
   .actions,
   .panel-toolbar {
     flex-wrap: wrap;
+  }
+
+  .help-backdrop {
+    padding: 10px;
+  }
+
+  .help-dialog {
+    max-height: calc(100vh - 20px);
+  }
+
+  .help-title {
+    padding: 12px;
+  }
+
+  .help-content {
+    padding: 10px;
+  }
+
+  .shortcut-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .help-drawing-preview {
+    padding: 10px;
   }
 }

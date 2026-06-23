@@ -6,6 +6,7 @@ import {
   Download,
   FilePlus2,
   Hand,
+  HelpCircle,
   MousePointer2,
   PanelLeft,
   Plus,
@@ -14,6 +15,7 @@ import {
   TextSelect,
   Trash2,
   Upload,
+  X,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -49,6 +51,8 @@ const APP_VERSION = "v0.1.2";
 
 const PANEL_STORAGE_KEY = "qca_panel_sizes_v1";
 const RESIZE_HANDLE_SIZE = 14;
+const BALLOON_OFFSET = { x: 0.0375, y: -0.0275 };
+const BALLOON_MARGIN = 0.025;
 
 const defaultPanelSizes = {
   splitV: {
@@ -134,11 +138,13 @@ export default function App() {
   const [mode, setMode] = useState("select");
   const [characteristics, setCharacteristics] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
+  const [editingBalloonId, setEditingBalloonId] = useState(null);
   const [pendingTarget, setPendingTarget] = useState(null);
   const [textItems, setTextItems] = useState([]);
   const [selectedText, setSelectedText] = useState("");
   const [ocrRect, setOcrRect] = useState(null);
   const [ocrBusy, setOcrBusy] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [layoutMode, setLayoutMode] = useState("split-v");
   const [panelSizes, setPanelSizes] = useState(loadPanelSizes);
@@ -216,6 +222,7 @@ export default function App() {
     setZoom(1.15);
     setCharacteristics([]);
     setSelectedId(null);
+    setEditingBalloonId(null);
     setPendingTarget(null);
     setTextItems([]);
     setSelectedText("");
@@ -268,6 +275,7 @@ export default function App() {
       setZoom(drawing.zoom || 1.15);
       setCharacteristics(Array.isArray(drawing.characteristics) ? drawing.characteristics : []);
       setSelectedId(null);
+      setEditingBalloonId(null);
       setPendingTarget(null);
       setTextItems([]);
       setSelectedText("");
@@ -385,6 +393,66 @@ export default function App() {
     if (mode !== "text") window.getSelection()?.removeAllRanges();
     if (mode !== "text") setOcrRect(null);
   }, [mode]);
+
+  const switchMode = useCallback((nextMode) => {
+    setMode(nextMode);
+    setEditingBalloonId(null);
+    const messages = {
+      select: "Select balloons to inspect, drag, or press E to edit actions.",
+      balloon: "Click a dimension target to place the next balloon. Drag later to adjust.",
+      pan: "Drag the drawing to pan around the page.",
+      text: "Click embedded PDF text or drag an OCR box, then send it to metadata or the selected QC row.",
+    };
+    setMessage(messages[nextMode] || "");
+  }, []);
+
+  useEffect(() => {
+    const handleShortcut = (event) => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping =
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select" ||
+        target?.isContentEditable;
+      if (isTyping) return;
+
+      const key = event.key.toLowerCase();
+      if (key === "escape") {
+        if (helpOpen || editingBalloonId || ocrRect || pendingTarget) {
+          event.preventDefault();
+          setHelpOpen(false);
+          setEditingBalloonId(null);
+          setPendingTarget(null);
+          setOcrRect(null);
+        }
+        return;
+      }
+      if (helpOpen) return;
+
+      const shortcutModes = {
+        b: "balloon",
+        v: "select",
+        h: "pan",
+        t: "text",
+      };
+      if (shortcutModes[key]) {
+        event.preventDefault();
+        switchMode(shortcutModes[key]);
+        return;
+      }
+
+      if (key === "e" && selected?.page === pageNumber) {
+        event.preventDefault();
+        setEditingBalloonId(selected.id);
+        setMessage(`Editing balloon ${selected.balloonNo}.`);
+      }
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [editingBalloonId, helpOpen, ocrRect, pageNumber, pendingTarget, selected, switchMode]);
 
   const persistActiveDrawing = useCallback(async (reason = "auto") => {
     if (!projectsReady || !activeProject?.id || !activeDrawingId) return;
@@ -669,6 +737,7 @@ export default function App() {
       setZoom(1.15);
       setCharacteristics([]);
       setSelectedId(null);
+      setEditingBalloonId(null);
       setPendingTarget(null);
       setSelectedText("");
       setOcrRect(null);
@@ -690,32 +759,29 @@ export default function App() {
   const handleCanvasClick = useCallback(
     (event) => {
       if (!overlayRef.current || !pdfDoc) return;
-      const rect = overlayRef.current.getBoundingClientRect();
-      const x = (event.clientX - rect.left) / rect.width;
-      const y = (event.clientY - rect.top) / rect.height;
+      const point = getNormalizedPoint(event, overlayRef.current);
 
       if (mode === "balloon") {
-        if (!pendingTarget || pendingTarget.page !== pageNumber) {
-          setPendingTarget({ x, y, page: pageNumber });
-          setMessage("Target selected. Click where the balloon number should sit.");
-          return;
-        }
+        const position = getDefaultBalloonPosition(point);
 
         const next = createCharacteristic({
           balloonNo: nextBalloonNo(characteristics),
-          x,
-          y,
-          targetX: pendingTarget.x,
-          targetY: pendingTarget.y,
+          x: position.x,
+          y: position.y,
+          targetX: point.x,
+          targetY: point.y,
           page: pageNumber,
         });
         setCharacteristics((items) => [...items, next]);
         setSelectedId(next.id);
+        setEditingBalloonId(null);
         setPendingTarget(null);
-        setMessage(`Added balloon ${next.balloonNo} with leader line. Balloon tool is still active.`);
+        setMessage(`Added balloon ${next.balloonNo}. Drag the balloon or target to adjust; double-click or press E to edit.`);
+      } else if (mode === "select") {
+        setEditingBalloonId(null);
       }
     },
-    [characteristics, mode, pageNumber, pdfDoc, pendingTarget],
+    [characteristics, mode, pageNumber, pdfDoc],
   );
 
   const updateCharacteristic = useCallback((id, patch) => {
@@ -765,6 +831,7 @@ export default function App() {
   const beginBalloonDrag = useCallback((event, item) => {
     event.stopPropagation();
     setSelectedId(item.id);
+    setEditingBalloonId(null);
     dragRef.current = { id: item.id, pointerId: event.pointerId, point: "balloon" };
     event.currentTarget.setPointerCapture(event.pointerId);
   }, []);
@@ -772,6 +839,7 @@ export default function App() {
   const beginTargetDrag = useCallback((event, item) => {
     event.stopPropagation();
     setSelectedId(item.id);
+    setEditingBalloonId(null);
     dragRef.current = { id: item.id, pointerId: event.pointerId, point: "target" };
     event.currentTarget.setPointerCapture(event.pointerId);
   }, []);
@@ -902,6 +970,7 @@ export default function App() {
     const next = createCharacteristic({ balloonNo: nextBalloonNo(characteristics), page: pageNumber });
     setCharacteristics((items) => [...items, next]);
     setSelectedId(next.id);
+    setEditingBalloonId(null);
     setMessage(`Added row ${next.balloonNo}. Click the drawing to place its balloon later.`);
   }, [characteristics, pageNumber]);
 
@@ -937,6 +1006,7 @@ export default function App() {
     );
     setCharacteristics(rows);
     setSelectedId(rows[0]?.id || null);
+    setEditingBalloonId(null);
     setMessage("Loaded demo QC characteristics. Adjust positions and values for your drawing.");
   }, []);
 
@@ -945,6 +1015,7 @@ export default function App() {
     setSampleCount(5);
     setCharacteristics([]);
     setSelectedId(null);
+    setEditingBalloonId(null);
     setPendingTarget(null);
     setSelectedText("");
     setOcrRect(null);
@@ -1022,6 +1093,7 @@ export default function App() {
     if (!id) return;
     setCharacteristics((items) => renumber(items.filter((item) => item.id !== id)));
     setSelectedId((current) => (current === id ? null : current));
+    setEditingBalloonId((current) => (current === id ? null : current));
     setMessage("Deleted selected balloon and renumbered the table.");
   }, []);
 
@@ -1223,6 +1295,9 @@ export default function App() {
               <Save size={16} />
               Excel
             </button>
+            <button className="icon-button" onClick={() => setHelpOpen(true)} title="Help and shortcuts">
+              <HelpCircle size={17} />
+            </button>
           </div>
         </div>
       </header>
@@ -1300,26 +1375,20 @@ export default function App() {
         <section ref={drawingPanelRef} className="drawing-panel">
           <div className="panel-toolbar">
             <div className="tool-group">
-              <ToolButton active={mode === "select"} title="Select" onClick={() => setMode("select")} icon={<MousePointer2 size={17} />} />
+              <ToolButton active={mode === "select"} title="Select (V)" onClick={() => switchMode("select")} icon={<MousePointer2 size={17} />} />
               <ToolButton
                 active={mode === "balloon"}
-                title="Add balloon"
-                onClick={() => {
-                  setMode("balloon");
-                  setMessage("Click the dimension or note target, then click where the balloon should sit.");
-                }}
+                title="Add balloon (B)"
+                onClick={() => switchMode("balloon")}
                 icon={<Circle size={17} />}
               />
               <ToolButton
                 active={mode === "text"}
-                title="Text select"
-                onClick={() => {
-                  setMode("text");
-                  setMessage("Drag or click drawing text, then send it to metadata or the selected QC row.");
-                }}
+                title="Text select (T)"
+                onClick={() => switchMode("text")}
                 icon={<TextSelect size={17} />}
               />
-              <ToolButton title="Pan mode" onClick={() => setMode("pan")} active={mode === "pan"} icon={<Hand size={17} />} />
+              <ToolButton title="Pan mode (H)" onClick={() => switchMode("pan")} active={mode === "pan"} icon={<Hand size={17} />} />
             </div>
             <div className="tool-group">
               <button className="icon-button" onClick={() => setZoom((value) => Math.max(0.65, value - 0.1))} title="Zoom out">
@@ -1349,7 +1418,7 @@ export default function App() {
               <div className="upload-empty">
                 <FilePlus2 size={44} />
                 <h2>Upload a drawing PDF</h2>
-                <p>Then choose the red balloon tool, click the dimension or note target, and click where the balloon should sit.</p>
+                <p>Then choose Balloon, click each dimension target, and drag balloons later to adjust leader placement.</p>
                 <label className="button primary">
                   <Upload size={16} />
                   Choose PDF
@@ -1359,7 +1428,7 @@ export default function App() {
             ) : (
               <div
                 ref={overlayRef}
-                className={`pdf-stage ${mode === "balloon" ? "placing" : ""} ${pendingTarget ? "placing-balloon" : ""}`}
+                className={`pdf-stage ${mode === "balloon" ? "placing" : ""}`}
                 style={{ width: canvasSize.width, height: canvasSize.height }}
                 onClick={handleCanvasClick}
                 onPointerDown={beginTextAreaSelection}
@@ -1379,12 +1448,6 @@ export default function App() {
                   width={canvasSize.width}
                   height={canvasSize.height}
                 />
-                {pendingTarget?.page === pageNumber ? (
-                  <div
-                    className="pending-target"
-                    style={{ left: `${pendingTarget.x * 100}%`, top: `${pendingTarget.y * 100}%` }}
-                  />
-                ) : null}
                 {ocrRect ? (
                   <div
                     className="ocr-selection"
@@ -1423,13 +1486,20 @@ export default function App() {
                     onClick={(event) => {
                       event.stopPropagation();
                       setSelectedId(item.id);
+                      setEditingBalloonId(null);
+                    }}
+                    onDoubleClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedId(item.id);
+                      setEditingBalloonId(item.id);
+                      setMessage(`Editing balloon ${item.balloonNo}.`);
                     }}
                     title={`Balloon ${item.balloonNo}`}
                   >
                     {item.balloonNo}
                   </button>
                 ))}
-                {selected?.page === pageNumber ? (
+                {selected?.page === pageNumber && editingBalloonId === selected.id ? (
                   <div
                     className="balloon-actions"
                     style={{
@@ -1568,7 +1638,10 @@ export default function App() {
           characteristics={characteristics}
           selectedId={selectedId}
           sampleCount={sampleCount}
-          onSelect={setSelectedId}
+          onSelect={(id) => {
+            setSelectedId(id);
+            setEditingBalloonId(null);
+          }}
           onChange={updateCharacteristic}
           onReassign={reassignBalloonNo}
           onSampleChange={updateSample}
@@ -1577,6 +1650,7 @@ export default function App() {
       </section>
 
       </div>
+      <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }
@@ -1685,6 +1759,114 @@ function ProjectDashboard({
           </form>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function HelpDialog({ open, onClose }) {
+  if (!open) return null;
+
+  const shortcuts = [
+    ["B", "Balloon tool"],
+    ["V", "Select tool"],
+    ["H", "Pan tool"],
+    ["T", "Text Select / OCR"],
+    ["E", "Edit selected balloon actions"],
+    ["Esc", "Close help, cancel selection UI"],
+  ];
+
+  return (
+    <div className="dialog-backdrop help-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="help-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="help-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="dialog-title help-title">
+          <div>
+            <h2 id="help-title">QC Assistant Help</h2>
+            <p>Fast path from drawing upload to submittable FAI exports.</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close help">
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="help-content">
+          <section className="help-section help-hero">
+            <div>
+              <h3>Quick Workflow</h3>
+              <ol className="help-flow">
+                <li>Upload PDF</li>
+                <li>Balloon requirements</li>
+                <li>Capture text or OCR</li>
+                <li>Enter samples</li>
+                <li>Export PDF and Excel</li>
+              </ol>
+            </div>
+            <HelpDrawingPreview />
+          </section>
+
+          <section className="help-section">
+            <h3>Tool Shortcuts</h3>
+            <div className="shortcut-grid">
+              {shortcuts.map(([key, label]) => (
+                <div key={key} className="shortcut-row">
+                  <kbd>{key}</kbd>
+                  <span>{label}</span>
+                </div>
+              ))}
+            </div>
+            <div className="help-toolbar-preview" aria-hidden="true">
+              <span className="help-tool active">B</span>
+              <span className="help-tool">V</span>
+              <span className="help-tool">H</span>
+              <span className="help-tool">T</span>
+              <span className="help-export">PDF</span>
+              <span className="help-export primary">Excel</span>
+            </div>
+          </section>
+
+          <section className="help-section help-columns">
+            <div>
+              <h3>Balloon Behavior</h3>
+              <p>Press <kbd>B</kbd>, then click each dimension target once. QC Assistant places the numbered balloon with a default leader line. Drag the circle or target later to adjust placement.</p>
+              <p>Single-click selects a balloon. Double-click or press <kbd>E</kbd> to open the small edit/delete actions.</p>
+            </div>
+            <div>
+              <h3>Text And OCR</h3>
+              <p>Press <kbd>T</kbd> to capture embedded PDF text. Drag over raster text to run OCR, then send the captured value to metadata or the selected QC row.</p>
+            </div>
+            <div>
+              <h3>Export</h3>
+              <p>Export the ballooned PDF for distribution and the Excel workbook for the inspection report. Status remains conservative: incomplete rows stay OPEN.</p>
+            </div>
+          </section>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function HelpDrawingPreview() {
+  return (
+    <div className="help-drawing-preview" aria-hidden="true">
+      <div className="help-drawing-sheet">
+        <div className="help-dim-line horizontal" />
+        <div className="help-dim-line vertical" />
+        <span className="help-dim-text">25.00 +/- 0.13</span>
+        <span className="help-dim-text small">2X R3 MAX</span>
+        <svg className="help-leader" viewBox="0 0 220 132">
+          <line x1="145" y1="45" x2="92" y2="66" />
+          <line x1="59" y1="96" x2="112" y2="84" />
+        </svg>
+        <span className="help-balloon selected">1</span>
+        <span className="help-balloon">2</span>
+        <span className="help-target one" />
+        <span className="help-target two" />
+      </div>
     </div>
   );
 }
@@ -2126,6 +2308,15 @@ function normalizeRect(startX, startY, endX, endY) {
     y: Math.min(startY, endY),
     width: Math.abs(endX - startX),
     height: Math.abs(endY - startY),
+  };
+}
+
+function getDefaultBalloonPosition(target) {
+  const xDirection = target.x > 1 - BALLOON_MARGIN - BALLOON_OFFSET.x ? -1 : 1;
+  const yDirection = target.y < BALLOON_MARGIN + Math.abs(BALLOON_OFFSET.y) ? 1 : -1;
+  return {
+    x: clamp(target.x + BALLOON_OFFSET.x * xDirection, BALLOON_MARGIN, 1 - BALLOON_MARGIN),
+    y: clamp(target.y + Math.abs(BALLOON_OFFSET.y) * yDirection, BALLOON_MARGIN, 1 - BALLOON_MARGIN),
   };
 }
 
