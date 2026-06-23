@@ -89,11 +89,28 @@ QC-Assistant/
   SPEC.md            — execution spec and issue backlog
   WORKFLOW.md        — autonomous implementation workflow
   src/
-    main.jsx         — React root mount
-    App.jsx          — entire application state, layout, and interactions
-    exporters.js     — PDF and Excel export logic; inspection math (getLimits, getStatus)
-    sampleData.js    — demo/seed characteristics
-    styles.css       — all CSS variables, layout, component, and table styles
+    main.jsx               — React root mount
+    App.jsx                — application state, layout, and all callbacks (~1,850 lines)
+    styles.css             — all CSS variables, layout, component, and table styles
+    lib/
+      constants.js         — shared constants: methods, types, geometry offsets, defaults
+      utils.js             — pure utility functions: snapshot helpers, storage warnings, geometry, text mapping
+      autoBalloon.js       — auto-balloon detection pipeline (embedded PDF text + OCR candidates)
+      exporters.js         — PDF and Excel export logic; inspection math (getLimits, getStatus)
+      projectStore.js      — IndexedDB persistence: projects and drawings
+      sampleData.js        — demo/seed characteristics
+    components/
+      ErrorBoundary.jsx    — top-level React error boundary
+      Field.jsx            — metadata input label wrapper
+      ToolButton.jsx       — toolbar icon button
+      ResizeHandle.jsx     — draggable / keyboard panel separator
+      CanvasOverlay.jsx    — TextLayer, LeaderLayer, AutoBalloonPreview canvas overlays
+      AutoBalloonReview.jsx — candidate review panel (remove / commit)
+      BalloonEditor.jsx    — inspector panel for editing a single balloon's fields
+      CharacteristicTable.jsx — QC/FAI characteristics table with inline editing
+      MeasurementWorkspace.jsx — measurement-mode layout: view-only drawing + MeasurementTable
+      ProjectDashboard.jsx — project list management (create, rename, delete, open)
+      HelpDialog.jsx       — keyboard shortcuts and release notes modal
   index.html
   vite.config.js
   package.json
@@ -135,7 +152,7 @@ When changing export logic:
 
 When changing characteristic data shape:
 
-- Update `createCharacteristic` factory in `App.jsx`.
+- Update `createCharacteristic` factory in `src/utils.js`.
 - Update `sampleData.js` seeds if the shape changes.
 - Update `exporters.js` and the Excel column layout if new fields are exported.
 

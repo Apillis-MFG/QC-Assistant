@@ -23,11 +23,28 @@ Primary goals when editing:
 
 ```text
 src/
-  main.jsx        — React root mount; no logic here
-  App.jsx         — all application state, layout, modes, event handlers, and rendering
-  exporters.js    — inspection math (getLimits, getStatus) and PDF/Excel export
-  sampleData.js   — demo characteristics used to seed the app on load
-  styles.css      — all CSS variables (:root) and component styles
+  main.jsx               — React root mount; no logic here
+  App.jsx                — application state, layout, modes, callbacks, and render (~1,850 lines)
+  styles.css             — all CSS variables (:root) and component styles
+  lib/
+    constants.js         — shared constants: methods, types, geometry offsets, defaultPanelSizes, emptyMetadata
+    utils.js             — pure utilities: snapshot helpers, storage warnings, geometry, text mapping, createCharacteristic
+    autoBalloon.js       — auto-balloon detection pipeline (embedded PDF text + Tesseract OCR)
+    exporters.js         — inspection math (getLimits, getStatus) and PDF/Excel export
+    projectStore.js      — IndexedDB persistence: projects and drawings
+    sampleData.js        — demo characteristics used to seed the app on load
+  components/
+    ErrorBoundary.jsx    — top-level React error boundary
+    Field.jsx            — metadata input label wrapper
+    ToolButton.jsx       — toolbar icon button
+    ResizeHandle.jsx     — draggable / keyboard panel separator
+    CanvasOverlay.jsx    — TextLayer, LeaderLayer, AutoBalloonPreview overlays
+    AutoBalloonReview.jsx — candidate review panel (remove / commit)
+    BalloonEditor.jsx    — inspector panel for editing a single balloon's fields
+    CharacteristicTable.jsx — QC/FAI table with inline editing and row delete
+    MeasurementWorkspace.jsx — measurement-mode layout: view-only drawing + MeasurementTable
+    ProjectDashboard.jsx — project list management (create, rename, delete, open)
+    HelpDialog.jsx       — keyboard shortcuts and release notes modal
 ```
 
 This is a flat structure. Do not create subdirectories, context files, or provider files unless asked.
@@ -51,14 +68,12 @@ Practical guidance:
 
 `App.jsx` is organized in this order:
 
-1. Constants (`methods`, `types`, `emptyMetadata`)
-2. `createCharacteristic` factory function
-3. `App` component — state declarations
-4. Derived state (`useMemo` for `selected`, `currentPageBalloons`, `projectStatus`)
-5. PDF load and page render effects (`useEffect`)
-6. OCR logic (Tesseract.js integration)
-7. Interaction handlers (balloon placement, drag, pan, text-capture, OCR rect drawing)
-8. Render — topbar, drawing panel, inspector panel, table panel
+1. Imports — React hooks, lucide icons, pdfjs-dist, and all project modules
+2. `App` component — state declarations (`useState`, `useRef`)
+3. Derived state (`useMemo` for `selected`, `currentPageBalloons`, `projectStatus`)
+4. Effects — workspace restore, PDF page render, shortcut keys, autosave timer
+5. Callbacks — project/drawing CRUD, balloon placement, drag, pan, text-capture, OCR, export
+6. Render — dashboard branch, topbar, layout-bar, edit-mode layout, measurement-mode layout
 
 When adding new features, follow this order: new state → new derived state → new handlers → new render section.
 
@@ -90,7 +105,7 @@ When changing `getLimits` or `getStatus`, manually verify these branches:
 
 ### `sampleData.js`
 
-Demo characteristics loaded on first render. Keep the shape in sync with `createCharacteristic`. If the characteristic data shape changes in `App.jsx`, update `sampleData.js` seeds to match.
+Demo characteristics loaded on first render. Keep the shape in sync with `createCharacteristic` in `utils.js`. If the characteristic data shape changes, update `sampleData.js` seeds to match.
 
 ### `styles.css`
 
@@ -162,14 +177,15 @@ A clean build is the minimum verification bar.
 - Keep `exporters.js` free of React imports.
 - Keep `App.jsx` free of direct file system, fetch, or network calls.
 - When adding a new characteristic field:
-  1. Add to `createCharacteristic` factory.
-  2. Add to `sampleData.js` seeds.
-  3. Add to the table column layout in `App.jsx`.
-  4. Add to `exportInspectionWorkbook` row in `exporters.js`.
+  1. Add to `createCharacteristic` factory in `lib/utils.js`.
+  2. Add to `lib/sampleData.js` seeds.
+  3. Add to the table column layout in `components/CharacteristicTable.jsx` and `components/MeasurementWorkspace.jsx`.
+  4. Add to `components/BalloonEditor.jsx` if it should be editable in the inspector.
+  5. Add to `exportInspectionWorkbook` row in `lib/exporters.js`.
 
 ## Known Codebase Notes
 
-- `App.jsx` is 1000+ lines — this is intentional for a single-page tool; do not split it without user request.
+- `App.jsx` is ~1,850 lines — it holds all state and callbacks; components and utilities are now in separate files.
 - `characteristics` uses sequential `balloonNo` managed by array index. On deletion, all subsequent balloons renumber.
 - Relative coordinates `(x, y)` stored as 0–1 fractions of canvas size. `exportBalloonedPdf` maps these to PDF page points using `page.getSize()`.
 - OCR uses Tesseract.js with dynamic import and is loaded lazily on first OCR use.
@@ -189,11 +205,16 @@ When working on a task:
 
 | Work type | Where |
 | --- | --- |
-| Inspection math, limits, status | `src/exporters.js` |
-| PDF and Excel export functions | `src/exporters.js` |
-| All application state and handlers | `src/App.jsx` |
+| Inspection math, limits, status | `src/lib/exporters.js` |
+| PDF and Excel export functions | `src/lib/exporters.js` |
+| Application state and callbacks | `src/App.jsx` |
+| Shared constants (no logic) | `src/lib/constants.js` |
+| Pure utility functions | `src/lib/utils.js` |
+| Auto-balloon detection logic | `src/lib/autoBalloon.js` |
+| IndexedDB project storage | `src/lib/projectStore.js` |
+| UI components | `src/components/<ComponentName>.jsx` |
 | CSS tokens and component styles | `src/styles.css` |
-| Demo/seed data | `src/sampleData.js` |
+| Demo/seed data | `src/lib/sampleData.js` |
 | React root mount | `src/main.jsx` — do not add logic here |
 
 ## Non-Goals For Small Tasks
