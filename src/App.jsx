@@ -48,7 +48,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 const methods = ["DC", "CMM", "VS", "VMS", "HG", "MIC", "CG", "PP", "TG", "PG"];
 const types = ["dimension", "gdt", "note", "visual"];
 const CHARACTERISTIC_FIELDS = ["nominal", "tolerance", "notes"];
-const APP_VERSION = "v0.1.2";
+const APP_VERSION = "v0.2.0";
 
 const PANEL_STORAGE_KEY = "qca_panel_sizes_v1";
 const RESIZE_HANDLE_SIZE = 14;
@@ -703,10 +703,6 @@ export default function App() {
     }
   }, [openProjectWorkspace, refreshProjectList]);
 
-  const handleProjectNameChange = useCallback((name) => {
-    setActiveProject((current) => (current ? { ...current, name } : current));
-  }, []);
-
   const handleOpenDrawing = useCallback(async (drawingId) => {
     if (!drawingId || drawingId === activeDrawingId) return;
     window.clearTimeout(saveTimerRef.current);
@@ -1220,30 +1216,6 @@ export default function App() {
     }
   }, [activeDrawingId, activeProject?.id, applyDrawing, drawings, refreshProjectList, rememberActiveProject, resetDrawingState]);
 
-  const handleDeleteProject = useCallback(async () => {
-    if (!activeProject?.id) return;
-    const confirmed = window.confirm(`Delete project "${activeProject.name}" and all local drawings?`);
-    if (!confirmed) return;
-
-    try {
-      await deleteProject(activeProject.id);
-      const summaries = await refreshProjectList();
-      const nextProject = summaries.find((project) => project.id !== activeProject.id) || null;
-      if (nextProject) {
-        await openProjectWorkspace(nextProject.id);
-      } else {
-        setActiveProject(null);
-        setDrawings([]);
-        setActiveDrawingId(null);
-        rememberActiveProject(null, null);
-        resetDrawingState("Deleted project. Create a project or upload a drawing PDF to begin.");
-        setSaveState({ status: "idle", label: "Not saved" });
-      }
-    } catch (error) {
-      setMessage(`Could not delete project: ${error.message}`);
-    }
-  }, [activeProject, openProjectWorkspace, refreshProjectList, rememberActiveProject, resetDrawingState]);
-
   const handleDeleteProjectFromDashboard = useCallback(async (project) => {
     const confirmed = window.confirm(`Delete project "${project.name}" and all local drawings?`);
     if (!confirmed) return;
@@ -1428,6 +1400,9 @@ export default function App() {
         onDialogChange={(name) => setProjectDialog((current) => ({ ...current, name }))}
         onDialogSubmit={handleProjectDialogSubmit}
         onDialogClose={handleCloseProjectDialog}
+        onOpenHelp={() => setHelpOpen(true)}
+        helpOpen={helpOpen}
+        onCloseHelp={() => setHelpOpen(false)}
       />
     );
   }
@@ -1441,6 +1416,9 @@ export default function App() {
             <div className="brand-title-row">
               <h1>QC Assistant</h1>
               <span className="version-badge">{APP_VERSION}</span>
+              <button className="icon-button brand-help" onClick={() => setHelpOpen(true)} title="Help and shortcuts" aria-label="Help and shortcuts">
+                <HelpCircle size={17} />
+              </button>
             </div>
             <p>Drawing ballooning and inspection report builder</p>
           </div>
@@ -1470,9 +1448,6 @@ export default function App() {
               <Save size={16} />
               Excel
             </button>
-            <button className="icon-button" onClick={() => setHelpOpen(true)} title="Help and shortcuts">
-              <HelpCircle size={17} />
-            </button>
           </div>
         </div>
       </header>
@@ -1491,14 +1466,6 @@ export default function App() {
               ))}
             </select>
           </label>
-          <input
-            className="project-name-input"
-            value={activeProject?.name || ""}
-            onChange={(event) => handleProjectNameChange(event.target.value)}
-            placeholder="Untitled Project"
-            disabled={!activeProject}
-            aria-label="Project name"
-          />
           <label className="project-field drawing-field">
             <span>Drawing</span>
             <select value={activeDrawingId || ""} onChange={(event) => handleOpenDrawing(event.target.value)} disabled={!drawings.length}>
@@ -1510,7 +1477,6 @@ export default function App() {
               ))}
             </select>
           </label>
-          <button className="small-button project-action create" onClick={handleNewProject}>New Project</button>
           <label className="small-button project-action add file-button">
             Add Drawing
             <input type="file" accept="application/pdf" onChange={handlePdfUpload} />
@@ -1519,7 +1485,6 @@ export default function App() {
           <button className="icon-button project-action delete-drawing" onClick={handleDeleteActiveDrawing} disabled={!activeDrawingId} title="Delete active drawing">
             <Trash2 size={15} />
           </button>
-          <button className="small-button project-action delete-project" onClick={handleDeleteProject} disabled={!activeProject}>Delete Project</button>
           <span className={`save-state ${saveState.status}`} title={`${formatBytes(projectStorageBytes)} in this project`}>
             {saveState.label}
           </span>
@@ -1878,6 +1843,9 @@ function ProjectDashboard({
   onDialogChange,
   onDialogSubmit,
   onDialogClose,
+  onOpenHelp,
+  helpOpen,
+  onCloseHelp,
 }) {
   return (
     <div className="dashboard-shell">
@@ -1888,6 +1856,9 @@ function ProjectDashboard({
             <div className="brand-title-row">
               <h1>QC Assistant</h1>
               <span className="version-badge">{APP_VERSION}</span>
+              <button className="icon-button brand-help" onClick={onOpenHelp} title="Help and shortcuts" aria-label="Help and shortcuts">
+                <HelpCircle size={17} />
+              </button>
             </div>
             <p>Local inspection projects</p>
           </div>
@@ -1971,6 +1942,8 @@ function ProjectDashboard({
           </form>
         </div>
       ) : null}
+
+      <HelpDialog open={helpOpen} onClose={onCloseHelp} />
     </div>
   );
 }
@@ -1986,6 +1959,12 @@ function HelpDialog({ open, onClose }) {
     ["T", "Text Select / OCR"],
     ["E", "Edit selected balloon actions"],
     ["Esc", "Close help, cancel selection UI"],
+  ];
+
+  const releaseNotes = [
+    "Project management support with local projects and up to 25 drawings per project. Large PDFs over 25 MB show a storage warning, and projects over 500 MB show a project storage warning.",
+    "Auto Balloon support: drag a selected area, review detected balloon candidates, then add confirmed balloons with aligned leaders.",
+    "Shortcuts added for faster workflow: B Balloon, A Auto Balloon candidate review, V Select, H Pan, T Text/OCR, E Edit selected balloon, Esc cancel/close.",
   ];
 
   return (
@@ -2057,8 +2036,23 @@ function HelpDialog({ open, onClose }) {
               <h3>Export</h3>
               <p>Export the ballooned PDF for distribution and the Excel workbook for the inspection report. Status remains conservative: incomplete rows stay OPEN.</p>
             </div>
-          </section>
-        </div>
+	          </section>
+
+          <details className="help-section version-history">
+            <summary>
+              <span>Version History</span>
+              <strong>v0.2.0</strong>
+            </summary>
+            <div className="release-note">
+              <h3>v0.2.0</h3>
+              <ul>
+                {releaseNotes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
+          </details>
+	        </div>
       </section>
     </div>
   );
