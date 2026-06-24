@@ -112,6 +112,11 @@ function createCharacteristic({ balloonNo, x = 0.5, y = 0.5, targetX = x, target
   };
 }
 
+function formatLocalSaveLog(drawingCount) {
+  const count = drawingCount || 0;
+  return `local: saved ${count} ${count === 1 ? "drawing" : "drawings"}`;
+}
+
 export default function App() {
   const [projectSummaries, setProjectSummaries] = useState([]);
   const [activeProject, setActiveProject] = useState(null);
@@ -120,7 +125,7 @@ export default function App() {
   const [projectsReady, setProjectsReady] = useState(false);
   const [dashboardVisible, setDashboardVisible] = useState(true);
   const [projectDialog, setProjectDialog] = useState({ open: false, mode: "create", projectId: null, name: "" });
-  const [saveState, setSaveState] = useState({ status: "idle", label: "Not saved" });
+  const [saveState, setSaveState] = useState({ status: "idle", label: "local: not saved" });
   const [metadata, setMetadata] = useState(emptyMetadata);
   const [sampleCount, setSampleCount] = useState(5);
   const [pdfBytes, setPdfBytes] = useState(null);
@@ -535,7 +540,7 @@ export default function App() {
     });
 
     try {
-      setSaveState({ status: "saving", label: reason === "manual" ? "Saving..." : "Autosaving..." });
+      setSaveState({ status: "saving", label: reason === "manual" ? "local: saving..." : "local: autosaving..." });
       await saveProject(projectRecord);
       const savedDrawing = await saveDrawing(activeProject.id, snapshot);
       const summaries = await refreshProjectList();
@@ -554,7 +559,7 @@ export default function App() {
       const projectSummary = summaries.find((project) => project.id === activeProject.id);
       setSaveState({
         status: warning ? "warning" : "saved",
-        label: warning || `${projectSummary?.drawingCount || nextDrawings.length} drawings saved locally`,
+        label: warning || formatLocalSaveLog(projectSummary?.drawingCount || nextDrawings.length),
       });
     } catch (error) {
       setSaveState({ status: "error", label: getStorageErrorMessage(error) });
@@ -595,7 +600,7 @@ export default function App() {
       await saveProject(projectRecord);
       setActiveProject(projectRecord);
       await refreshProjectList();
-      setSaveState({ status: "saved", label: "Project saved locally" });
+      setSaveState({ status: "saved", label: "local: project saved" });
       setMessage("Saved project locally.");
     }
   }, [activeDrawingId, activeProject, refreshProjectList]);
@@ -654,7 +659,7 @@ export default function App() {
     rememberActiveProject(project.id, null);
     resetDrawingState(`Created ${project.name}. Add a drawing PDF to begin.`);
     await refreshProjectList();
-    setSaveState({ status: "saved", label: "Project created locally" });
+    setSaveState({ status: "saved", label: "local: project created" });
     return project;
   }, [refreshProjectList, rememberActiveProject, resetDrawingState]);
 
@@ -703,7 +708,7 @@ export default function App() {
       if (activeProject?.id === updatedProject.id) setActiveProject(updatedProject);
       await refreshProjectList();
       setProjectDialog({ open: false, mode: "create", projectId: null, name: "" });
-      setSaveState({ status: "saved", label: "Project renamed locally" });
+      setSaveState({ status: "saved", label: "local: project renamed" });
       setMessage(`Renamed project to ${name}.`);
     } catch (error) {
       setMessage(`Could not save project name: ${error.message}`);
@@ -798,7 +803,7 @@ export default function App() {
       setCanvasSize({ width: 0, height: 0 });
       rememberActiveProject(project.id, savedDrawing.id);
       await refreshProjectList();
-      setSaveState({ status: "saved", label: "Drawing saved locally" });
+      setSaveState({ status: "saved", label: "local: drawing saved" });
       setMessage(`Added ${file.name} to ${nextProject.name}.`);
     } catch (error) {
       const messageText = getStorageErrorMessage(error);
@@ -1257,7 +1262,7 @@ export default function App() {
         resetDrawingState("Project deleted. Open or create another project.");
       }
       await refreshProjectList();
-      setSaveState({ status: "saved", label: "Project deleted locally" });
+      setSaveState({ status: "saved", label: "local: project deleted" });
       setMessage(`Deleted ${project.name}.`);
     } catch (error) {
       setMessage(`Could not delete project: ${error.message}`);
@@ -1496,6 +1501,9 @@ export default function App() {
                   ))}
                 </select>
               </label>
+              <span className={`save-state ${saveState.status}`} title={`${formatBytes(projectStorageBytes)} in this project`}>
+                {saveState.label}
+              </span>
             </div>
           </div>
 
@@ -1525,9 +1533,6 @@ export default function App() {
                 <Trash2 size={14} />
                 Delete Active Drawing
               </button>
-              <span className={`save-state ${saveState.status}`} title={`${formatBytes(projectStorageBytes)} in this project`}>
-                {saveState.label}
-              </span>
             </div>
           </div>
         </div>

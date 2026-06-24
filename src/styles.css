@@ -13,6 +13,11 @@
   --blue-soft: #e8eef7;
   --blue-hover: #f2f6fc;
   --blue-line: #cdd9ec;
+  --selected-bg: var(--blue);
+  --selected-bg-hover: #203d63;
+  --selected-line: var(--blue);
+  --selected-ink: var(--paper);
+  --selected-ring: rgba(41, 75, 119, 0.28);
   --ok: #147a42;
   --ok-soft: #eaf7f0;
   --ok-soft-strong: #ddf2e7;
@@ -611,14 +616,16 @@ kbd {
 .save-state {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
+  min-height: 30px;
   border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0 9px;
+  border-radius: 6px;
+  padding: 0 8px;
   color: var(--muted);
   background: var(--paper);
   font-size: 11px;
   font-weight: 800;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  text-transform: none;
   white-space: nowrap;
 }
 
@@ -630,17 +637,20 @@ kbd {
 
 .save-state.saved {
   color: var(--ok);
-  background: #eaf7f0;
+  background: var(--ok-soft);
+  border-color: var(--ok-soft-strong);
 }
 
 .save-state.warning {
   color: var(--open);
-  background: #fff8e8;
+  background: var(--cluster-layout-bg);
+  border-color: var(--cluster-layout-line);
 }
 
 .save-state.error {
   color: var(--fail);
-  background: #fff0f0;
+  background: var(--fail-soft);
+  border-color: var(--fail-line);
 }
 
 .layout-tabs {
@@ -686,9 +696,15 @@ kbd {
 }
 
 .workspace-tab.active {
-  border-color: var(--blue-line);
-  background: var(--blue-soft);
-  color: var(--blue);
+  border-color: var(--selected-line);
+  background: var(--selected-bg);
+  color: var(--selected-ink);
+  box-shadow: 0 0 0 2px var(--selected-ring);
+}
+
+.workspace-tab.active:hover {
+  background: var(--selected-bg-hover);
+  color: var(--selected-ink);
 }
 
 .layout-tab {
@@ -713,9 +729,16 @@ kbd {
 }
 
 .layout-tab.active {
-  color: var(--ink);
-  background: var(--bg);
-  border-color: var(--line);
+  color: var(--selected-ink);
+  background: var(--selected-bg);
+  border-color: var(--selected-line);
+  box-shadow: 0 0 0 2px var(--selected-ring);
+}
+
+.layout-tab.active:hover {
+  color: var(--selected-ink);
+  background: var(--selected-bg-hover);
+  border-color: var(--selected-line);
 }
 
 .layout-tab-divider {
@@ -1142,9 +1165,16 @@ textarea:focus {
 }
 
 .icon-button.active {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--selected-ink);
+  border-color: var(--selected-line);
+  background: var(--selected-bg);
+  box-shadow: 0 0 0 2px var(--selected-ring);
+}
+
+.icon-button.active:hover {
+  color: var(--selected-ink);
+  border-color: var(--selected-line);
+  background: var(--selected-bg-hover);
 }
 
 .icon-button.danger {
