@@ -5,6 +5,10 @@ export const APP_VERSION = "v0.2.0";
 
 export const PANEL_STORAGE_KEY = "qca_panel_sizes_v1";
 export const RESIZE_HANDLE_SIZE = 14;
+export const ZOOM_DEFAULT = 1.15;
+export const ZOOM_MIN = 0.65;
+export const ZOOM_MAX = 2.2;
+export const ZOOM_STEP = 0.1;
 export const BALLOON_OFFSET = { x: 0.0375, y: -0.0275 };
 export const BALLOON_MARGIN = 0.025;
 export const AUTO_BALLOON_EDGE_OFFSET = 0.055;
