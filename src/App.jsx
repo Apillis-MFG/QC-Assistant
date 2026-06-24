@@ -1482,72 +1482,94 @@ export default function App() {
 
       <div className="layout-bar">
         <div className="project-controls">
-          <button className="small-button project-action dashboard-link" onClick={() => setDashboardVisible(true)}>Projects</button>
-          <label className="project-field">
-            <span>Project</span>
-            <select value={activeProject?.id || ""} onChange={(event) => handleOpenProject(event.target.value)} disabled={!projectSummaries.length}>
-              {!projectSummaries.length ? <option value="">No local projects</option> : null}
-              {projectSummaries.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name} ({project.drawingCount})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="project-field drawing-field">
-            <span>Drawing</span>
-            <select value={activeDrawingId || ""} onChange={(event) => handleOpenDrawing(event.target.value)} disabled={!drawings.length}>
-              {!drawings.length ? <option value="">No drawings</option> : null}
-              {drawings.map((drawing) => (
-                <option key={drawing.id} value={drawing.id}>
-                  {drawing.name} · {drawing.status}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="small-button project-action add file-button">
-            Add Drawing
-            <input type="file" accept="application/pdf" onChange={handlePdfUpload} />
-          </label>
-          <button className="small-button project-action save" onClick={handleManualSave} disabled={!activeProject}>Save</button>
-          <button className="icon-button project-action delete-drawing" onClick={handleDeleteActiveDrawing} disabled={!activeDrawingId} title="Delete active drawing">
-            <Trash2 size={15} />
-          </button>
-          <span className={`save-state ${saveState.status}`} title={`${formatBytes(projectStorageBytes)} in this project`}>
-            {saveState.label}
-          </span>
-        </div>
-        <div className="workspace-tabs" aria-label="Project mode">
-          <button className={`workspace-tab ${workspaceMode === "edit" ? "active" : ""}`} onClick={() => switchWorkspaceMode("edit")}>
-            <Circle size={14} />
-            Edit
-          </button>
-          <button className={`workspace-tab ${workspaceMode === "measurement" ? "active" : ""}`} onClick={() => switchWorkspaceMode("measurement")}>
-            <Table2 size={14} />
-            Measurement
-          </button>
-        </div>
-        {workspaceMode === "edit" ? (
-          <div className="layout-tabs">
-            <button className={`layout-tab ${layoutMode === "drawing" ? "active" : ""}`} onClick={() => setLayoutMode("drawing")} title="Drawing canvas only">
-            <PanelLeft size={14} />
-            Drawing
-            </button>
-            <button className={`layout-tab ${layoutMode === "table" ? "active" : ""}`} onClick={() => setLayoutMode("table")} title="QC table only">
-            <Table2 size={14} />
-            Table
-            </button>
-            <div className="layout-tab-divider" />
-            <button className={`layout-tab ${layoutMode === "split-h" ? "active" : ""}`} onClick={() => setLayoutMode("split-h")} title="Side by side">
-            <ArrowLeftRight size={14} />
-            Side by Side
-            </button>
-            <button className={`layout-tab ${layoutMode === "split-v" ? "active" : ""}`} onClick={() => setLayoutMode("split-v")} title="Stacked">
-            <ArrowUpDown size={14} />
-            Stacked
-            </button>
+          <div className="toolbar-cluster project-cluster" aria-label="Project controls">
+            <span className="toolbar-cluster-label">Project</span>
+            <div className="toolbar-cluster-controls">
+              <button className="small-button project-action dashboard-link" onClick={() => setDashboardVisible(true)}>Projects</button>
+              <label className="project-field project-select-field">
+                <select value={activeProject?.id || ""} onChange={(event) => handleOpenProject(event.target.value)} disabled={!projectSummaries.length} aria-label="Active project">
+                  {!projectSummaries.length ? <option value="">No local projects</option> : null}
+                  {projectSummaries.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name} ({project.drawingCount})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
-        ) : null}
+
+          <div className="toolbar-cluster drawing-cluster" aria-label="Drawing controls">
+            <span className="toolbar-cluster-label">Drawing</span>
+            <div className="toolbar-cluster-controls">
+              <label className="project-field drawing-field">
+                <select value={activeDrawingId || ""} onChange={(event) => handleOpenDrawing(event.target.value)} disabled={!drawings.length} aria-label="Active drawing">
+                  {!drawings.length ? <option value="">No drawings</option> : null}
+                  {drawings.map((drawing) => (
+                    <option key={drawing.id} value={drawing.id}>
+                      {drawing.name} · {drawing.status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="small-button project-action add file-button">
+                <Plus size={14} />
+                Add Drawing
+                <input type="file" accept="application/pdf" onChange={handlePdfUpload} />
+              </label>
+              <button className="small-button project-action save" onClick={handleManualSave} disabled={!activeProject}>
+                <Save size={14} />
+                Save
+              </button>
+              <button className="small-button project-action delete-drawing" onClick={handleDeleteActiveDrawing} disabled={!activeDrawingId} title="Delete active drawing only">
+                <Trash2 size={14} />
+                Delete Active Drawing
+              </button>
+              <span className={`save-state ${saveState.status}`} title={`${formatBytes(projectStorageBytes)} in this project`}>
+                {saveState.label}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="view-controls" aria-label="View mode controls">
+          <div className="toolbar-cluster view-mode-cluster">
+            <span className="toolbar-cluster-label">Mode</span>
+            <div className="workspace-tabs" aria-label="Project mode">
+              <button className={`workspace-tab ${workspaceMode === "edit" ? "active" : ""}`} onClick={() => switchWorkspaceMode("edit")}>
+                <Circle size={14} />
+                Edit
+              </button>
+              <button className={`workspace-tab ${workspaceMode === "measurement" ? "active" : ""}`} onClick={() => switchWorkspaceMode("measurement")}>
+                <Table2 size={14} />
+                Measurement
+              </button>
+            </div>
+          </div>
+          {workspaceMode === "edit" ? (
+            <div className="toolbar-cluster layout-mode-cluster">
+              <span className="toolbar-cluster-label">Layout</span>
+              <div className="layout-tabs" aria-label="Drawing layout">
+                <button className={`layout-tab ${layoutMode === "drawing" ? "active" : ""}`} onClick={() => setLayoutMode("drawing")} title="Drawing canvas only">
+                  <PanelLeft size={14} />
+                  Drawing
+                </button>
+                <button className={`layout-tab ${layoutMode === "table" ? "active" : ""}`} onClick={() => setLayoutMode("table")} title="QC table only">
+                  <Table2 size={14} />
+                  Table
+                </button>
+                <div className="layout-tab-divider" />
+                <button className={`layout-tab ${layoutMode === "split-h" ? "active" : ""}`} onClick={() => setLayoutMode("split-h")} title="Side by side">
+                  <ArrowLeftRight size={14} />
+                  Side by Side
+                </button>
+                <button className={`layout-tab ${layoutMode === "split-v" ? "active" : ""}`} onClick={() => setLayoutMode("split-v")} title="Stacked">
+                  <ArrowUpDown size={14} />
+                  Stacked
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {workspaceMode === "measurement" ? (

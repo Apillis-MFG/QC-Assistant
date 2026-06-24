@@ -22,6 +22,11 @@
   --fail-line: #f4b4b4;
   --fail-soft: #fff0f0;
   --fail-soft-strong: #ffe5e5;
+  --cluster-project-bg: #f2f6fc;
+  --cluster-drawing-bg: #eef8f3;
+  --cluster-mode-bg: #fff4f4;
+  --cluster-layout-bg: #fff8e8;
+  --cluster-layout-line: #f3ddad;
   --paper: #ffffff;
   --grid-line: #eef2f7;
   --shadow: 0 12px 34px rgba(17, 24, 39, 0.08);
@@ -409,7 +414,7 @@ kbd {
   border-bottom: 1px solid var(--line);
   padding: 8px 18px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
   overflow-x: auto;
@@ -417,10 +422,91 @@ kbd {
 
 .project-controls {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
   min-width: 0;
   flex: 1 1 auto;
+}
+
+.toolbar-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+.toolbar-cluster-label {
+  padding: 0 4px 0 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.toolbar-cluster-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.project-cluster,
+.drawing-cluster {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.project-cluster {
+  background: var(--cluster-project-bg);
+  border-color: var(--blue-line);
+}
+
+.drawing-cluster {
+  background: var(--cluster-drawing-bg);
+  border-color: var(--ok-soft-strong);
+}
+
+.view-mode-cluster {
+  background: var(--cluster-mode-bg);
+  border-color: var(--fail-line);
+}
+
+.layout-mode-cluster {
+  background: var(--cluster-layout-bg);
+  border-color: var(--cluster-layout-line);
+}
+
+.project-cluster .toolbar-cluster-label {
+  color: var(--blue);
+}
+
+.drawing-cluster .toolbar-cluster-label {
+  color: var(--ok);
+}
+
+.view-mode-cluster .toolbar-cluster-label {
+  color: var(--accent);
+}
+
+.layout-mode-cluster .toolbar-cluster-label {
+  color: var(--open);
+}
+
+.view-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  flex: 0 0 auto;
 }
 
 .project-field {
@@ -459,8 +545,13 @@ kbd {
 }
 
 .project-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border-width: 1px;
   font-weight: 850;
+  white-space: nowrap;
 }
 
 .project-action.dashboard-link,
@@ -556,6 +647,10 @@ kbd {
   display: flex;
   align-items: center;
   gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--paper);
   flex: 0 0 auto;
 }
 
@@ -1882,9 +1977,24 @@ td select:focus {
   }
 
   .layout-bar {
-    padding: 0 12px;
+    padding: 8px 12px;
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .view-controls,
+  .toolbar-cluster,
+  .toolbar-cluster-controls {
+    flex-wrap: wrap;
+  }
+
+  .view-controls {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .toolbar-cluster {
+    max-width: 100%;
   }
 
   .workspace-tabs,

@@ -30,6 +30,15 @@ Default response shape for meaningful work:
 - Design system: `DESIGN.md`
 - Workflow: `WORKFLOW.md`
 
+## Mandatory Preflight Reading
+
+Before taking any implementation, debugging, review, refactor, documentation, or state-changing tool action, read these project-local instructions first:
+
+1. `karpathy-guidelines/SKILL.md` — behavioral guardrails for simple, surgical, verified work.
+2. `WORKFLOW.md` — mandatory GitHub issue/project loop and verification contract.
+
+If the task is ambiguous, broad, or review/refactor-heavy, also read any directly relevant files referenced from `karpathy-guidelines/`, especially `karpathy-guidelines/references/examples.md`.
+
 ## Product Truth
 
 QC Assistant is not a generic PDF annotator. It is a precision manufacturing inspection tool for QC engineers who need to balloon engineering drawings and produce a compliant FAI report in a single session — with zero backend dependency.
