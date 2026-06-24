@@ -1,7 +1,7 @@
 export const methods = ["DC", "CMM", "VS", "VMS", "HG", "MIC", "CG", "PP", "TG", "PG"];
 export const types = ["dimension", "gdt", "note", "visual"];
 export const CHARACTERISTIC_FIELDS = ["nominal", "tolerance", "notes"];
-export const APP_VERSION = "v0.2.0";
+export const APP_VERSION = "v0.3.0";
 
 export const PANEL_STORAGE_KEY = "qca_panel_sizes_v1";
 export const RESIZE_HANDLE_SIZE = 14;
