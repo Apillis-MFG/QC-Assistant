@@ -18,12 +18,12 @@ import {
 } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { demoCharacteristics } from "./sampleData.js";
+import { demoCharacteristics } from "./lib/sampleData.js";
 import {
   exportBalloonedPdf,
   exportInspectionWorkbook,
   getStatus,
-} from "./exporters.js";
+} from "./lib/exporters.js";
 import {
   ACTIVE_PROJECT_KEY,
   PROJECT_LIMITS,
@@ -36,7 +36,7 @@ import {
   requestPersistentStorage,
   saveDrawing,
   saveProject,
-} from "./projectStore.js";
+} from "./lib/projectStore.js";
 import {
   methods, types, CHARACTERISTIC_FIELDS, APP_VERSION,
   PANEL_STORAGE_KEY, RESIZE_HANDLE_SIZE,
@@ -46,23 +46,23 @@ import {
   AUTO_BALLOON_MIN_SPACING, AUTO_BALLOON_MIN_CONFIDENCE,
   AUTO_BALLOON_MAX_LABEL_LENGTH, DRAWING_NUMBER_PATTERN,
   defaultPanelSizes, emptyMetadata,
-} from "./constants.js";
+} from "./lib/constants.js";
 import {
   buildDrawingSnapshot, updateDrawingSummary, getStorageWarning, getStorageErrorMessage,
   formatBytes, formatDate, setMetadataValue, mapTextItem, metadataLabel, fieldLabel,
   getNormalizedPoint, normalizeRect, getDefaultBalloonPosition, cropCanvasArea, clamp,
-} from "./utils.js";
+} from "./lib/utils.js";
 import {
   getEmbeddedAutoBalloonCandidates, getOcrAutoBalloonCandidates, buildAutoBalloonCandidates,
   renumberAutoBalloonCandidates, nextBalloonNo, renumber,
-} from "./autoBalloon.js";
+} from "./lib/autoBalloon.js";
 import {
   Field, ToolButton, ResizeHandle, TextLayer, LeaderLayer,
   AutoBalloonPreview, AutoBalloonReview, DrawingNavToolbar, PdfUploadPrompt,
-} from "./widgets.jsx";
+} from "./components/widgets.jsx";
 import {
   ProjectDashboard, HelpDialog, MeasurementWorkspace, BalloonEditor, CharacteristicTable,
-} from "./panels.jsx";
+} from "./components/panels.jsx";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 

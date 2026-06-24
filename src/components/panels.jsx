@@ -1,8 +1,8 @@
 import { memo, useMemo } from "react";
 import { X, HelpCircle, Plus, FilePlus2, Circle, Trash2 } from "lucide-react";
-import { getLimits, getStatus } from "./exporters.js";
-import { methods, types, APP_VERSION } from "./constants.js";
-import { formatBytes, formatDate } from "./utils.js";
+import { getLimits, getStatus } from "../lib/exporters.js";
+import { methods, types, APP_VERSION } from "../lib/constants.js";
+import { formatBytes, formatDate } from "../lib/utils.js";
 import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer } from "./widgets.jsx";
 
 export function HelpDialog({ open, onClose }) {
