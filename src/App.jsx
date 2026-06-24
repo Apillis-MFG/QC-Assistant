@@ -40,6 +40,7 @@ import {
 import {
   methods, types, CHARACTERISTIC_FIELDS, APP_VERSION,
   PANEL_STORAGE_KEY, RESIZE_HANDLE_SIZE,
+  ZOOM_DEFAULT, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP,
   BALLOON_OFFSET, BALLOON_MARGIN,
   AUTO_BALLOON_EDGE_OFFSET, AUTO_BALLOON_LEADER_RATIO,
   AUTO_BALLOON_MIN_SPACING, AUTO_BALLOON_MIN_CONFIDENCE,
@@ -64,11 +65,6 @@ import {
 } from "./panels.jsx";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
-
-const ZOOM_DEFAULT = 1.15;
-const ZOOM_MIN = 0.65;
-const ZOOM_MAX = 2.2;
-const ZOOM_STEP = 0.1;
 
 function loadPanelSizes() {
   try {
@@ -283,7 +279,7 @@ export default function App() {
       setZoom(drawing.zoom || ZOOM_DEFAULT);
       setCharacteristics(
         (Array.isArray(drawing.characteristics) ? drawing.characteristics : [])
-          .map((item) => ({ samples: {}, ...item })),
+          .map((item) => ({ samples: {}, notes: "", ...item })),
       );
       setSelectedId(null);
       setEditingBalloonId(null);
@@ -374,7 +370,7 @@ export default function App() {
       const canvas = canvasRef.current;
       const context = canvas.getContext("2d");
       const outputScale = window.devicePixelRatio || 1;
-      const textContentPromise = page.getTextContent();
+      const textContentPromise = workspaceMode !== "measurement" ? page.getTextContent() : null;
 
       canvas.width = Math.floor(viewport.width * outputScale);
       canvas.height = Math.floor(viewport.height * outputScale);
@@ -384,7 +380,7 @@ export default function App() {
       context.clearRect(0, 0, viewport.width, viewport.height);
 
       await page.render({ canvasContext: context, viewport }).promise;
-      const textContent = workspaceMode !== "measurement" ? await textContentPromise : null;
+      const textContent = textContentPromise ? await textContentPromise : null;
       const nextTextItems = textContent
         ? textContent.items.map((item, index) => mapTextItem(item, index, viewport, zoom)).filter(Boolean)
         : [];
@@ -841,6 +837,16 @@ export default function App() {
     },
     [characteristics, mode, pageNumber, pdfDoc],
   );
+
+  const selectCharacteristic = useCallback((id) => {
+    setSelectedId(id);
+    setEditingBalloonId(null);
+  }, []);
+
+  const zoomOut = useCallback(() => setZoom((v) => Math.max(ZOOM_MIN, v - ZOOM_STEP)), []);
+  const zoomIn = useCallback(() => setZoom((v) => Math.min(ZOOM_MAX, v + ZOOM_STEP)), []);
+  const prevPage = useCallback(() => setPageNumber((v) => v - 1), []);
+  const nextPage = useCallback(() => setPageNumber((v) => v + 1), []);
 
   const updateCharacteristic = useCallback((id, patch) => {
     setCharacteristics((items) => items.map((item) => (item.id === id ? { ...item, ...patch } : item)));
@@ -1554,10 +1560,10 @@ export default function App() {
           pageNumber={pageNumber}
           pageCount={pageCount}
           zoom={zoom}
-          onZoomOut={() => setZoom((value) => Math.max(ZOOM_MIN, value - ZOOM_STEP))}
-          onZoomIn={() => setZoom((value) => Math.min(ZOOM_MAX, value + ZOOM_STEP))}
-          onPrevPage={() => setPageNumber((value) => value - 1)}
-          onNextPage={() => setPageNumber((value) => value + 1)}
+          onZoomOut={zoomOut}
+          onZoomIn={zoomIn}
+          onPrevPage={prevPage}
+          onNextPage={nextPage}
           currentPageBalloons={currentPageBalloons}
           characteristics={characteristics}
           selectedId={selectedId}
@@ -1566,10 +1572,7 @@ export default function App() {
           message={message}
           activeDrawingId={activeDrawingId}
           onPdfUpload={handlePdfUpload}
-          onSelect={(id) => {
-            setSelectedId(id);
-            setEditingBalloonId(null);
-          }}
+          onSelect={selectCharacteristic}
           onChange={updateCharacteristic}
           onSampleChange={updateSample}
           onSampleCountChange={setSampleCount}
@@ -1605,10 +1608,10 @@ export default function App() {
               zoom={zoom}
               pageNumber={pageNumber}
               pageCount={pageCount}
-              onZoomOut={() => setZoom((value) => Math.max(ZOOM_MIN, value - ZOOM_STEP))}
-              onZoomIn={() => setZoom((value) => Math.min(ZOOM_MAX, value + ZOOM_STEP))}
-              onPrevPage={() => setPageNumber((value) => value - 1)}
-              onNextPage={() => setPageNumber((value) => value + 1)}
+              onZoomOut={zoomOut}
+              onZoomIn={zoomIn}
+              onPrevPage={prevPage}
+              onNextPage={nextPage}
             />
           </div>
 
@@ -1869,10 +1872,7 @@ export default function App() {
           characteristics={characteristics}
           selectedId={selectedId}
           sampleCount={sampleCount}
-          onSelect={(id) => {
-            setSelectedId(id);
-            setEditingBalloonId(null);
-          }}
+          onSelect={selectCharacteristic}
           onChange={updateCharacteristic}
           onReassign={reassignBalloonNo}
           onSampleChange={updateSample}

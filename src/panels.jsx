@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { X, HelpCircle, Plus, FilePlus2, Circle, Trash2 } from "lucide-react";
 import { getLimits, getStatus } from "./exporters.js";
 import { methods, types, APP_VERSION } from "./constants.js";
@@ -408,6 +408,84 @@ export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampl
   );
 }
 
+const CharacteristicRow = memo(function CharacteristicRow({
+  item,
+  sampleCount,
+  selectedId,
+  readOnly,
+  onSelect,
+  onChange,
+  onReassign,
+  onSampleChange,
+  onDelete,
+}) {
+  const { usl, lsl } = getLimits(item);
+  const status = getStatus(item, sampleCount);
+  return (
+    <tr
+      className={selectedId === item.id ? "row-selected" : ""}
+      onClick={() => onSelect(item.id)}
+    >
+      {readOnly ? (
+        <td className="id-cell locked-id">{item.balloonNo}</td>
+      ) : (
+        <td className="id-cell">
+          <input
+            type="number"
+            min="1"
+            value={item.balloonNo}
+            aria-label={`Reassign balloon ${item.balloonNo}`}
+            onClick={(event) => event.stopPropagation()}
+            onChange={(event) => onReassign(item.id, event.target.value)}
+          />
+        </td>
+      )}
+      <td>
+        <select value={item.type} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { type: event.target.value })}>
+          {types.map((type) => <option key={type} value={type}>{type}</option>)}
+        </select>
+      </td>
+      <td><input value={item.unit} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { unit: event.target.value })} /></td>
+      <td><input value={item.nominal} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { nominal: event.target.value })} /></td>
+      <td><input value={item.tolerance} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { tolerance: event.target.value })} /></td>
+      <td className="readonly">{usl}</td>
+      <td className="readonly">{lsl}</td>
+      {Array.from({ length: sampleCount }, (_, index) => (
+        <td key={index}>
+          <input
+            value={item.samples[index] ?? ""}
+            onChange={(event) => onSampleChange(item.id, index, event.target.value)}
+            placeholder={readOnly ? (item.type === "dimension" ? "0.000" : "OK") : undefined}
+          />
+        </td>
+      ))}
+      <td>
+        <select value={item.method} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { method: event.target.value })}>
+          {methods.map((method) => <option key={method} value={method}>{method}</option>)}
+        </select>
+      </td>
+      {readOnly ? (
+        <td><input value={item.notes} onChange={(event) => onChange(item.id, { notes: event.target.value })} /></td>
+      ) : null}
+      <td><span className={`status mini ${status.toLowerCase()}`}>{status}</span></td>
+      {!readOnly ? (
+        <td className="row-actions">
+          <button
+            className="icon-button danger"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete(item.id);
+            }}
+            title={`Delete balloon ${item.balloonNo}`}
+          >
+            <Trash2 size={14} />
+          </button>
+        </td>
+      ) : null}
+    </tr>
+  );
+});
+
 export function CharacteristicTable({
   characteristics,
   selectedId,
@@ -420,9 +498,14 @@ export function CharacteristicTable({
   onSampleChange,
   onDelete,
 }) {
+  const sortKey = useMemo(
+    () => characteristics.map((c) => `${c.id}:${c.balloonNo}`).join(","),
+    [characteristics],
+  );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const sorted = useMemo(
     () => characteristics.slice().sort((a, b) => a.balloonNo - b.balloonNo),
-    [characteristics],
+    [sortKey],
   );
 
   if (readOnly && !activeDrawingId) {
@@ -463,74 +546,20 @@ export function CharacteristicTable({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((item) => {
-            const { usl, lsl } = getLimits(item);
-            const status = getStatus(item, sampleCount);
-            return (
-              <tr
-                key={item.id}
-                className={selectedId === item.id ? "row-selected" : ""}
-                onClick={() => onSelect(item.id)}
-              >
-                {readOnly ? (
-                  <td className="id-cell locked-id">{item.balloonNo}</td>
-                ) : (
-                  <td className="id-cell">
-                    <input
-                      type="number"
-                      min="1"
-                      value={item.balloonNo}
-                      aria-label={`Reassign balloon ${item.balloonNo}`}
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={(event) => onReassign(item.id, event.target.value)}
-                    />
-                  </td>
-                )}
-                <td>
-                  <select value={item.type} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { type: event.target.value })}>
-                    {types.map((type) => <option key={type} value={type}>{type}</option>)}
-                  </select>
-                </td>
-                <td><input value={item.unit} readOnly={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { unit: event.target.value })} /></td>
-                <td><input value={item.nominal} readOnly={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { nominal: event.target.value })} /></td>
-                <td><input value={item.tolerance} readOnly={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { tolerance: event.target.value })} /></td>
-                <td className="readonly">{usl}</td>
-                <td className="readonly">{lsl}</td>
-                {Array.from({ length: sampleCount }, (_, index) => (
-                  <td key={index}>
-                    <input
-                      value={item.samples[index] ?? ""}
-                      onChange={(event) => onSampleChange(item.id, index, event.target.value)}
-                      placeholder={readOnly ? (item.type === "dimension" ? "0.000" : "OK") : undefined}
-                    />
-                  </td>
-                ))}
-                <td>
-                  <select value={item.method} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { method: event.target.value })}>
-                    {methods.map((method) => <option key={method} value={method}>{method}</option>)}
-                  </select>
-                </td>
-                {readOnly ? (
-                  <td><input value={item.notes} onChange={(event) => onChange(item.id, { notes: event.target.value })} /></td>
-                ) : null}
-                <td><span className={`status mini ${status.toLowerCase()}`}>{status}</span></td>
-                {!readOnly ? (
-                  <td className="row-actions">
-                    <button
-                      className="icon-button danger"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onDelete(item.id);
-                      }}
-                      title={`Delete balloon ${item.balloonNo}`}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
-                ) : null}
-              </tr>
-            );
-          })}
+          {sorted.map((item) => (
+            <CharacteristicRow
+              key={item.id}
+              item={item}
+              sampleCount={sampleCount}
+              selectedId={selectedId}
+              readOnly={readOnly}
+              onSelect={onSelect}
+              onChange={onChange}
+              onReassign={onReassign}
+              onSampleChange={onSampleChange}
+              onDelete={onDelete}
+            />
+          ))}
         </tbody>
       </table>
     </div>
