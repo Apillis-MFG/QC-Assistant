@@ -38,9 +38,10 @@ export function getStatus(characteristic, sampleCount) {
 
   const { usl, lsl } = getLimits(characteristic);
   const hasNumericLimits = usl !== "" || lsl !== "";
-  if (!hasNumericLimits) return values.every((value) => value !== "") ? "OK" : "OPEN";
+  if (!hasNumericLimits) return "OPEN";
 
   const failed = values.some((value) => {
+    if (value === "") return false;
     const n = parseNumber(value);
     if (n === null) return true;
     if (usl !== "" && n > Number(usl)) return true;
@@ -48,7 +49,8 @@ export function getStatus(characteristic, sampleCount) {
     return false;
   });
 
-  return failed ? "NG" : "OK";
+  if (failed) return "NG";
+  return values.every((value) => value !== "") ? "OK" : "OPEN";
 }
 
 export async function exportBalloonedPdf({ pdfBytes, characteristics, fileName }) {

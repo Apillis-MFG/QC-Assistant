@@ -1,3 +1,5 @@
+import { ZOOM_DEFAULT } from "./constants.js";
+
 const DB_NAME = "qca_projects_v1";
 const DB_VERSION = 1;
 const PROJECT_STORE = "projects";
@@ -209,7 +211,7 @@ function normalizeDrawing(projectId, drawing) {
     sampleCount: drawing.sampleCount || 5,
     characteristics: Array.isArray(drawing.characteristics) ? drawing.characteristics : [],
     pageNumber: drawing.pageNumber || 1,
-    zoom: drawing.zoom || 1.15,
+    zoom: drawing.zoom || ZOOM_DEFAULT,
     status: drawing.status || "OPEN",
     createdAt: drawing.createdAt || now,
     updatedAt: drawing.updatedAt || now,

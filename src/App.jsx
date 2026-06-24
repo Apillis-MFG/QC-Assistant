@@ -798,7 +798,7 @@ export default function App() {
       setCanvasSize({ width: 0, height: 0 });
       rememberActiveProject(project.id, savedDrawing.id);
       await refreshProjectList();
-      setSaveState({ status: "saved", label: `${Math.min(drawings.length + 1, PROJECT_LIMITS.maxDrawings)} drawings saved locally` });
+      setSaveState({ status: "saved", label: "Drawing saved locally" });
       setMessage(`Added ${file.name} to ${nextProject.name}.`);
     } catch (error) {
       const messageText = getStorageErrorMessage(error);
