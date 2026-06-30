@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import { X, HelpCircle, Plus, FilePlus2, Circle, Trash2 } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
-import { methods, types, APP_VERSION } from "../lib/constants.js";
+import { methods, types, TYPE_DEFAULT_METHOD, APP_VERSION } from "../lib/constants.js";
 import { formatBytes, formatDate } from "../lib/utils.js";
 import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer } from "./widgets.jsx";
 
@@ -18,7 +18,16 @@ export function HelpDialog({ open, onClose }) {
     ["Esc", "Close help, cancel selection UI"],
   ];
 
-  const releaseNotes = [
+  const releaseNotes030 = [
+    "The toolbar is now organised into clear sections for project controls and drawing controls — less hunting, faster access.",
+    "Auto Balloon is now a dedicated panel: detect candidates, review them, and confirm in one place without interrupting your workflow.",
+    "Switch between drawing view and measurement entry with a single toggle to stay in context while filling in values.",
+    "Drawings open at a better default zoom that fits most standard PDF sheet sizes without manual adjustment.",
+    "Unsaved changes are now clearly indicated on the workspace tab so you always know what has been saved.",
+    "Rows with incomplete or indeterminate limits always show OPEN — nothing slips through as falsely passed.",
+  ];
+
+  const releaseNotes020 = [
     "Project management support with local projects and up to 25 drawings per project. Large PDFs over 25 MB show a storage warning, and projects over 500 MB show a project storage warning.",
     "Auto Balloon support: drag a selected area, review detected balloon candidates, then add confirmed balloons with aligned leaders.",
     "Shortcuts added for faster workflow: B Balloon, A Auto Balloon candidate review, V Select, H Pan, T Text/OCR, E Edit selected balloon, Esc cancel/close.",
@@ -98,12 +107,20 @@ export function HelpDialog({ open, onClose }) {
           <details className="help-section version-history">
             <summary>
               <span>Version History</span>
-              <strong>v0.2.0</strong>
+              <strong>v0.3.0</strong>
             </summary>
+            <div className="release-note">
+              <h3>v0.3.0</h3>
+              <ul>
+                {releaseNotes030.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
             <div className="release-note">
               <h3>v0.2.0</h3>
               <ul>
-                {releaseNotes.map((note) => (
+                {releaseNotes020.map((note) => (
                   <li key={note}>{note}</li>
                 ))}
               </ul>
@@ -366,7 +383,13 @@ export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampl
       </label>
       <label>
         Type
-        <select value={item.type} onChange={(event) => onChange({ type: event.target.value })}>
+        <select
+          value={item.type}
+          onChange={(event) => {
+            const type = event.target.value;
+            onChange({ type, method: TYPE_DEFAULT_METHOD[type] ?? item.method });
+          }}
+        >
           {types.map((type) => <option key={type} value={type}>{type}</option>)}
         </select>
       </label>
@@ -441,7 +464,14 @@ const CharacteristicRow = memo(function CharacteristicRow({
         </td>
       )}
       <td>
-        <select value={item.type} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { type: event.target.value })}>
+        <select
+          value={item.type}
+          disabled={readOnly}
+          onChange={readOnly ? undefined : (event) => {
+            const type = event.target.value;
+            onChange(item.id, { type, method: TYPE_DEFAULT_METHOD[type] ?? item.method });
+          }}
+        >
           {types.map((type) => <option key={type} value={type}>{type}</option>)}
         </select>
       </td>
@@ -498,14 +528,9 @@ export function CharacteristicTable({
   onSampleChange,
   onDelete,
 }) {
-  const sortKey = useMemo(
-    () => characteristics.map((c) => `${c.id}:${c.balloonNo}`).join(","),
-    [characteristics],
-  );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const sorted = useMemo(
     () => characteristics.slice().sort((a, b) => a.balloonNo - b.balloonNo),
-    [sortKey],
+    [characteristics],
   );
 
   if (readOnly && !activeDrawingId) {

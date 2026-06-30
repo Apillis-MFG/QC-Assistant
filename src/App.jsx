@@ -38,7 +38,7 @@ import {
   saveProject,
 } from "./lib/projectStore.js";
 import {
-  methods, types, CHARACTERISTIC_FIELDS, APP_VERSION,
+  methods, types, TYPE_DEFAULT_METHOD, CHARACTERISTIC_FIELDS, APP_VERSION,
   PANEL_STORAGE_KEY, RESIZE_HANDLE_SIZE,
   ZOOM_DEFAULT, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP,
   BALLOON_OFFSET, BALLOON_MARGIN,
@@ -106,7 +106,7 @@ function createCharacteristic({ balloonNo, x = 0.5, y = 0.5, targetX = x, target
     unit: seed.unit ?? "MM",
     nominal: seed.nominal ?? "",
     tolerance: seed.tolerance ?? "",
-    method: seed.method ?? "DC",
+    method: seed.method ?? TYPE_DEFAULT_METHOD[seed.type ?? "dimension"] ?? "DC",
     notes: seed.notes ?? "",
     samples: seed.samples ?? {},
   };
