@@ -854,7 +854,16 @@ export default function App() {
   const nextPage = useCallback(() => setPageNumber((v) => v + 1), []);
 
   const updateCharacteristic = useCallback((id, patch) => {
-    setCharacteristics((items) => items.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+    setCharacteristics((items) =>
+      items.map((item) => {
+        if (item.id !== id) return item;
+        const nextType = patch.type ?? item.type;
+        const nextPatch = patch.type && !("method" in patch)
+          ? { ...patch, method: TYPE_DEFAULT_METHOD[nextType] ?? item.method }
+          : patch;
+        return { ...item, ...nextPatch };
+      }),
+    );
   }, []);
 
   const reassignBalloonNo = useCallback((id, rawValue) => {
