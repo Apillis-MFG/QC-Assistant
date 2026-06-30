@@ -21,6 +21,18 @@ export function getLimits(characteristic) {
 
   if (text.includes("MAX")) return { usl: tolerance, lsl: "" };
   if (text.includes("MIN")) return { usl: "", lsl: tolerance };
+
+  // Asymmetric tolerance: "+0.5/-0.2" → different upper and lower offsets
+  const asymMatch = String(characteristic.tolerance || "").match(
+    /\+\s*(\d+(?:\.\d+)?)\s*[/]?\s*-\s*(\d+(?:\.\d+)?)/,
+  );
+  if (asymMatch) {
+    return {
+      usl: round(nominal + parseFloat(asymMatch[1])),
+      lsl: round(nominal - parseFloat(asymMatch[2])),
+    };
+  }
+
   return {
     usl: round(nominal + tolerance),
     lsl: round(nominal - tolerance),

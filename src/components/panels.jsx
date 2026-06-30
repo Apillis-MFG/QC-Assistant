@@ -395,6 +395,48 @@ export function MeasurementWorkspace({
   );
 }
 
+function parseToleranceParts(tolerance) {
+  const text = String(tolerance || "").trim();
+  if (!text) return { upper: "", lower: "" };
+  const asym = text.match(/^\+\s*(\d+(?:\.\d+)?)\s*\/\s*-\s*(\d+(?:\.\d+)?)$/);
+  if (asym) return { upper: asym[1], lower: asym[2] };
+  const sym = text.match(/^[±]?\s*(\d+(?:\.\d+)?)$/);
+  if (sym) return { upper: sym[1], lower: sym[1] };
+  return { upper: text, lower: "" };
+}
+
+function formatTolerance(upper, lower) {
+  const u = upper.trim();
+  const l = lower.trim();
+  if (!u && !l) return "";
+  if (u && l) return u === l ? `±${u}` : `+${u}/-${l}`;
+  return u ? `+${u}` : `-${l}`;
+}
+
+function ToleranceInput({ value, onChange }) {
+  const { upper, lower } = parseToleranceParts(value);
+  return (
+    <div className="tolerance-split">
+      <span className="tolerance-sign">+</span>
+      <input
+        className="tolerance-half"
+        value={upper}
+        onChange={(e) => onChange(formatTolerance(e.target.value, lower))}
+        placeholder="0.5"
+        aria-label="Upper tolerance"
+      />
+      <span className="tolerance-sign">−</span>
+      <input
+        className="tolerance-half"
+        value={lower}
+        onChange={(e) => onChange(formatTolerance(upper, e.target.value))}
+        placeholder="0.2"
+        aria-label="Lower tolerance"
+      />
+    </div>
+  );
+}
+
 export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampleChange }) {
   const { usl, lsl } = getLimits(item);
   return (
@@ -434,11 +476,11 @@ export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampl
         Nominal / Requirement
         <input value={item.nominal} onChange={(event) => onChange({ nominal: event.target.value })} />
       </label>
-      <label>
+      <label className="span-2">
         Tolerance
-        <input value={item.tolerance} onChange={(event) => onChange({ tolerance: event.target.value })} />
+        <ToleranceInput value={item.tolerance} onChange={(val) => onChange({ tolerance: val })} />
       </label>
-      <label>
+      <label className="span-2">
         Limits
         <input value={`${lsl || "-"} / ${usl || "-"}`} readOnly />
       </label>

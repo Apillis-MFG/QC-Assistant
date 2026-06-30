@@ -168,6 +168,64 @@ export function getDefaultBalloonPosition(target, leaderScale = 1) {
   };
 }
 
+export function parseDimension(text) {
+  const s = String(text || "").replace(/\s+/g, " ").trim();
+  if (!s) return null;
+
+  // Strip common dimension prefixes: ø/Ø/∅ (diameter), R/r (radius), M/m (metric thread)
+  const core = s
+    .replace(/^[øØ∅]\s*/, "")
+    .replace(/^[Rr](?=\d)/, "")
+    .replace(/^[Mm](?=\d)/, "");
+
+  // Must start with a number (possibly signed)
+  const nominalMatch = core.match(/^([+-]?\d+(?:[.,]\d+)?)/);
+  if (!nominalMatch) return null;
+
+  const nominal = nominalMatch[1].replace(",", ".");
+  const after = core.slice(nominalMatch[0].length).trim();
+
+  // MAX / MIN suffix
+  if (/^max\b/i.test(after)) return { nominal, tolerance: "MAX" };
+  if (/^min\b/i.test(after)) return { nominal, tolerance: "MIN" };
+
+  // Symmetric: ±0.5  or  +/-0.5  or  +/- 0.5  or  +-0.5
+  const symMatch = after.match(/^(?:[±]|\+\s*[/\\]\s*-\s*|\+\s*-\s*)(\d+(?:[.,]\d+)?)/);
+  if (symMatch) return { nominal, tolerance: `±${symMatch[1].replace(",", ".")}` };
+
+  // Asymmetric: +0.5/-0.2  or  +0.5 / -0.2  or  +0.5-0.2
+  const asymMatch = after.match(/^(\+\s*\d+(?:[.,]\d+)?)\s*[/]?\s*(-\s*\d+(?:[.,]\d+)?)/);
+  if (asymMatch) {
+    const pos = asymMatch[1].replace(/\s+/g, "").replace(",", ".");
+    const neg = asymMatch[2].replace(/\s+/g, "").replace(",", ".");
+    return { nominal, tolerance: `${pos}/${neg}` };
+  }
+
+  return { nominal, tolerance: "" };
+}
+
+export function findNearestTextDimension(point, textItems, canvasSize, radius = 0.075) {
+  if (!textItems.length || !canvasSize.width || !canvasSize.height) return null;
+
+  const nearby = textItems
+    .map((item) => {
+      const cx = (item.left + item.width / 2) / canvasSize.width;
+      const cy = (item.top + item.height / 2) / canvasSize.height;
+      return { item, dist: Math.hypot(cx - point.x, cy - point.y) };
+    })
+    .filter(({ dist }) => dist <= radius)
+    .sort((a, b) => a.dist - b.dist);
+
+  let nominalOnly = null;
+  for (const { item } of nearby) {
+    const parsed = parseDimension(item.text);
+    if (!parsed) continue;
+    if (parsed.tolerance) return parsed;
+    if (!nominalOnly) nominalOnly = parsed;
+  }
+  return nominalOnly;
+}
+
 export function cropCanvasArea(canvas, rect) {
   const sourceX = Math.floor(rect.x * canvas.width);
   const sourceY = Math.floor(rect.y * canvas.height);

@@ -52,6 +52,7 @@ import {
   buildDrawingSnapshot, updateDrawingSummary, getStorageWarning, getStorageErrorMessage,
   formatBytes, formatDate, setMetadataValue, mapTextItem, metadataLabel, fieldLabel,
   getNormalizedPoint, normalizeRect, getDefaultBalloonPosition, cropCanvasArea, clamp,
+  parseDimension, findNearestTextDimension,
 } from "./lib/utils.js";
 import {
   getEmbeddedAutoBalloonCandidates, getOcrAutoBalloonCandidates, buildAutoBalloonCandidates,
@@ -839,6 +840,7 @@ export default function App() {
 
       if (mode === "balloon") {
         const position = getDefaultBalloonPosition(point, balloonSettings.leaderScale);
+        const dimensionSeed = findNearestTextDimension(point, textItems, canvasSize);
 
         const next = createCharacteristic({
           balloonNo: nextBalloonNo(characteristics),
@@ -847,6 +849,7 @@ export default function App() {
           targetX: point.x,
           targetY: point.y,
           page: pageNumber,
+          seed: dimensionSeed || {},
         });
         setCharacteristics((items) => [...items, next]);
         setSelectedId(next.id);
@@ -948,9 +951,24 @@ export default function App() {
   const endBalloonDrag = useCallback((event) => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    updatePosition(drag.id, event.clientX, event.clientY, drag.point);
     dragRef.current = null;
-  }, [updatePosition]);
+
+    const rect = overlayRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+    const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+
+    if (drag.point === "target") {
+      const detected = findNearestTextDimension({ x, y }, textItems, canvasSize);
+      updateCharacteristic(drag.id, {
+        targetX: x,
+        targetY: y,
+        ...(detected?.nominal ? { nominal: detected.nominal } : {}),
+      });
+    } else {
+      updateCharacteristic(drag.id, { x, y });
+    }
+  }, [canvasSize, textItems, updateCharacteristic]);
 
   const beginPan = useCallback((event) => {
     if (mode !== "pan" || !scrollRef.current) return;
@@ -1188,6 +1206,7 @@ export default function App() {
         targetX: candidate.targetX,
         targetY: candidate.targetY,
         page: pageNumber,
+        seed: parseDimension(candidate.label) || {},
       }),
     );
 

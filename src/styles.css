@@ -1643,6 +1643,25 @@ textarea:focus {
   grid-column: span 2;
 }
 
+.tolerance-split {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tolerance-sign {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.tolerance-half {
+  flex: 1;
+  min-width: 0;
+}
+
 .sample-stack {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
