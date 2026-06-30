@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react";
-import { X, HelpCircle, Plus, FilePlus2, Circle, Trash2 } from "lucide-react";
+import { X, HelpCircle, Plus, FilePlus2, Circle, Trash2, RotateCcw } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
 import { methods, types, APP_VERSION } from "../lib/constants.js";
 import { formatBytes, formatDate } from "../lib/utils.js";
@@ -286,6 +286,7 @@ export function MeasurementWorkspace({
   onChange,
   onSampleChange,
   onSampleCountChange,
+  balloonDiameter = 24,
 }) {
   return (
     <main className="measurement-area">
@@ -323,6 +324,7 @@ export function MeasurementWorkspace({
                 selectedId={selectedId}
                 width={canvasSize.width}
                 height={canvasSize.height}
+                balloonDiameter={balloonDiameter}
               />
               {currentPageBalloons.map((item) => (
                 <button
@@ -600,6 +602,174 @@ export function CharacteristicTable({
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+export function SettingsDialog({ open, settings, onClose, onChange }) {
+  if (!open) return null;
+
+  const defaults = { diameter: 24, fontSize: 11, leaderScale: 1 };
+
+  function set(key, value) {
+    onChange({ ...settings, [key]: value });
+  }
+
+  function resetOne(key) {
+    onChange({ ...settings, [key]: defaults[key] });
+  }
+
+  function resetAll() {
+    onChange({ ...defaults });
+  }
+
+  const leaderLineWidth = Math.round(40 + (settings.leaderScale - 1) * 28);
+
+  return (
+    <div
+      className="dialog-backdrop help-backdrop"
+      role="presentation"
+      onMouseDown={onClose}
+    >
+      <section
+        className="settings-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="dialog-title help-title">
+          <div>
+            <h2 id="settings-title">Balloon Settings</h2>
+            <p>Customize balloon appearance. Saved automatically.</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close settings">
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="settings-body">
+          {/* Balloon Diameter */}
+          <div className="settings-row">
+            <div className="settings-row-header">
+              <label htmlFor="setting-diameter">Balloon diameter</label>
+              <button
+                type="button"
+                className="settings-reset-btn"
+                onClick={() => resetOne("diameter")}
+                title="Reset to default"
+                aria-label="Reset balloon diameter"
+              >
+                <RotateCcw size={10} style={{ marginRight: 3, verticalAlign: "middle" }} />
+                Reset
+              </button>
+            </div>
+            <p className="settings-row-desc">Size of the circle balloon in pixels. Default: 24 px.</p>
+            <div className="settings-row-controls">
+              <input
+                id="setting-diameter"
+                type="range"
+                min={16}
+                max={48}
+                step={1}
+                value={settings.diameter}
+                onChange={(e) => set("diameter", Number(e.target.value))}
+              />
+              <span className="settings-value">{settings.diameter} px</span>
+            </div>
+          </div>
+
+          {/* Font Size */}
+          <div className="settings-row">
+            <div className="settings-row-header">
+              <label htmlFor="setting-fontsize">Number font size</label>
+              <button
+                type="button"
+                className="settings-reset-btn"
+                onClick={() => resetOne("fontSize")}
+                title="Reset to default"
+                aria-label="Reset font size"
+              >
+                <RotateCcw size={10} style={{ marginRight: 3, verticalAlign: "middle" }} />
+                Reset
+              </button>
+            </div>
+            <p className="settings-row-desc">Font size of the balloon number. Default: 11 px.</p>
+            <div className="settings-row-controls">
+              <input
+                id="setting-fontsize"
+                type="range"
+                min={8}
+                max={18}
+                step={1}
+                value={settings.fontSize}
+                onChange={(e) => set("fontSize", Number(e.target.value))}
+              />
+              <span className="settings-value">{settings.fontSize} px</span>
+            </div>
+          </div>
+
+          {/* Leader Length */}
+          <div className="settings-row">
+            <div className="settings-row-header">
+              <label htmlFor="setting-leader">Leader length</label>
+              <button
+                type="button"
+                className="settings-reset-btn"
+                onClick={() => resetOne("leaderScale")}
+                title="Reset to default"
+                aria-label="Reset leader length"
+              >
+                <RotateCcw size={10} style={{ marginRight: 3, verticalAlign: "middle" }} />
+                Reset
+              </button>
+            </div>
+            <p className="settings-row-desc">Default leader line length when placing a balloon. Default: 1×.</p>
+            <div className="settings-row-controls">
+              <input
+                id="setting-leader"
+                type="range"
+                min={0.25}
+                max={3}
+                step={0.25}
+                value={settings.leaderScale}
+                onChange={(e) => set("leaderScale", Number(e.target.value))}
+              />
+              <span className="settings-value">{settings.leaderScale}×</span>
+            </div>
+          </div>
+
+          {/* Live Preview */}
+          <div className="settings-preview-section">
+            <span className="settings-preview-label">Preview</span>
+            <div className="settings-preview-area">
+              <div
+                className="settings-preview-leader"
+                style={{ right: settings.diameter / 2, width: leaderLineWidth }}
+              />
+              <div
+                className="settings-preview-balloon"
+                style={{
+                  width: settings.diameter,
+                  height: settings.diameter,
+                  fontSize: settings.fontSize,
+                }}
+              >
+                1
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="settings-footer">
+          <button type="button" className="settings-reset-all" onClick={resetAll}>
+            Reset all to defaults
+          </button>
+          <button type="button" className="settings-close-btn" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
