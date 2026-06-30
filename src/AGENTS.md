@@ -13,6 +13,7 @@ QC Assistant is an engineering drawing ballooning and FAI inspection report buil
 
 Primary goals when editing:
 
+- before any code or documentation edit, follow the mandatory GitHub issue loop in `../WORKFLOW.md`
 - keep inspection math in `exporters.js` correct and pure
 - keep all application state in `App.jsx` unless a refactor is explicitly requested
 - do not break the balloon placement → measurement entry → export workflow

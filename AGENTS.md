@@ -25,10 +25,19 @@ Default response shape for meaningful work:
 
 - Product: `QC Assistant`
 - Main implementation root: `src/`
-- Issue tracker: none yet
+- Issue tracker: GitHub repo `Apillis-MFG/QC-Assistant`, Project `QC-Assistant`
 - Active spec: `SPEC.md`
 - Design system: `DESIGN.md`
 - Workflow: `WORKFLOW.md`
+
+## Mandatory Preflight Reading
+
+Before taking any implementation, debugging, review, refactor, documentation, or state-changing tool action, read these project-local instructions first:
+
+1. `karpathy-guidelines/SKILL.md` — behavioral guardrails for simple, surgical, verified work.
+2. `WORKFLOW.md` — mandatory GitHub issue/project loop and verification contract.
+
+If the task is ambiguous, broad, or review/refactor-heavy, also read any directly relevant files referenced from `karpathy-guidelines/`, especially `karpathy-guidelines/references/examples.md`.
 
 ## Product Truth
 
@@ -140,6 +149,8 @@ When changing characteristic data shape:
 - Update `exporters.js` and the Excel column layout if new fields are exported.
 
 ## Design And Spec Workflow
+
+Before any feature, update, fix, refactor, or documentation change, follow the mandatory GitHub issue loop in `WORKFLOW.md`: identify or create the issue, add it to the GitHub Project, move it to `In Progress`, keep scope aligned with the issue, then document verification and move it to `In Review` after implementation.
 
 Use `DESIGN.md` for visual system, component behavior, interaction rules, and trust boundaries.
 
