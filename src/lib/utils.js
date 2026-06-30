@@ -159,12 +159,12 @@ export function normalizeRect(startX, startY, endX, endY) {
   };
 }
 
-export function getDefaultBalloonPosition(target) {
+export function getDefaultBalloonPosition(target, leaderScale = 1) {
   const xDirection = target.x > 1 - BALLOON_MARGIN - BALLOON_OFFSET.x ? -1 : 1;
   const yDirection = target.y < BALLOON_MARGIN + Math.abs(BALLOON_OFFSET.y) ? 1 : -1;
   return {
-    x: clamp(target.x + BALLOON_OFFSET.x * xDirection, BALLOON_MARGIN, 1 - BALLOON_MARGIN),
-    y: clamp(target.y + Math.abs(BALLOON_OFFSET.y) * yDirection, BALLOON_MARGIN, 1 - BALLOON_MARGIN),
+    x: clamp(target.x + BALLOON_OFFSET.x * leaderScale * xDirection, BALLOON_MARGIN, 1 - BALLOON_MARGIN),
+    y: clamp(target.y + Math.abs(BALLOON_OFFSET.y) * leaderScale * yDirection, BALLOON_MARGIN, 1 - BALLOON_MARGIN),
   };
 }
 

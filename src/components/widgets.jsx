@@ -1,7 +1,6 @@
 import { X, FilePlus2, ZoomIn, ZoomOut, Upload } from "lucide-react";
 
-function getLeaderLine({ x, y, targetX, targetY }) {
-  const radius = 13;
+function getLeaderLine({ x, y, targetX, targetY, radius = 13 }) {
   const targetGap = 3;
   const dx = targetX - x;
   const dy = targetY - y;
@@ -95,8 +94,9 @@ export function TextLayer({ active, items, onCapture }) {
   );
 }
 
-export function LeaderLayer({ balloons, selectedId, width, height }) {
+export function LeaderLayer({ balloons, selectedId, width, height, balloonDiameter = 24 }) {
   if (!width || !height) return null;
+  const radius = Math.round(balloonDiameter / 2) + 1;
   return (
     <svg className="leader-layer" viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
       {balloons.map((item) => {
@@ -108,6 +108,7 @@ export function LeaderLayer({ balloons, selectedId, width, height }) {
           y: item.y * height,
           targetX: targetX * width,
           targetY: targetY * height,
+          radius,
         });
         return (
           <line

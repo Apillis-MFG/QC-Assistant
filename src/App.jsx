@@ -11,6 +11,7 @@ import {
   Plus,
   Save,
   ScanSearch,
+  Settings,
   Table2,
   TextSelect,
   Trash2,
@@ -61,8 +62,11 @@ import {
   AutoBalloonPreview, AutoBalloonReview, DrawingNavToolbar, PdfUploadPrompt,
 } from "./components/widgets.jsx";
 import {
-  ProjectDashboard, HelpDialog, MeasurementWorkspace, BalloonEditor, CharacteristicTable,
+  ProjectDashboard, HelpDialog, MeasurementWorkspace, BalloonEditor, CharacteristicTable, SettingsDialog,
 } from "./components/panels.jsx";
+import {
+  loadBalloonSettings, saveBalloonSettings,
+} from "./lib/balloonSettings.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -149,6 +153,8 @@ export default function App() {
   const [autoBalloonCandidates, setAutoBalloonCandidates] = useState([]);
   const [autoBalloonReviewOpen, setAutoBalloonReviewOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [balloonSettings, setBalloonSettings] = useState(loadBalloonSettings);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [layoutMode, setLayoutMode] = useState("split-v");
   const [panelSizes, setPanelSizes] = useState(loadPanelSizes);
@@ -474,6 +480,11 @@ export default function App() {
 
       const key = event.key.toLowerCase();
       if (key === "escape") {
+        if (settingsOpen) {
+          event.preventDefault();
+          setSettingsOpen(false);
+          return;
+        }
         if (helpOpen || editingBalloonId || ocrRect || autoBalloonRect || autoBalloonReviewOpen || pendingTarget) {
           event.preventDefault();
           setHelpOpen(false);
@@ -486,7 +497,7 @@ export default function App() {
         }
         return;
       }
-      if (helpOpen) return;
+      if (helpOpen || settingsOpen) return;
       if (workspaceMode === "measurement") return;
 
       const shortcutModes = {
@@ -511,7 +522,7 @@ export default function App() {
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [autoBalloonRect, autoBalloonReviewOpen, editingBalloonId, helpOpen, ocrRect, pageNumber, pendingTarget, selected, switchMode, workspaceMode]);
+  }, [autoBalloonRect, autoBalloonReviewOpen, editingBalloonId, helpOpen, settingsOpen, ocrRect, pageNumber, pendingTarget, selected, switchMode, workspaceMode]);
 
   const persistActiveDrawing = useCallback(async (reason = "auto") => {
     if (!projectsReady || !activeProject?.id || !activeDrawingId) return;
@@ -634,6 +645,12 @@ export default function App() {
       // panel sizing is a convenience; do not block the inspection workflow
     }
   }, [panelSizes]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--balloon-size", `${balloonSettings.diameter}px`);
+    document.documentElement.style.setProperty("--balloon-font-size", `${balloonSettings.fontSize}px`);
+    saveBalloonSettings(balloonSettings);
+  }, [balloonSettings]);
 
   const getContentMetrics = useCallback(() => {
     const element = contentAreaRef.current;
@@ -821,7 +838,7 @@ export default function App() {
       const point = getNormalizedPoint(event, overlayRef.current);
 
       if (mode === "balloon") {
-        const position = getDefaultBalloonPosition(point);
+        const position = getDefaultBalloonPosition(point, balloonSettings.leaderScale);
 
         const next = createCharacteristic({
           balloonNo: nextBalloonNo(characteristics),
@@ -1461,6 +1478,9 @@ export default function App() {
               <button className="icon-button brand-help" onClick={() => setHelpOpen(true)} title="Help and shortcuts" aria-label="Help and shortcuts">
                 <HelpCircle size={17} />
               </button>
+              <button className="icon-button brand-help" onClick={() => setSettingsOpen(true)} title="Balloon settings" aria-label="Balloon settings">
+                <Settings size={17} />
+              </button>
             </div>
             <p>Drawing ballooning and inspection report builder</p>
           </div>
@@ -1612,6 +1632,7 @@ export default function App() {
           onChange={updateCharacteristic}
           onSampleChange={updateSample}
           onSampleCountChange={setSampleCount}
+          balloonDiameter={balloonSettings.diameter}
         />
       ) : (
       <div ref={contentAreaRef} className="content-area" style={contentAreaStyle}>
@@ -1686,6 +1707,7 @@ export default function App() {
                   selectedId={selectedId}
                   width={canvasSize.width}
                   height={canvasSize.height}
+                  balloonDiameter={balloonSettings.diameter}
                 />
                 {ocrRect ? (
                   <div
@@ -1919,6 +1941,12 @@ export default function App() {
       </div>
       )}
       <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <SettingsDialog
+        open={settingsOpen}
+        settings={balloonSettings}
+        onClose={() => setSettingsOpen(false)}
+        onChange={setBalloonSettings}
+      />
     </div>
   );
 }

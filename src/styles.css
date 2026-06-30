@@ -35,6 +35,8 @@
   --paper: #ffffff;
   --grid-line: #eef2f7;
   --shadow: 0 12px 34px rgba(17, 24, 39, 0.08);
+  --balloon-size: 24px;
+  --balloon-font-size: 11px;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -1472,15 +1474,15 @@ textarea:focus {
   position: absolute;
   z-index: 3;
   transform: translate(-50%, -50%);
-  width: 24px;
-  height: 24px;
+  width: var(--balloon-size);
+  height: var(--balloon-size);
   border: 2px solid var(--accent);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.86);
   color: var(--accent);
   display: grid;
   place-items: center;
-  font-size: 11px;
+  font-size: var(--balloon-font-size);
   font-weight: 800;
   padding: 0;
   touch-action: none;
@@ -2083,4 +2085,173 @@ td select:focus {
     grid-template-columns: 1fr;
   }
 
+}
+
+/* ── Settings Dialog ─────────────────────────────────────────── */
+
+.settings-dialog {
+  background: var(--panel);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-row-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.settings-row-header label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.settings-row-desc {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.settings-row-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-row-controls input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.settings-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 36px;
+  text-align: right;
+}
+
+.settings-reset-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.settings-reset-btn:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.settings-preview-section {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-preview-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.settings-preview-area {
+  position: relative;
+  width: 120px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.settings-preview-leader {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  right: 0;
+  height: 1.5px;
+  background: var(--accent);
+  transform: translateY(-50%);
+  transform-origin: right center;
+}
+
+.settings-preview-balloon {
+  position: relative;
+  z-index: 1;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.86);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+}
+
+.settings-reset-all {
+  font-size: 12px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.settings-reset-all:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.settings-close-btn {
+  font-size: 12px;
+  padding: 5px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.settings-close-btn:hover {
+  background: var(--accent-dark);
 }
