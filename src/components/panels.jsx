@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import { X, HelpCircle, Plus, FilePlus2, Circle, Trash2 } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
-import { methods, types, APP_VERSION } from "../lib/constants.js";
+import { methods, types, TYPE_DEFAULT_METHOD, APP_VERSION } from "../lib/constants.js";
 import { formatBytes, formatDate } from "../lib/utils.js";
 import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer } from "./widgets.jsx";
 
@@ -383,7 +383,13 @@ export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampl
       </label>
       <label>
         Type
-        <select value={item.type} onChange={(event) => onChange({ type: event.target.value })}>
+        <select
+          value={item.type}
+          onChange={(event) => {
+            const type = event.target.value;
+            onChange({ type, method: TYPE_DEFAULT_METHOD[type] ?? item.method });
+          }}
+        >
           {types.map((type) => <option key={type} value={type}>{type}</option>)}
         </select>
       </label>
@@ -458,7 +464,14 @@ const CharacteristicRow = memo(function CharacteristicRow({
         </td>
       )}
       <td>
-        <select value={item.type} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { type: event.target.value })}>
+        <select
+          value={item.type}
+          disabled={readOnly}
+          onChange={readOnly ? undefined : (event) => {
+            const type = event.target.value;
+            onChange(item.id, { type, method: TYPE_DEFAULT_METHOD[type] ?? item.method });
+          }}
+        >
           {types.map((type) => <option key={type} value={type}>{type}</option>)}
         </select>
       </td>
@@ -515,14 +528,9 @@ export function CharacteristicTable({
   onSampleChange,
   onDelete,
 }) {
-  const sortKey = useMemo(
-    () => characteristics.map((c) => `${c.id}:${c.balloonNo}`).join(","),
-    [characteristics],
-  );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const sorted = useMemo(
     () => characteristics.slice().sort((a, b) => a.balloonNo - b.balloonNo),
-    [sortKey],
+    [characteristics],
   );
 
   if (readOnly && !activeDrawingId) {
