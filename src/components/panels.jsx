@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import { X, HelpCircle, Plus, FilePlus2, Circle, Trash2 } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
-import { methods, types, TYPE_DEFAULT_METHOD, APP_VERSION } from "../lib/constants.js";
+import { methods, types, APP_VERSION } from "../lib/constants.js";
 import { formatBytes, formatDate } from "../lib/utils.js";
 import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer } from "./widgets.jsx";
 
@@ -16,6 +16,11 @@ export function HelpDialog({ open, onClose }) {
     ["T", "Text Select / OCR"],
     ["E", "Edit selected balloon actions"],
     ["Esc", "Close help, cancel selection UI"],
+  ];
+
+  const releaseNotes031 = [
+    "Changing a balloon type from the table now keeps the selected-balloon editor in sync with the same requirement.",
+    "Type changes now update the inspection method through one shared rule, so the table and right sidebar stay consistent.",
   ];
 
   const releaseNotes030 = [
@@ -107,8 +112,16 @@ export function HelpDialog({ open, onClose }) {
           <details className="help-section version-history">
             <summary>
               <span>Version History</span>
-              <strong>v0.3.0</strong>
+              <strong>v0.3.1</strong>
             </summary>
+            <div className="release-note">
+              <h3>v0.3.1</h3>
+              <ul>
+                {releaseNotes031.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
             <div className="release-note">
               <h3>v0.3.0</h3>
               <ul>
@@ -387,7 +400,7 @@ export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampl
           value={item.type}
           onChange={(event) => {
             const type = event.target.value;
-            onChange({ type, method: TYPE_DEFAULT_METHOD[type] ?? item.method });
+            onChange({ type });
           }}
         >
           {types.map((type) => <option key={type} value={type}>{type}</option>)}
@@ -469,7 +482,7 @@ const CharacteristicRow = memo(function CharacteristicRow({
           disabled={readOnly}
           onChange={readOnly ? undefined : (event) => {
             const type = event.target.value;
-            onChange(item.id, { type, method: TYPE_DEFAULT_METHOD[type] ?? item.method });
+            onChange(item.id, { type });
           }}
         >
           {types.map((type) => <option key={type} value={type}>{type}</option>)}
