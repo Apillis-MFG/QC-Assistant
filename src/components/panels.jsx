@@ -18,6 +18,10 @@ export function HelpDialog({ open, onClose }) {
     ["Esc", "Close help, cancel selection UI"],
   ];
 
+  const releaseNotes040 = [
+    "Added settings to customize balloon appearance and behavior so engineers can tune the marker style to match their drawing workflow.",
+  ];
+
   const releaseNotes031 = [
     "Changing a balloon type from the table now keeps the selected-balloon editor in sync with the same requirement.",
     "Type changes now update the inspection method through one shared rule, so the table and right sidebar stay consistent.",
@@ -112,8 +116,16 @@ export function HelpDialog({ open, onClose }) {
           <details className="help-section version-history">
             <summary>
               <span>Version History</span>
-              <strong>v0.3.1</strong>
+              <strong>v0.4.0</strong>
             </summary>
+            <div className="release-note">
+              <h3>v0.4.0</h3>
+              <ul>
+                {releaseNotes040.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
             <div className="release-note">
               <h3>v0.3.1</h3>
               <ul>
