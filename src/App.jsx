@@ -9,6 +9,7 @@ import {
   MousePointer2,
   PanelLeft,
   Plus,
+  Ruler,
   Save,
   ScanSearch,
   Settings,
@@ -46,13 +47,13 @@ import {
   AUTO_BALLOON_EDGE_OFFSET, AUTO_BALLOON_LEADER_RATIO,
   AUTO_BALLOON_MIN_SPACING, AUTO_BALLOON_MIN_CONFIDENCE,
   AUTO_BALLOON_MAX_LABEL_LENGTH, DRAWING_NUMBER_PATTERN,
-  defaultPanelSizes, emptyMetadata,
+  defaultPanelSizes, emptyMetadata, emptyToleranceOverrides,
 } from "./lib/constants.js";
 import {
   buildDrawingSnapshot, updateDrawingSummary, getStorageWarning, getStorageErrorMessage,
   formatBytes, formatDate, setMetadataValue, mapTextItem, metadataLabel, fieldLabel,
   getNormalizedPoint, normalizeRect, getDefaultBalloonPosition, cropCanvasArea, clamp,
-  parseDimension, findNearestTextDimension, findDimensionAtPoint,
+  parseDimension, findNearestTextDimension, findDimensionAtPoint, getTextItemBounds,
 } from "./lib/utils.js";
 import {
   getEmbeddedAutoBalloonCandidates, getOcrAutoBalloonCandidates, buildAutoBalloonCandidates,
@@ -65,12 +66,13 @@ import {
 } from "./components/widgets.jsx";
 import {
   ProjectDashboard, HelpDialog, MeasurementWorkspace, BalloonEditor, CharacteristicTable, SettingsDialog,
+  ToleranceTableDialog,
 } from "./components/panels.jsx";
 import {
   loadBalloonSettings, saveBalloonSettings,
 } from "./lib/balloonSettings.js";
 import {
-  parseGeneralTolerances, applyGeneralTolerance,
+  parseGeneralTolerances, parseAngleTolerances, applyGeneralTolerance, getDecimalPlaces,
 } from "./lib/dimensionExtractor.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -136,6 +138,7 @@ export default function App() {
   const [projectDialog, setProjectDialog] = useState({ open: false, mode: "create", projectId: null, name: "" });
   const [saveState, setSaveState] = useState({ status: "idle", label: "local: not saved" });
   const [metadata, setMetadata] = useState(emptyMetadata);
+  const [toleranceOverrides, setToleranceOverrides] = useState(emptyToleranceOverrides);
   const [sampleCount, setSampleCount] = useState(5);
   const [pdfBytes, setPdfBytes] = useState(null);
   const [pdfName, setPdfName] = useState("");
@@ -159,6 +162,7 @@ export default function App() {
   const [autoBalloonReviewOpen, setAutoBalloonReviewOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [toleranceTableOpen, setToleranceTableOpen] = useState(false);
   const [balloonSettings, setBalloonSettings] = useState(loadBalloonSettings);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [layoutMode, setLayoutMode] = useState("split-v");
@@ -208,6 +212,14 @@ export default function App() {
   // Keyed by decimal-place count: { 1: "±0.1", 2: "±0.05", 3: "±0.005" }
   // Derived from whatever text the current page exposes (title block, notes, etc.)
   const generalTolerances = useMemo(() => parseGeneralTolerances(textItems), [textItems]);
+  const autoAngleTolerances = useMemo(() => parseAngleTolerances(textItems), [textItems]);
+
+  // Auto-detected tables above, with any per-drawing manual overrides layered on top.
+  // This is the table the rest of the app should consult (auto-fill + bulk-apply UI).
+  const resolvedTolerances = useMemo(() => ({
+    linear: { ...generalTolerances, ...toleranceOverrides.linear },
+    angle: { ...autoAngleTolerances, ...toleranceOverrides.angle },
+  }), [generalTolerances, autoAngleTolerances, toleranceOverrides]);
 
   // All text items on the current page that parse as dimensions, with tolerance resolved.
   // Used to render highlight boxes in balloon mode and for accurate click-to-value snapping.
@@ -217,14 +229,15 @@ export default function App() {
       .map((item) => {
         const parsed = parseDimension(item.text);
         if (!parsed?.nominal) return null;
-        const tolerance = applyGeneralTolerance(parsed.nominal, parsed.tolerance, generalTolerances);
+        const tolerance = applyGeneralTolerance(parsed.nominal, parsed.tolerance, resolvedTolerances.linear);
         // Keep only items that look like real dimensions: decimal point or resolvable tolerance.
         // Pure integers with no tolerance are likely drawing numbers or quantities.
         if (!tolerance && !/\./.test(parsed.nominal)) return null;
-        return { ...item, nominal: parsed.nominal, tolerance };
+        const bounds = getTextItemBounds(item);
+        return { ...item, ...bounds, nominal: parsed.nominal, tolerance };
       })
       .filter(Boolean);
-  }, [textItems, canvasSize, generalTolerances]);
+  }, [textItems, canvasSize, resolvedTolerances]);
 
   useEffect(() => {
     drawingsRef.current = drawings;
@@ -250,6 +263,7 @@ export default function App() {
 
   const resetDrawingState = useCallback((nextMessage = "Upload a drawing PDF to begin.") => {
     setMetadata(emptyMetadata);
+    setToleranceOverrides(emptyToleranceOverrides);
     setSampleCount(5);
     setPdfBytes(null);
     setPdfName("");
@@ -307,6 +321,10 @@ export default function App() {
 
       setActiveDrawingId(drawing.id);
       setMetadata({ ...emptyMetadata, ...drawing.metadata });
+      setToleranceOverrides({
+        linear: { ...emptyToleranceOverrides.linear, ...drawing.toleranceOverrides?.linear },
+        angle: { ...emptyToleranceOverrides.angle, ...drawing.toleranceOverrides?.angle },
+      });
       setSampleCount(drawing.sampleCount || 5);
       setPdfBytes(drawing.pdfBytes || null);
       setPdfName(drawing.pdfName || "");
@@ -506,9 +524,10 @@ export default function App() {
 
       const key = event.key.toLowerCase();
       if (key === "escape") {
-        if (settingsOpen) {
+        if (settingsOpen || toleranceTableOpen) {
           event.preventDefault();
           setSettingsOpen(false);
+          setToleranceTableOpen(false);
           return;
         }
         if (helpOpen || editingBalloonId || ocrRect || autoBalloonRect || autoBalloonReviewOpen || pendingTarget) {
@@ -523,7 +542,7 @@ export default function App() {
         }
         return;
       }
-      if (helpOpen || settingsOpen) return;
+      if (helpOpen || settingsOpen || toleranceTableOpen) return;
       if (workspaceMode === "measurement") return;
 
       const shortcutModes = {
@@ -548,7 +567,7 @@ export default function App() {
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [autoBalloonRect, autoBalloonReviewOpen, editingBalloonId, helpOpen, settingsOpen, ocrRect, pageNumber, pendingTarget, selected, switchMode, workspaceMode]);
+  }, [autoBalloonRect, autoBalloonReviewOpen, editingBalloonId, helpOpen, settingsOpen, toleranceTableOpen, ocrRect, pageNumber, pendingTarget, selected, switchMode, workspaceMode]);
 
   const persistActiveDrawing = useCallback(async (reason = "auto") => {
     if (!projectsReady || !activeProject?.id || !activeDrawingId) return;
@@ -565,6 +584,7 @@ export default function App() {
       activeDrawingId,
       activeProjectId: activeProject.id,
       metadata,
+      toleranceOverrides,
       sampleCount,
       pdfBytes,
       pdfName,
@@ -609,6 +629,7 @@ export default function App() {
     activeProject?.name,
     characteristics,
     metadata,
+    toleranceOverrides,
     pageCount,
     pageNumber,
     pdfBytes,
@@ -826,6 +847,7 @@ export default function App() {
       setDrawings((items) => updateDrawingSummary(items, savedDrawing));
       setActiveDrawingId(savedDrawing.id);
       setMetadata(drawing.metadata);
+      setToleranceOverrides(emptyToleranceOverrides);
       setSampleCount(5);
       setPdfBytes(bytes);
       setPdfName(file.name);
@@ -880,7 +902,7 @@ export default function App() {
           : (() => {
               const dim = findNearestTextDimension(point, textItems, canvasSize);
               return dim
-                ? { ...dim, tolerance: applyGeneralTolerance(dim.nominal, dim.tolerance, generalTolerances) }
+                ? { ...dim, tolerance: applyGeneralTolerance(dim.nominal, dim.tolerance, resolvedTolerances.linear) }
                 : {};
             })();
 
@@ -927,6 +949,48 @@ export default function App() {
         return { ...item, ...nextPatch };
       }),
     );
+  }, []);
+
+  const isAngleUnit = useCallback((unit) => /°|deg/i.test(String(unit || "").trim()), []);
+
+  // Live count of dimension rows a given tolerance-table bucket would fill in
+  // (blank tolerance, matching decimal-place count and linear/angle kind).
+  const countToleranceMatches = useCallback((kind, places) => {
+    return characteristics.filter((item) =>
+      item.type === "dimension" &&
+      !item.tolerance &&
+      isAngleUnit(item.unit) === (kind === "angle") &&
+      getDecimalPlaces(item.nominal) === places,
+    ).length;
+  }, [characteristics, isAngleUnit]);
+
+  // Fills the tolerance on every matching-but-blank dimension. Never overwrites
+  // an existing tolerance, so it's safe to run repeatedly without confirmation.
+  const applyToleranceToMatching = useCallback((kind, places, value) => {
+    if (!value) return;
+    setCharacteristics((items) =>
+      items.map((item) => {
+        if (item.type !== "dimension" || item.tolerance) return item;
+        if (isAngleUnit(item.unit) !== (kind === "angle")) return item;
+        if (getDecimalPlaces(item.nominal) !== places) return item;
+        return { ...item, tolerance: value };
+      }),
+    );
+  }, [isAngleUnit]);
+
+  const applyToleranceOverride = useCallback((kind, places, value) => {
+    setToleranceOverrides((current) => ({
+      ...current,
+      [kind]: { ...current[kind], [places]: value },
+    }));
+  }, []);
+
+  const resetToleranceOverride = useCallback((kind, places) => {
+    setToleranceOverrides((current) => {
+      const next = { ...current[kind] };
+      delete next[places];
+      return { ...current, [kind]: next };
+    });
   }, []);
 
   const reassignBalloonNo = useCallback((id, rawValue) => {
@@ -1004,7 +1068,7 @@ export default function App() {
     if (drag.point === "target") {
       const detected = findNearestTextDimension({ x, y }, textItems, canvasSize);
       if (detected?.nominal) {
-        const resolvedTol = applyGeneralTolerance(detected.nominal, detected.tolerance, generalTolerances);
+        const resolvedTol = applyGeneralTolerance(detected.nominal, detected.tolerance, resolvedTolerances.linear);
         updateCharacteristic(drag.id, {
           targetX: x,
           targetY: y,
@@ -1017,7 +1081,7 @@ export default function App() {
     } else {
       updateCharacteristic(drag.id, { x, y });
     }
-  }, [canvasSize, generalTolerances, textItems, updateCharacteristic]);
+  }, [canvasSize, resolvedTolerances, textItems, updateCharacteristic]);
 
   const beginPan = useCallback((event) => {
     if (mode !== "pan" || !scrollRef.current) return;
@@ -1260,7 +1324,7 @@ export default function App() {
           if (!parsed) return {};
           return {
             ...parsed,
-            tolerance: applyGeneralTolerance(parsed.nominal, parsed.tolerance, generalTolerances),
+            tolerance: applyGeneralTolerance(parsed.nominal, parsed.tolerance, resolvedTolerances.linear),
           };
         })(),
       }),
@@ -1273,7 +1337,7 @@ export default function App() {
     setAutoBalloonCandidates([]);
     setAutoBalloonReviewOpen(false);
     setMessage(`Added ${rows.length} reviewed balloon${rows.length === 1 ? "" : "s"}. Drag any balloon or target to refine placement.`);
-  }, [autoBalloonCandidates, characteristics, generalTolerances, pageNumber]);
+  }, [autoBalloonCandidates, characteristics, resolvedTolerances, pageNumber]);
 
   const loadDemoRows = useCallback(() => {
     const positions = [
@@ -1325,6 +1389,7 @@ export default function App() {
 
   const clearDrawingData = useCallback(() => {
     setMetadata(emptyMetadata);
+    setToleranceOverrides(emptyToleranceOverrides);
     setSampleCount(5);
     setCharacteristics([]);
     setSelectedId(null);
@@ -1562,12 +1627,14 @@ export default function App() {
             <div className="brand-title-row">
               <h1>QC Assistant</h1>
               <span className="version-badge">{APP_VERSION}</span>
-              <button className="icon-button brand-help" onClick={() => setHelpOpen(true)} title="Help and shortcuts" aria-label="Help and shortcuts">
-                <HelpCircle size={17} />
-              </button>
-              <button className="icon-button brand-help" onClick={() => setSettingsOpen(true)} title="Balloon settings" aria-label="Balloon settings">
-                <Settings size={17} />
-              </button>
+              <div className="brand-actions">
+                <button className="icon-button brand-help" onClick={() => setHelpOpen(true)} title="Help and shortcuts" aria-label="Help and shortcuts">
+                  <HelpCircle size={17} />
+                </button>
+                <button className="icon-button brand-help" onClick={() => setSettingsOpen(true)} title="Balloon settings" aria-label="Balloon settings">
+                  <Settings size={17} />
+                </button>
+              </div>
             </div>
             <p>Drawing ballooning and inspection report builder</p>
           </div>
@@ -1576,7 +1643,6 @@ export default function App() {
         <div className="metadata-grid">
           <Field label="Drawing No" value={metadata.drawingNo} onChange={(value) => setMetadataValue(setMetadata, "drawingNo", value)} />
           <Field label="Rev" value={metadata.revision} onChange={(value) => setMetadataValue(setMetadata, "revision", value)} compact />
-          <Field label="Supplier" value={metadata.supplier} onChange={(value) => setMetadataValue(setMetadata, "supplier", value)} />
           <Field label="Description" value={metadata.description} onChange={(value) => setMetadataValue(setMetadata, "description", value)} wide />
         </div>
 
@@ -1620,6 +1686,9 @@ export default function App() {
               <span className={`save-state ${saveState.status}`} title={`${formatBytes(projectStorageBytes)} in this project`}>
                 {saveState.label}
               </span>
+              <button className="icon-button" onClick={() => setToleranceTableOpen(true)} title="Tolerance table" aria-label="Tolerance table">
+                <Ruler size={17} />
+              </button>
             </div>
           </div>
 
@@ -2046,6 +2115,16 @@ export default function App() {
         settings={balloonSettings}
         onClose={() => setSettingsOpen(false)}
         onChange={setBalloonSettings}
+      />
+      <ToleranceTableDialog
+        open={toleranceTableOpen}
+        onClose={() => setToleranceTableOpen(false)}
+        autoTolerances={{ linear: generalTolerances, angle: autoAngleTolerances }}
+        toleranceOverrides={toleranceOverrides}
+        onOverrideChange={applyToleranceOverride}
+        onResetOverride={resetToleranceOverride}
+        onApply={applyToleranceToMatching}
+        countMatches={countToleranceMatches}
       />
     </div>
   );

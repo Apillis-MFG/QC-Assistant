@@ -66,6 +66,45 @@ export function parseGeneralTolerances(textItems) {
 }
 
 /**
+ * Scan text items for ANGULAR general tolerance declarations, e.g.:
+ *   X° = ±.5°     (0 decimal places)
+ *   X.X° = ±.1°   (1 decimal place)
+ *
+ * Same shape as parseGeneralTolerances(): { 0: "±0.5", 1: "±0.1" }
+ * (values are stored without the trailing ° so they stay compatible with
+ * the shared tolerance-string format used elsewhere in the app).
+ *
+ * Kept separate from parseGeneralTolerances rather than merged into it: the
+ * trailing ° on the tolerance value is what disambiguates an angular
+ * declaration from a linear one, so the two patterns never need to compete
+ * against the same match.
+ */
+export function parseAngleTolerances(textItems) {
+  if (!Array.isArray(textItems) || !textItems.length) return {};
+
+  const result = {};
+  const sorted = [...textItems].sort((a, b) => (a.top - b.top) || (a.left - b.left));
+  const pageText = sorted.map((item) => item.text).join(" ");
+  const targets = [...textItems.map((item) => String(item.text || "")), pageText];
+
+  // "X° = ±.5°" / "X.X° = ±.1°" — the trailing ° on the tolerance side is
+  // required, so this never matches a plain linear pattern like "X.XX ±0.13".
+  const anglePattern =
+    /[Xx]+(?:\.([Xx]+))?\s*°\s*[:=]?\s*((?:[±]|\+\s*[/\\-]\s*)[\d.,]+)\s*°/gi;
+
+  for (const text of targets) {
+    let m;
+    while ((m = anglePattern.exec(text)) !== null) {
+      const places = m[1] ? m[1].length : 0;
+      const tol = normalizeTolStr(m[2]);
+      if (tol && result[places] === undefined) result[places] = tol;
+    }
+  }
+
+  return result;
+}
+
+/**
  * Return the tolerance to use for a dimension.
  * If the dimension already has an explicit tolerance, return it unchanged.
  * Otherwise look up the general tolerance table by decimal-place count.
@@ -88,12 +127,16 @@ export function applyGeneralTolerance(nominal, tolerance, generalTolerances) {
 
 function normalizeTolStr(raw) {
   const s = raw.replace(/\s+/g, "").replace(/,/g, ".");
-  if (s.startsWith("±")) return s;
+  let result;
+  if (s.startsWith("±")) result = s;
   // "+/-0.1" or "+\-0.1"
-  if (/^\+[/\\-]/.test(s)) return `±${s.slice(3)}`;
+  else if (/^\+[/\\-]/.test(s)) result = `±${s.slice(3)}`;
   // "+0.1"
-  if (s.startsWith("+")) return `±${s.slice(1)}`;
-  return s;
+  else if (s.startsWith("+")) result = `±${s.slice(1)}`;
+  else result = s;
+  // ".5" → "0.5" — title blocks sometimes omit the leading zero, but the
+  // characteristic tolerance-input UI expects at least one digit before the dot.
+  return result.replace(/(^|[^\d])\.(\d)/g, "$10.$2");
 }
 
 function wordToInt(word) {

@@ -208,6 +208,10 @@ function normalizeDrawing(projectId, drawing) {
     pdfByteLength: drawing.pdfByteLength || drawing.pdfBytes?.byteLength || 0,
     pageCount: drawing.pageCount || 0,
     metadata: drawing.metadata || {},
+    toleranceOverrides: {
+      linear: drawing.toleranceOverrides?.linear || {},
+      angle: drawing.toleranceOverrides?.angle || {},
+    },
     sampleCount: drawing.sampleCount || 5,
     characteristics: Array.isArray(drawing.characteristics) ? drawing.characteristics : [],
     pageNumber: drawing.pageNumber || 1,

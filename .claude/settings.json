@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npm run dev -- --port 5174 > /tmp/qc-dev.log 2>&1 & *)",
-      "Bash(pkill -f \"vite --host 127.0.0.1 --port 5174\")"
+      "Bash(pkill -f \"vite --host 127.0.0.1 --port 5174\")",
+      "Bash(node /private/tmp/claude-501/-Users-dantong-Projects-InActive-Apillis-QC-Assisttant-QC-Assistant/f2c4e155-c095-4bdd-8744-39d3baa419a6/scratchpad/verify-tolerances2.mjs)",
+      "Bash(node -e ' *)"
     ],
     "additionalDirectories": [
       "/tmp"

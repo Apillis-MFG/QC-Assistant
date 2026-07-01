@@ -398,19 +398,45 @@ export function MeasurementWorkspace({
 function parseToleranceParts(tolerance) {
   const text = String(tolerance || "").trim();
   if (!text) return { upper: "", lower: "" };
-  const asym = text.match(/^\+\s*(\d+(?:\.\d+)?)\s*\/\s*-\s*(\d+(?:\.\d+)?)$/);
-  if (asym) return { upper: asym[1], lower: asym[2] };
-  const sym = text.match(/^[±]?\s*(\d+(?:\.\d+)?)$/);
+  const asym = text.match(/^[+\s]*([+-]?\d+(?:\.\d*)?)\s*\/\s*[-\s]*([+-]?\d+(?:\.\d*)?)/);
+  if (asym) return { upper: normalizeToleranceHalf(asym[1]), lower: normalizeToleranceHalf(asym[2]) };
+  const sym = text.match(/^[±]\s*(\d+(?:\.\d*)?)$/);
   if (sym) return { upper: sym[1], lower: sym[1] };
-  return { upper: text, lower: "" };
+  const lowerOnly = text.match(/^-\s*(\d+(?:\.\d*)?)$/);
+  if (lowerOnly) return { upper: "", lower: normalizeToleranceHalf(lowerOnly[1]) };
+  const upperOnly = text.match(/^[+\s]*([+-]?\d+(?:\.\d*)?)/);
+  if (upperOnly) return { upper: normalizeToleranceHalf(upperOnly[1]), lower: "" };
+  return { upper: normalizeToleranceHalf(text), lower: "" };
+}
+
+function normalizeToleranceHalf(value) {
+  const text = String(value || "")
+    .replace(/−/g, "-")
+    .trim();
+  const numeric = text.match(/[+-]?\d+(?:\.\d*)?/);
+  return numeric ? numeric[0].replace(/^[+\-±]+/, "") : "";
 }
 
 function formatTolerance(upper, lower) {
-  const u = upper.trim();
-  const l = lower.trim();
+  const u = normalizeToleranceHalf(upper);
+  const l = normalizeToleranceHalf(lower);
   if (!u && !l) return "";
   if (u && l) return u === l ? `±${u}` : `+${u}/-${l}`;
   return u ? `+${u}` : `-${l}`;
+}
+
+function ToleranceHalfInput({ value, disabled, onChange, label }) {
+  return (
+    <input
+      className="tolerance-half"
+      value={value}
+      disabled={disabled}
+      onClick={(event) => event.stopPropagation()}
+      onChange={disabled ? undefined : (event) => onChange(event.target.value)}
+      placeholder="0.00"
+      aria-label={label}
+    />
+  );
 }
 
 function ToleranceInput({ value, onChange }) {
@@ -418,20 +444,16 @@ function ToleranceInput({ value, onChange }) {
   return (
     <div className="tolerance-split">
       <span className="tolerance-sign">+</span>
-      <input
-        className="tolerance-half"
+      <ToleranceHalfInput
         value={upper}
-        onChange={(e) => onChange(formatTolerance(e.target.value, lower))}
-        placeholder="0.5"
-        aria-label="Upper tolerance"
+        onChange={(nextUpper) => onChange(formatTolerance(nextUpper, lower))}
+        label="Upper tolerance"
       />
       <span className="tolerance-sign">−</span>
-      <input
-        className="tolerance-half"
+      <ToleranceHalfInput
         value={lower}
-        onChange={(e) => onChange(formatTolerance(upper, e.target.value))}
-        placeholder="0.2"
-        aria-label="Lower tolerance"
+        onChange={(nextLower) => onChange(formatTolerance(upper, nextLower))}
+        label="Lower tolerance"
       />
     </div>
   );
@@ -513,6 +535,7 @@ const CharacteristicRow = memo(function CharacteristicRow({
 }) {
   const { usl, lsl } = getLimits(item);
   const status = getStatus(item, sampleCount);
+  const toleranceParts = parseToleranceParts(item.tolerance);
   return (
     <tr
       className={selectedId === item.id ? "row-selected" : ""}
@@ -546,7 +569,22 @@ const CharacteristicRow = memo(function CharacteristicRow({
       </td>
       <td><input value={item.unit} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { unit: event.target.value })} /></td>
       <td><input value={item.nominal} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { nominal: event.target.value })} /></td>
-      <td><input value={item.tolerance} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { tolerance: event.target.value })} /></td>
+      <td>
+        <ToleranceHalfInput
+          value={toleranceParts.upper}
+          disabled={readOnly}
+          label={`Upper tolerance for balloon ${item.balloonNo}`}
+          onChange={(upper) => onChange(item.id, { tolerance: formatTolerance(upper, toleranceParts.lower) })}
+        />
+      </td>
+      <td>
+        <ToleranceHalfInput
+          value={toleranceParts.lower}
+          disabled={readOnly}
+          label={`Lower tolerance for balloon ${item.balloonNo}`}
+          onChange={(lower) => onChange(item.id, { tolerance: formatTolerance(toleranceParts.upper, lower) })}
+        />
+      </td>
       <td className="readonly">{usl}</td>
       <td className="readonly">{lsl}</td>
       {Array.from({ length: sampleCount }, (_, index) => (
@@ -564,7 +602,7 @@ const CharacteristicRow = memo(function CharacteristicRow({
         </select>
       </td>
       {readOnly ? (
-        <td><input value={item.notes} onChange={(event) => onChange(item.id, { notes: event.target.value })} /></td>
+        <td className="notes-cell"><input value={item.notes} onChange={(event) => onChange(item.id, { notes: event.target.value })} /></td>
       ) : null}
       <td><span className={`status mini ${status.toLowerCase()}`}>{status}</span></td>
       {!readOnly ? (
@@ -629,7 +667,8 @@ export function CharacteristicTable({
             <th>Type</th>
             <th>Unit</th>
             <th>Nominal / Requirement</th>
-            <th>Tolerance</th>
+            <th>+ Tol</th>
+            <th>− Tol</th>
             <th>USL</th>
             <th>LSL</th>
             {Array.from({ length: sampleCount }, (_, index) => <th key={index}>#{index + 1}</th>)}
@@ -818,6 +857,170 @@ export function SettingsDialog({ open, settings, onClose, onChange }) {
         <div className="settings-footer">
           <button type="button" className="settings-reset-all" onClick={resetAll}>
             Reset all to defaults
+          </button>
+          <button type="button" className="settings-close-btn" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+const TOLERANCE_LINEAR_BASELINE = [1, 2, 3];
+const TOLERANCE_ANGLE_BASELINE = [0, 1];
+
+function getToleranceBuckets(baseline, autoTable, overrideTable) {
+  const keys = new Set(baseline);
+  Object.keys(autoTable || {}).forEach((key) => keys.add(Number(key)));
+  Object.keys(overrideTable || {}).forEach((key) => keys.add(Number(key)));
+  return [...keys].sort((a, b) => a - b);
+}
+
+function toleranceBucketLabel(kind, places) {
+  const placeholder = places > 0 ? `X.${"X".repeat(places)}` : "X";
+  return kind === "angle" ? `${placeholder}°` : placeholder;
+}
+
+function ToleranceRow({ kind, places, autoValue, overrideValue, matchCount, onChange, onReset, onApply }) {
+  const isManual = overrideValue !== undefined;
+  const value = isManual ? overrideValue : (autoValue || "");
+  const badgeText = isManual ? "Manual" : autoValue ? "Auto" : "Not detected";
+  const badgeClass = isManual ? "manual" : autoValue ? "auto" : "none";
+
+  return (
+    <div className="settings-row">
+      <div className="settings-row-header">
+        <label>{toleranceBucketLabel(kind, places)}</label>
+        <span className={`tolerance-badge tolerance-badge--${badgeClass}`}>{badgeText}</span>
+      </div>
+      {isManual && autoValue ? (
+        <p className="settings-row-desc">Detected from title block: {autoValue}</p>
+      ) : null}
+      <div className="settings-row-controls tolerance-row-actions">
+        <ToleranceInput value={value} onChange={onChange} />
+        {isManual ? (
+          <button
+            type="button"
+            className="settings-reset-btn"
+            onClick={onReset}
+            title="Reset to auto-detected value"
+          >
+            <RotateCcw size={10} style={{ marginRight: 3, verticalAlign: "middle" }} />
+            Reset
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="button secondary tolerance-apply-btn"
+          disabled={!value || !matchCount}
+          onClick={() => onApply(value)}
+        >
+          Fill {matchCount} blank dimension{matchCount === 1 ? "" : "s"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function ToleranceTableDialog({
+  open,
+  onClose,
+  autoTolerances,
+  toleranceOverrides,
+  onOverrideChange,
+  onResetOverride,
+  onApply,
+  countMatches,
+}) {
+  if (!open) return null;
+
+  const linearBuckets = getToleranceBuckets(TOLERANCE_LINEAR_BASELINE, autoTolerances.linear, toleranceOverrides.linear);
+  const angleBuckets = getToleranceBuckets(TOLERANCE_ANGLE_BASELINE, autoTolerances.angle, toleranceOverrides.angle);
+
+  const allBuckets = [
+    ...linearBuckets.map((places) => ({ kind: "linear", places })),
+    ...angleBuckets.map((places) => ({ kind: "angle", places })),
+  ].map(({ kind, places }) => {
+    const autoValue = autoTolerances[kind][places];
+    const overrideValue = toleranceOverrides[kind][places];
+    const value = overrideValue !== undefined ? overrideValue : (autoValue || "");
+    return { kind, places, value, matchCount: value ? countMatches(kind, places) : 0 };
+  });
+  const totalApplyCount = allBuckets.reduce((sum, bucket) => sum + bucket.matchCount, 0);
+
+  function applyAllRows() {
+    allBuckets.forEach((bucket) => {
+      if (bucket.matchCount) onApply(bucket.kind, bucket.places, bucket.value);
+    });
+  }
+
+  return (
+    <div className="dialog-backdrop help-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="settings-dialog tolerance-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tolerance-title"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="dialog-title help-title">
+          <div>
+            <h2 id="tolerance-title">Tolerance Table</h2>
+            <p>Auto-detected from the drawing's title block. Override a row, or fill it into every blank dimension that matches.</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close tolerance table">
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="settings-body">
+          <div className="tolerance-section">
+            <h3>Linear Dimensions</h3>
+            {linearBuckets.map((places) => (
+              <ToleranceRow
+                key={`linear-${places}`}
+                kind="linear"
+                places={places}
+                autoValue={autoTolerances.linear[places]}
+                overrideValue={toleranceOverrides.linear[places]}
+                matchCount={countMatches("linear", places)}
+                onChange={(value) => onOverrideChange("linear", places, value)}
+                onReset={() => onResetOverride("linear", places)}
+                onApply={(value) => onApply("linear", places, value)}
+              />
+            ))}
+          </div>
+
+          <div className="tolerance-section">
+            <h3>Angles</h3>
+            {angleBuckets.map((places) => (
+              <ToleranceRow
+                key={`angle-${places}`}
+                kind="angle"
+                places={places}
+                autoValue={autoTolerances.angle[places]}
+                overrideValue={toleranceOverrides.angle[places]}
+                matchCount={countMatches("angle", places)}
+                onChange={(value) => onOverrideChange("angle", places, value)}
+                onReset={() => onResetOverride("angle", places)}
+                onApply={(value) => onApply("angle", places, value)}
+              />
+            ))}
+            <p className="settings-row-desc tolerance-angle-hint">
+              Angle rows only match dimensions whose Unit field contains "°" or "deg".
+            </p>
+          </div>
+        </div>
+
+        <div className="settings-footer">
+          <button
+            type="button"
+            className="settings-reset-all"
+            disabled={!totalApplyCount}
+            onClick={applyAllRows}
+          >
+            Apply all rows ({totalApplyCount})
           </button>
           <button type="button" className="settings-close-btn" onClick={onClose}>
             Done

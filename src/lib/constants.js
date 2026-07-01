@@ -36,3 +36,5 @@ export const emptyMetadata = {
   supplier: "",
   description: "",
 };
+
+export const emptyToleranceOverrides = { linear: {}, angle: {} };
