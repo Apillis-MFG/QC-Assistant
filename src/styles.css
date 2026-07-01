@@ -1344,6 +1344,22 @@ textarea:focus {
   outline: 1px solid rgba(216, 32, 32, 0.42);
 }
 
+.dimension-highlights {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.dimension-highlight {
+  position: absolute;
+  border: 1.5px solid var(--blue);
+  border-radius: 2px;
+  background: rgba(41, 75, 119, 0.07);
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
 .leader-layer {
   position: absolute;
   inset: 0;

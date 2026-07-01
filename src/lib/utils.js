@@ -172,8 +172,12 @@ export function parseDimension(text) {
   const s = String(text || "").replace(/\s+/g, " ").trim();
   if (!s) return null;
 
+  // Strip "Nx" quantity prefix before a value: "2x10.0" → "10.0", "4xR25" → "R25"
+  // Matches an integer followed by x/X/× and then a digit or type prefix.
+  const withoutRepeat = s.replace(/^\d+\s*[xX×]\s*(?=[øØ∅RrMm\d])/i, "");
+
   // Strip common dimension prefixes: ø/Ø/∅ (diameter), R/r (radius), M/m (metric thread)
-  const core = s
+  const core = withoutRepeat
     .replace(/^[øØ∅]\s*/, "")
     .replace(/^[Rr](?=\d)/, "")
     .replace(/^[Mm](?=\d)/, "");
@@ -224,6 +228,24 @@ export function findNearestTextDimension(point, textItems, canvasSize, radius = 
     if (!nominalOnly) nominalOnly = parsed;
   }
   return nominalOnly;
+}
+
+/**
+ * Find the first dimension candidate whose bounding box contains the given
+ * normalized point (0–1 fractions of canvasSize).
+ * `padding` is in canvas pixels to make border-clicking easier.
+ */
+export function findDimensionAtPoint(point, candidates, canvasSize, padding = 6) {
+  if (!canvasSize.width || !canvasSize.height || !candidates?.length) return null;
+  const px = point.x * canvasSize.width;
+  const py = point.y * canvasSize.height;
+  return candidates.find(
+    (c) =>
+      px >= c.left - padding &&
+      px <= c.left + c.width + padding &&
+      py >= c.top - padding &&
+      py <= c.top + c.height + padding,
+  ) ?? null;
 }
 
 export function cropCanvasArea(canvas, rect) {

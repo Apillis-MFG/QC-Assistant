@@ -52,7 +52,7 @@ import {
   buildDrawingSnapshot, updateDrawingSummary, getStorageWarning, getStorageErrorMessage,
   formatBytes, formatDate, setMetadataValue, mapTextItem, metadataLabel, fieldLabel,
   getNormalizedPoint, normalizeRect, getDefaultBalloonPosition, cropCanvasArea, clamp,
-  parseDimension, findNearestTextDimension,
+  parseDimension, findNearestTextDimension, findDimensionAtPoint,
 } from "./lib/utils.js";
 import {
   getEmbeddedAutoBalloonCandidates, getOcrAutoBalloonCandidates, buildAutoBalloonCandidates,
@@ -61,6 +61,7 @@ import {
 import {
   Field, ToolButton, ResizeHandle, TextLayer, LeaderLayer,
   AutoBalloonPreview, AutoBalloonReview, DrawingNavToolbar, PdfUploadPrompt,
+  DimensionHighlights,
 } from "./components/widgets.jsx";
 import {
   ProjectDashboard, HelpDialog, MeasurementWorkspace, BalloonEditor, CharacteristicTable, SettingsDialog,
@@ -68,6 +69,9 @@ import {
 import {
   loadBalloonSettings, saveBalloonSettings,
 } from "./lib/balloonSettings.js";
+import {
+  parseGeneralTolerances, applyGeneralTolerance,
+} from "./lib/dimensionExtractor.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -200,6 +204,27 @@ export default function App() {
     () => drawings.find((drawing) => drawing.id === activeDrawingId) || null,
     [activeDrawingId, drawings],
   );
+
+  // Keyed by decimal-place count: { 1: "±0.1", 2: "±0.05", 3: "±0.005" }
+  // Derived from whatever text the current page exposes (title block, notes, etc.)
+  const generalTolerances = useMemo(() => parseGeneralTolerances(textItems), [textItems]);
+
+  // All text items on the current page that parse as dimensions, with tolerance resolved.
+  // Used to render highlight boxes in balloon mode and for accurate click-to-value snapping.
+  const dimensionCandidates = useMemo(() => {
+    if (!canvasSize.width || !canvasSize.height) return [];
+    return textItems
+      .map((item) => {
+        const parsed = parseDimension(item.text);
+        if (!parsed?.nominal) return null;
+        const tolerance = applyGeneralTolerance(parsed.nominal, parsed.tolerance, generalTolerances);
+        // Keep only items that look like real dimensions: decimal point or resolvable tolerance.
+        // Pure integers with no tolerance are likely drawing numbers or quantities.
+        if (!tolerance && !/\./.test(parsed.nominal)) return null;
+        return { ...item, nominal: parsed.nominal, tolerance };
+      })
+      .filter(Boolean);
+  }, [textItems, canvasSize, generalTolerances]);
 
   useEffect(() => {
     drawingsRef.current = drawings;
@@ -839,17 +864,35 @@ export default function App() {
       const point = getNormalizedPoint(event, overlayRef.current);
 
       if (mode === "balloon") {
-        const position = getDefaultBalloonPosition(point, balloonSettings.leaderScale);
-        const dimensionSeed = findNearestTextDimension(point, textItems, canvasSize);
+        // Prefer a highlighted dimension rect over fuzzy nearest-text search.
+        const hit = findDimensionAtPoint(point, dimensionCandidates, canvasSize);
 
+        // Snap target to the center of the highlight so the leader points exactly at the text.
+        const target = hit
+          ? {
+              x: clamp((hit.left + hit.width / 2) / canvasSize.width, 0, 1),
+              y: clamp((hit.top + hit.height / 2) / canvasSize.height, 0, 1),
+            }
+          : point;
+
+        const resolvedSeed = hit
+          ? { nominal: hit.nominal, tolerance: hit.tolerance }
+          : (() => {
+              const dim = findNearestTextDimension(point, textItems, canvasSize);
+              return dim
+                ? { ...dim, tolerance: applyGeneralTolerance(dim.nominal, dim.tolerance, generalTolerances) }
+                : {};
+            })();
+
+        const position = getDefaultBalloonPosition(target, balloonSettings.leaderScale);
         const next = createCharacteristic({
           balloonNo: nextBalloonNo(characteristics),
           x: position.x,
           y: position.y,
-          targetX: point.x,
-          targetY: point.y,
+          targetX: target.x,
+          targetY: target.y,
           page: pageNumber,
-          seed: dimensionSeed || {},
+          seed: resolvedSeed,
         });
         setCharacteristics((items) => [...items, next]);
         setSelectedId(next.id);
@@ -960,15 +1003,21 @@ export default function App() {
 
     if (drag.point === "target") {
       const detected = findNearestTextDimension({ x, y }, textItems, canvasSize);
-      updateCharacteristic(drag.id, {
-        targetX: x,
-        targetY: y,
-        ...(detected?.nominal ? { nominal: detected.nominal } : {}),
-      });
+      if (detected?.nominal) {
+        const resolvedTol = applyGeneralTolerance(detected.nominal, detected.tolerance, generalTolerances);
+        updateCharacteristic(drag.id, {
+          targetX: x,
+          targetY: y,
+          nominal: detected.nominal,
+          ...(resolvedTol ? { tolerance: resolvedTol } : {}),
+        });
+      } else {
+        updateCharacteristic(drag.id, { targetX: x, targetY: y });
+      }
     } else {
       updateCharacteristic(drag.id, { x, y });
     }
-  }, [canvasSize, textItems, updateCharacteristic]);
+  }, [canvasSize, generalTolerances, textItems, updateCharacteristic]);
 
   const beginPan = useCallback((event) => {
     if (mode !== "pan" || !scrollRef.current) return;
@@ -1206,7 +1255,14 @@ export default function App() {
         targetX: candidate.targetX,
         targetY: candidate.targetY,
         page: pageNumber,
-        seed: parseDimension(candidate.label) || {},
+        seed: (() => {
+          const parsed = parseDimension(candidate.label);
+          if (!parsed) return {};
+          return {
+            ...parsed,
+            tolerance: applyGeneralTolerance(parsed.nominal, parsed.tolerance, generalTolerances),
+          };
+        })(),
       }),
     );
 
@@ -1217,7 +1273,7 @@ export default function App() {
     setAutoBalloonCandidates([]);
     setAutoBalloonReviewOpen(false);
     setMessage(`Added ${rows.length} reviewed balloon${rows.length === 1 ? "" : "s"}. Drag any balloon or target to refine placement.`);
-  }, [autoBalloonCandidates, characteristics, pageNumber]);
+  }, [autoBalloonCandidates, characteristics, generalTolerances, pageNumber]);
 
   const loadDemoRows = useCallback(() => {
     const positions = [
@@ -1254,6 +1310,18 @@ export default function App() {
     setEditingBalloonId(null);
     setMessage("Loaded demo QC characteristics. Adjust positions and values for your drawing.");
   }, []);
+
+  const clearAllBalloons = useCallback(() => {
+    if (!characteristics.length) return;
+    const confirmed = window.confirm(
+      `Clear all ${characteristics.length} balloon${characteristics.length === 1 ? "" : "s"} from this drawing and table?`,
+    );
+    if (!confirmed) return;
+    setCharacteristics([]);
+    setSelectedId(null);
+    setEditingBalloonId(null);
+    setMessage("Cleared all balloons from the drawing and table.");
+  }, [characteristics.length]);
 
   const clearDrawingData = useCallback(() => {
     setMetadata(emptyMetadata);
@@ -1716,6 +1784,10 @@ export default function App() {
                 onPointerCancel={endTextAreaSelection}
               >
                 <canvas ref={canvasRef} />
+                <DimensionHighlights
+                  candidates={dimensionCandidates}
+                  active={mode === "balloon"}
+                />
                 <TextLayer
                   active={mode === "text"}
                   items={textItems}
@@ -1944,6 +2016,15 @@ export default function App() {
             <h2>QC / FAI Characteristics</h2>
             <p>{characteristics.length} linked requirements</p>
           </div>
+          <button
+            className="button secondary"
+            onClick={clearAllBalloons}
+            disabled={!characteristics.length}
+            title="Clear all balloons from drawing and table"
+          >
+            <Trash2 size={16} />
+            Clear All Balloons
+          </button>
         </div>
         <CharacteristicTable
           characteristics={characteristics}
