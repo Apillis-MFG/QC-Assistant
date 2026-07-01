@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev -- --port 5174 > /tmp/qc-dev.log 2>&1 & *)",
+      "Bash(pkill -f \"vite --host 127.0.0.1 --port 5174\")"
+    ],
+    "additionalDirectories": [
+      "/tmp"
+    ]
+  }
+}

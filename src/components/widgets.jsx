@@ -236,7 +236,13 @@ export function DimensionHighlights({ candidates, active }) {
         <div
           key={item.id}
           className="dimension-highlight"
-          style={{ left: item.left, top: item.top, width: item.width, height: item.height }}
+          style={{
+            left: item.left,
+            top: item.top,
+            width: item.width,
+            height: item.height,
+            transform: `rotate(${item.angle}rad)`,
+          }}
           title={[item.nominal, item.tolerance].filter(Boolean).join(" ")}
         />
       ))}
