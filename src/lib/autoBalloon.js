@@ -7,16 +7,17 @@ import {
   DRAWING_NUMBER_PATTERN,
   BALLOON_MARGIN,
 } from "./constants.js";
-import { clamp } from "./utils.js";
+import { clamp, getTextItemBounds } from "./utils.js";
 
 export function getEmbeddedAutoBalloonCandidates({ textItems, canvasSize, selectionRect }) {
   return textItems
     .map((item) => {
+      const itemBounds = getTextItemBounds(item);
       const bounds = {
-        x: item.left / canvasSize.width,
-        y: item.top / canvasSize.height,
-        width: item.width / canvasSize.width,
-        height: item.height / canvasSize.height,
+        x: itemBounds.left / canvasSize.width,
+        y: itemBounds.top / canvasSize.height,
+        width: itemBounds.width / canvasSize.width,
+        height: itemBounds.height / canvasSize.height,
       };
       if (!rectsIntersect(bounds, selectionRect)) return null;
       const label = getAutoBalloonLabel(item.text);

@@ -10,6 +10,7 @@ export function buildDrawingSnapshot({
   activeDrawingId,
   activeProjectId,
   metadata,
+  toleranceOverrides,
   sampleCount,
   pdfBytes,
   pdfName,
@@ -30,6 +31,7 @@ export function buildDrawingSnapshot({
     pdfByteLength: pdfBytes?.byteLength || drawing?.pdfByteLength || 0,
     pageCount,
     metadata,
+    toleranceOverrides,
     sampleCount,
     characteristics,
     pageNumber,
@@ -98,18 +100,64 @@ export function setMetadataValue(setMetadata, key, value) {
   setMetadata((current) => ({ ...current, [key]: value }));
 }
 
+function multiplyTransforms(a, b) {
+  return [
+    a[0] * b[0] + a[2] * b[1],
+    a[1] * b[0] + a[3] * b[1],
+    a[0] * b[2] + a[2] * b[3],
+    a[1] * b[2] + a[3] * b[3],
+    a[0] * b[4] + a[2] * b[5] + a[4],
+    a[1] * b[4] + a[3] * b[5] + a[5],
+  ];
+}
+
+function normalizedVector(x, y, fallbackX, fallbackY) {
+  const length = Math.hypot(x, y);
+  if (!length) return [fallbackX, fallbackY];
+  return [x / length, y / length];
+}
+
+function getTransformedTextBounds(transform, width, height) {
+  const [advanceX, advanceY] = normalizedVector(transform[0], transform[1], 1, 0);
+  const [heightX, heightY] = normalizedVector(transform[2], transform[3], advanceY, -advanceX);
+  const baseline = [transform[4], transform[5]];
+  const advance = [advanceX * width, advanceY * width];
+  const ascent = [heightX * height, heightY * height];
+  const corners = [
+    baseline,
+    [baseline[0] + advance[0], baseline[1] + advance[1]],
+    [baseline[0] + advance[0] + ascent[0], baseline[1] + advance[1] + ascent[1]],
+    [baseline[0] + ascent[0], baseline[1] + ascent[1]],
+  ];
+
+  const xs = corners.map(([x]) => x);
+  const ys = corners.map(([, y]) => y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+
+  return {
+    left: minX,
+    top: minY,
+    width: Math.max(...xs) - minX,
+    height: Math.max(...ys) - minY,
+  };
+}
+
 export function mapTextItem(item, index, viewport, zoom) {
   const text = item.str?.trim();
   if (!text) return null;
 
-  const [left, baselineY] = viewport.convertToViewportPoint(item.transform[4], item.transform[5]);
+  const transform = multiplyTransforms(viewport.transform, item.transform);
+  const left = transform[4];
+  const baselineY = transform[5];
   const rawHeight = Math.abs(item.height || item.transform[3] || 8) * zoom;
   const height = Math.max(7, rawHeight);
   const width = item.width
     ? Math.max(4, Math.abs(item.width) * zoom)
     : Math.max(4, text.length * height * 0.45);
   const fontSize = Math.max(6, height * 0.94);
-  const angle = Math.atan2(item.transform[1] || 0, item.transform[0] || 1);
+  const angle = Math.atan2(transform[1] || 0, transform[0] || 1);
+  const bounds = getTransformedTextBounds(transform, width, height);
 
   return {
     id: `${index}-${text}-${Math.round(left)}-${Math.round(baselineY)}`,
@@ -120,7 +168,46 @@ export function mapTextItem(item, index, viewport, zoom) {
     height,
     fontSize,
     angle,
+    bounds,
   };
+}
+
+/**
+ * Axis-aligned screen bounds for a (possibly rotated) text item.
+ * `left/top/width/height` describe the item's box before rotation, pivoting
+ * around its bottom-left corner (matching CSS `transform-origin: left bottom`).
+ * Used to size an upright highlight/hit-target that still fully encloses
+ * rotated dimension text, without rotating the box itself.
+ */
+export function getAxisAlignedBounds({ left, top, width, height, angle }) {
+  if (!angle) return { left, top, width, height };
+
+  const pivotX = left;
+  const pivotY = top + height;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const corners = [
+    [0, 0],
+    [width, 0],
+    [width, -height],
+    [0, -height],
+  ].map(([dx, dy]) => [pivotX + dx * cos - dy * sin, pivotY + dx * sin + dy * cos]);
+
+  const xs = corners.map(([x]) => x);
+  const ys = corners.map(([, y]) => y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+
+  return {
+    left: minX,
+    top: minY,
+    width: Math.max(...xs) - minX,
+    height: Math.max(...ys) - minY,
+  };
+}
+
+export function getTextItemBounds(item) {
+  return item?.bounds || getAxisAlignedBounds(item);
 }
 
 export function metadataLabel(key) {
@@ -166,6 +253,87 @@ export function getDefaultBalloonPosition(target, leaderScale = 1) {
     x: clamp(target.x + BALLOON_OFFSET.x * leaderScale * xDirection, BALLOON_MARGIN, 1 - BALLOON_MARGIN),
     y: clamp(target.y + Math.abs(BALLOON_OFFSET.y) * leaderScale * yDirection, BALLOON_MARGIN, 1 - BALLOON_MARGIN),
   };
+}
+
+export function parseDimension(text) {
+  const s = String(text || "").replace(/\s+/g, " ").trim();
+  if (!s) return null;
+
+  // Strip "Nx" quantity prefix before a value: "2x10.0" → "10.0", "4xR25" → "R25"
+  // Matches an integer followed by x/X/× and then a digit or type prefix.
+  const withoutRepeat = s.replace(/^\d+\s*[xX×]\s*(?=[øØ∅RrMm\d])/i, "");
+
+  // Strip common dimension prefixes: ø/Ø/∅ (diameter), R/r (radius), M/m (metric thread)
+  const core = withoutRepeat
+    .replace(/^[øØ∅]\s*/, "")
+    .replace(/^[Rr](?=\d)/, "")
+    .replace(/^[Mm](?=\d)/, "");
+
+  // Must start with a number (possibly signed)
+  const nominalMatch = core.match(/^([+-]?\d+(?:[.,]\d+)?)/);
+  if (!nominalMatch) return null;
+
+  const nominal = nominalMatch[1].replace(",", ".");
+  const after = core.slice(nominalMatch[0].length).trim();
+
+  // MAX / MIN suffix
+  if (/^max\b/i.test(after)) return { nominal, tolerance: "MAX" };
+  if (/^min\b/i.test(after)) return { nominal, tolerance: "MIN" };
+
+  // Symmetric: ±0.5  or  +/-0.5  or  +/- 0.5  or  +-0.5
+  const symMatch = after.match(/^(?:[±]|\+\s*[/\\]\s*-\s*|\+\s*-\s*)(\d+(?:[.,]\d+)?)/);
+  if (symMatch) return { nominal, tolerance: `±${symMatch[1].replace(",", ".")}` };
+
+  // Asymmetric: +0.5/-0.2  or  +0.5 / -0.2  or  +0.5-0.2
+  const asymMatch = after.match(/^(\+\s*\d+(?:[.,]\d+)?)\s*[/]?\s*(-\s*\d+(?:[.,]\d+)?)/);
+  if (asymMatch) {
+    const pos = asymMatch[1].replace(/\s+/g, "").replace(",", ".");
+    const neg = asymMatch[2].replace(/\s+/g, "").replace(",", ".");
+    return { nominal, tolerance: `${pos}/${neg}` };
+  }
+
+  return { nominal, tolerance: "" };
+}
+
+export function findNearestTextDimension(point, textItems, canvasSize, radius = 0.075) {
+  if (!textItems.length || !canvasSize.width || !canvasSize.height) return null;
+
+  const nearby = textItems
+    .map((item) => {
+      const bounds = getTextItemBounds(item);
+      const cx = (bounds.left + bounds.width / 2) / canvasSize.width;
+      const cy = (bounds.top + bounds.height / 2) / canvasSize.height;
+      return { item, dist: Math.hypot(cx - point.x, cy - point.y) };
+    })
+    .filter(({ dist }) => dist <= radius)
+    .sort((a, b) => a.dist - b.dist);
+
+  let nominalOnly = null;
+  for (const { item } of nearby) {
+    const parsed = parseDimension(item.text);
+    if (!parsed) continue;
+    if (parsed.tolerance) return parsed;
+    if (!nominalOnly) nominalOnly = parsed;
+  }
+  return nominalOnly;
+}
+
+/**
+ * Find the first dimension candidate whose bounding box contains the given
+ * normalized point (0–1 fractions of canvasSize).
+ * `padding` is in canvas pixels to make border-clicking easier.
+ */
+export function findDimensionAtPoint(point, candidates, canvasSize, padding = 6) {
+  if (!canvasSize.width || !canvasSize.height || !candidates?.length) return null;
+  const px = point.x * canvasSize.width;
+  const py = point.y * canvasSize.height;
+  return candidates.find(
+    (c) =>
+      px >= c.left - padding &&
+      px <= c.left + c.width + padding &&
+      py >= c.top - padding &&
+      py <= c.top + c.height + padding,
+  ) ?? null;
 }
 
 export function cropCanvasArea(canvas, rect) {

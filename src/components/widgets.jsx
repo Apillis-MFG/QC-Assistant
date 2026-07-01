@@ -223,6 +223,27 @@ export function DrawingNavToolbar({ zoom, pageNumber, pageCount, onZoomOut, onZo
   );
 }
 
+/**
+ * Renders colored border boxes over detected dimension text.
+ * Visible only in balloon-placement mode; pointer-events are off so existing
+ * canvas click handling remains the sole source of interaction.
+ */
+export function DimensionHighlights({ candidates, active }) {
+  if (!active || !candidates.length) return null;
+  return (
+    <div className="dimension-highlights" aria-hidden="true">
+      {candidates.map((item) => (
+        <div
+          key={item.id}
+          className="dimension-highlight"
+          style={{ left: item.left, top: item.top, width: item.width, height: item.height }}
+          title={[item.nominal, item.tolerance].filter(Boolean).join(" ")}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function PdfUploadPrompt({ message, onUpload }) {
   return (
     <div className="upload-empty">

@@ -74,7 +74,7 @@ button:disabled {
 
 .topbar {
   display: grid;
-  grid-template-columns: 270px minmax(360px, 1fr) auto;
+  grid-template-columns: minmax(280px, auto) minmax(360px, 1fr) auto;
   gap: 18px;
   align-items: center;
   padding: 14px 18px;
@@ -893,7 +893,7 @@ kbd {
 }
 
 .measurement-table {
-  min-width: 1180px;
+  min-width: 1260px;
 }
 
 .measurement-table th,
@@ -902,7 +902,7 @@ kbd {
 }
 
 .measurement-table td:nth-child(4),
-.measurement-table td:nth-child(10) {
+.measurement-table .notes-cell {
   min-width: 190px;
 }
 
@@ -1016,6 +1016,13 @@ kbd {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  white-space: nowrap;
+}
+
+.brand-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .brand-help {
@@ -1023,6 +1030,7 @@ kbd {
   height: 30px;
   min-height: 30px;
   color: var(--muted);
+  flex: 0 0 auto;
 }
 
 .version-badge {
@@ -1048,7 +1056,7 @@ kbd {
 
 .metadata-grid {
   display: grid;
-  grid-template-columns: minmax(130px, 1fr) 76px minmax(120px, 0.9fr) minmax(180px, 1.4fr);
+  grid-template-columns: minmax(130px, 1fr) 76px minmax(180px, 1.4fr);
   gap: 10px;
 }
 
@@ -1342,6 +1350,22 @@ textarea:focus {
 .text-layer.active .pdf-text-item:hover {
   background: rgba(216, 32, 32, 0.12);
   outline: 1px solid rgba(216, 32, 32, 0.42);
+}
+
+.dimension-highlights {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.dimension-highlight {
+  position: absolute;
+  border: 1.5px solid var(--blue);
+  border-radius: 2px;
+  background: rgba(41, 75, 119, 0.07);
+  pointer-events: none;
+  box-sizing: border-box;
 }
 
 .leader-layer {
@@ -1641,6 +1665,25 @@ textarea:focus {
 
 .span-2 {
   grid-column: span 2;
+}
+
+.tolerance-split {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tolerance-sign {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.tolerance-half {
+  flex: 1;
+  min-width: 0;
 }
 
 .sample-stack {
@@ -2254,4 +2297,71 @@ td select:focus {
 
 .settings-close-btn:hover {
   background: var(--accent-dark);
+}
+
+/* ── Tolerance Table Dialog ──────────────────────────────────── */
+
+.tolerance-dialog {
+  width: 480px;
+}
+
+.tolerance-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tolerance-section h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.tolerance-row-actions {
+  flex-wrap: wrap;
+}
+
+.tolerance-apply-btn {
+  flex-basis: 100%;
+  min-height: 28px;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.tolerance-apply-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.tolerance-badge {
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.tolerance-badge--auto {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.tolerance-badge--manual {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.tolerance-badge--none {
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.tolerance-angle-hint {
+  margin-top: -4px;
 }
