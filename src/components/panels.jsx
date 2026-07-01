@@ -18,6 +18,11 @@ export function HelpDialog({ open, onClose }) {
     ["Esc", "Close help, cancel selection UI"],
   ];
 
+  const releaseNotes050 = [
+    "Tolerance inputs now preserve common leading-decimal drawing values like .005, +.005, and -.002.",
+    "The tolerance table can fill every blank dimension with the same drawing pattern in one pass without overwriting entered tolerances.",
+  ];
+
   const releaseNotes040 = [
     "Added settings to customize balloon appearance and behavior so engineers can tune the marker style to match their drawing workflow.",
   ];
@@ -116,8 +121,16 @@ export function HelpDialog({ open, onClose }) {
           <details className="help-section version-history">
             <summary>
               <span>Version History</span>
-              <strong>v0.4.0</strong>
+              <strong>v0.5.0</strong>
             </summary>
+            <div className="release-note">
+              <h3>v0.5.0</h3>
+              <ul>
+                {releaseNotes050.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
             <div className="release-note">
               <h3>v0.4.0</h3>
               <ul>
@@ -398,13 +411,13 @@ export function MeasurementWorkspace({
 function parseToleranceParts(tolerance) {
   const text = String(tolerance || "").trim();
   if (!text) return { upper: "", lower: "" };
-  const asym = text.match(/^[+\s]*([+-]?\d+(?:\.\d*)?)\s*\/\s*[-\s]*([+-]?\d+(?:\.\d*)?)/);
+  const asym = text.match(/^[+\s]*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*\/\s*[-\s]*([+-]?(?:\d+(?:\.\d*)?|\.\d+))/);
   if (asym) return { upper: normalizeToleranceHalf(asym[1]), lower: normalizeToleranceHalf(asym[2]) };
-  const sym = text.match(/^[±]\s*(\d+(?:\.\d*)?)$/);
-  if (sym) return { upper: sym[1], lower: sym[1] };
-  const lowerOnly = text.match(/^-\s*(\d+(?:\.\d*)?)$/);
+  const sym = text.match(/^[±]\s*((?:\d+(?:\.\d*)?|\.\d+))$/);
+  if (sym) return { upper: normalizeToleranceHalf(sym[1]), lower: normalizeToleranceHalf(sym[1]) };
+  const lowerOnly = text.match(/^-\s*((?:\d+(?:\.\d*)?|\.\d+))$/);
   if (lowerOnly) return { upper: "", lower: normalizeToleranceHalf(lowerOnly[1]) };
-  const upperOnly = text.match(/^[+\s]*([+-]?\d+(?:\.\d*)?)/);
+  const upperOnly = text.match(/^[+\s]*([+-]?(?:\d+(?:\.\d*)?|\.\d+))/);
   if (upperOnly) return { upper: normalizeToleranceHalf(upperOnly[1]), lower: "" };
   return { upper: normalizeToleranceHalf(text), lower: "" };
 }
@@ -413,8 +426,9 @@ function normalizeToleranceHalf(value) {
   const text = String(value || "")
     .replace(/−/g, "-")
     .trim();
-  const numeric = text.match(/[+-]?\d+(?:\.\d*)?/);
-  return numeric ? numeric[0].replace(/^[+\-±]+/, "") : "";
+  const numeric = text.match(/[+-]?(?:\d+(?:\.\d*)?|\.\d+)/);
+  const normalized = numeric ? numeric[0].replace(/^[+\-±]+/, "") : "";
+  return normalized.replace(/^\.(\d)/, "0.$1");
 }
 
 function formatTolerance(upper, lower) {
