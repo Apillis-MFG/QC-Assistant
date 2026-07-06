@@ -11,7 +11,8 @@
       "Skill(run:*)",
       "Bash(npx --yes playwright --version)",
       "Bash(curl -sf http://127.0.0.1:5173)",
-      "Bash(break)"
+      "Bash(break)",
+      "Bash(pnpm add *)"
     ],
     "additionalDirectories": [
       "/tmp"

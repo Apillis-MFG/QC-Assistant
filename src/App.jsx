@@ -139,7 +139,7 @@ export default function App() {
   const [detailProjectId, setDetailProjectId] = useState(null);
   const [detailProject, setDetailProject] = useState(null);
   const [detailDrawings, setDetailDrawings] = useState([]);
-  const [detailFields, setDetailFields] = useState({ name: "", code: "" });
+  const [detailFields, setDetailFields] = useState({ name: "", code: "", owner: "", estimatedDeliveryDate: "", notes: "" });
   const [drawingDialog, setDrawingDialog] = useState({ open: false, drawingId: null, name: "" });
   const [saveState, setSaveState] = useState({ status: "idle", label: "local: not saved" });
   const [metadata, setMetadata] = useState(emptyMetadata);
@@ -1422,7 +1422,13 @@ export default function App() {
     setDetailProjectId(projectId);
     setDetailProject(workspace.project);
     setDetailDrawings(workspace.drawings);
-    setDetailFields({ name: workspace.project.name, code: workspace.project.code || "" });
+    setDetailFields({
+      name: workspace.project.name,
+      code: workspace.project.code || "",
+      owner: workspace.project.owner || "",
+      estimatedDeliveryDate: workspace.project.estimatedDeliveryDate || "",
+      notes: workspace.project.notes || "",
+    });
     setPage("detail");
   }, []);
 
@@ -1446,6 +1452,9 @@ export default function App() {
       ...detailProject,
       name,
       code: detailFields.code.trim(),
+      owner: detailFields.owner.trim(),
+      estimatedDeliveryDate: detailFields.estimatedDeliveryDate,
+      notes: detailFields.notes,
       updatedAt: new Date().toISOString(),
     };
     await saveProject(updatedProject);
@@ -1748,7 +1757,10 @@ export default function App() {
         fieldsDirty={
           Boolean(detailProject) &&
           (detailFields.name.trim() !== (detailProject.name || "") ||
-            detailFields.code.trim() !== (detailProject.code || ""))
+            detailFields.code.trim() !== (detailProject.code || "") ||
+            detailFields.owner.trim() !== (detailProject.owner || "") ||
+            detailFields.estimatedDeliveryDate !== (detailProject.estimatedDeliveryDate || "") ||
+            detailFields.notes !== (detailProject.notes || ""))
         }
         onFieldChange={handleDetailFieldChange}
         onSaveFields={handleSaveDetailFields}
@@ -2207,11 +2219,27 @@ export default function App() {
             </div>
             <label className="stacked-label">
               Samples
-              <select value={sampleCount} onChange={(event) => setSampleCount(Number(event.target.value))}>
-                {[1, 3, 5, 10].map((count) => (
-                  <option key={count} value={count}>{count}</option>
-                ))}
-              </select>
+              <div className="sample-count-row">
+                <select value={sampleCount} onChange={(event) => setSampleCount(Number(event.target.value))}>
+                  {[1, 3, 5, 10].map((count) => (
+                    <option key={count} value={count}>{count}</option>
+                  ))}
+                  {![1, 3, 5, 10].includes(sampleCount) && (
+                    <option value={sampleCount}>{sampleCount}</option>
+                  )}
+                </select>
+                <input
+                  type="number"
+                  min={1}
+                  className="sample-count-custom"
+                  placeholder="Custom"
+                  value={sampleCount}
+                  onChange={(event) => {
+                    const parsed = Math.max(1, Math.round(Number(event.target.value) || 1));
+                    setSampleCount(parsed);
+                  }}
+                />
+              </div>
             </label>
             <div className="split-actions">
               <button className="button secondary" onClick={addManualRow} disabled={!activeDrawingId}>

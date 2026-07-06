@@ -19,11 +19,15 @@ function getLeaderLine({ x, y, targetX, targetY, radius = 13 }) {
   };
 }
 
-export function Field({ label, value, onChange, compact = false, wide = false }) {
+export function Field({ label, value, onChange, compact = false, wide = false, type = "text", multiline = false }) {
   return (
     <label className={`field ${compact ? "compact" : ""} ${wide ? "wide" : ""}`}>
       <span>{label}</span>
-      <input value={value} onChange={(event) => onChange(event.target.value)} />
+      {multiline ? (
+        <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={3} />
+      ) : (
+        <input type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+      )}
     </label>
   );
 }
