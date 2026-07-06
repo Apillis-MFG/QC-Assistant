@@ -14,7 +14,7 @@ function GuideFigure({ src, alt, caption }) {
   );
 }
 
-function FullUserGuide() {
+export function FullUserGuide() {
   return (
     <div className="guide-body">
       <div className="guide-topic">
@@ -167,9 +167,7 @@ function FullUserGuide() {
   );
 }
 
-export function HelpDialog({ open, onClose }) {
-  if (!open) return null;
-
+export function GuidePage({ onBack }) {
   const shortcuts = [
     ["B", "Balloon tool"],
     ["A", "Review balloon candidates (Auto Balloon)"],
@@ -215,24 +213,27 @@ export function HelpDialog({ open, onClose }) {
   ];
 
   return (
-    <div className="dialog-backdrop help-backdrop" role="presentation" onMouseDown={onClose}>
-      <section
-        className="help-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="help-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="dialog-title help-title">
+    <div className="dashboard-shell">
+      <header className="dashboard-header">
+        <div className="brand">
+          <img className="brand-mark" src="/logo-mark.svg" alt="" aria-hidden="true" />
           <div>
-            <h2 id="help-title">QC Assistant Help</h2>
+            <div className="brand-title-row">
+              <h1>QC Assistant Help</h1>
+            </div>
             <p>Fast path from drawing upload to submittable FAI exports.</p>
           </div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Close help">
-            <X size={17} />
-          </button>
         </div>
+        <button className="button secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back to Projects
+        </button>
+      </header>
 
+      <section
+        className="help-dialog dashboard-main"
+        aria-labelledby="help-title"
+      >
         <div className="help-content">
           <section className="help-section help-hero">
             <div>
@@ -365,9 +366,7 @@ export function ProjectDashboard({
   onDialogChange,
   onDialogSubmit,
   onDialogClose,
-  onOpenHelp,
-  helpOpen,
-  onCloseHelp,
+  onOpenGuide,
 }) {
   return (
     <div className="dashboard-shell">
@@ -378,7 +377,7 @@ export function ProjectDashboard({
             <div className="brand-title-row">
               <h1>QC Assistant</h1>
               <span className="version-badge">{APP_VERSION}</span>
-              <button className="icon-button brand-help" onClick={onOpenHelp} title="Help and shortcuts" aria-label="Help and shortcuts">
+              <button className="icon-button brand-help" onClick={onOpenGuide} title="Help and shortcuts" aria-label="Help and shortcuts">
                 <HelpCircle size={17} />
               </button>
             </div>
@@ -446,7 +445,7 @@ export function ProjectDashboard({
         <div className="dialog-backdrop" role="presentation">
           <form className="project-dialog" onSubmit={onDialogSubmit}>
             <div className="dialog-title">
-              <h2>{projectDialog.mode === "create" ? "New Project" : "Edit Project Name"}</h2>
+              <h2>Edit Project Name</h2>
               <button type="button" className="icon-button" onClick={onDialogClose} aria-label="Close project dialog">×</button>
             </div>
             <label className="stacked-label">
@@ -460,15 +459,53 @@ export function ProjectDashboard({
             </label>
             <div className="dialog-actions">
               <button type="button" className="button secondary" onClick={onDialogClose}>Cancel</button>
-              <button type="submit" className="button primary" disabled={!projectDialog.name.trim()}>
-                {projectDialog.mode === "create" ? "Create Project" : "Save Name"}
-              </button>
+              <button type="submit" className="button primary" disabled={!projectDialog.name.trim()}>Save Name</button>
             </div>
           </form>
         </div>
       ) : null}
+    </div>
+  );
+}
 
-      <HelpDialog open={helpOpen} onClose={onCloseHelp} />
+export function NewProjectPage({ name, onNameChange, onSubmit, onCancel }) {
+  return (
+    <div className="dashboard-shell">
+      <header className="dashboard-header">
+        <div className="brand">
+          <img className="brand-mark" src="/logo-mark.svg" alt="" aria-hidden="true" />
+          <div>
+            <div className="brand-title-row">
+              <h1>New Project</h1>
+            </div>
+            <p>Create a project to hold one or more drawings.</p>
+          </div>
+        </div>
+        <button className="button secondary" onClick={onCancel}>
+          <ArrowLeft size={16} />
+          Back to Projects
+        </button>
+      </header>
+
+      <main className="dashboard-main">
+        <section className="dashboard-panel">
+          <form className="project-detail-form" onSubmit={onSubmit}>
+            <label className="stacked-label">
+              Project Name
+              <input
+                autoFocus
+                value={name}
+                onChange={(event) => onNameChange(event.target.value)}
+                placeholder="Example: BS-Extrusion"
+              />
+            </label>
+            <div className="dialog-actions">
+              <button type="button" className="button secondary" onClick={onCancel}>Cancel</button>
+              <button type="submit" className="button primary" disabled={!name.trim()}>Create Project</button>
+            </div>
+          </form>
+        </section>
+      </main>
     </div>
   );
 }
@@ -490,9 +527,7 @@ export function ProjectDetail({
   onDrawingDialogChange,
   onDrawingDialogSubmit,
   onDrawingDialogClose,
-  helpOpen,
-  onOpenHelp,
-  onCloseHelp,
+  onOpenGuide,
 }) {
   return (
     <div className="dashboard-shell">
@@ -503,7 +538,7 @@ export function ProjectDetail({
             <div className="brand-title-row">
               <h1>QC Assistant</h1>
               <span className="version-badge">{APP_VERSION}</span>
-              <button className="icon-button brand-help" onClick={onOpenHelp} title="Help and shortcuts" aria-label="Help and shortcuts">
+              <button className="icon-button brand-help" onClick={onOpenGuide} title="Help and shortcuts" aria-label="Help and shortcuts">
                 <HelpCircle size={17} />
               </button>
             </div>
@@ -624,8 +659,6 @@ export function ProjectDetail({
           </form>
         </div>
       ) : null}
-
-      <HelpDialog open={helpOpen} onClose={onCloseHelp} />
     </div>
   );
 }
@@ -1073,9 +1106,7 @@ export function CharacteristicTable({
   );
 }
 
-export function SettingsDialog({ open, settings, onClose, onChange }) {
-  if (!open) return null;
-
+export function SettingsPage({ settings, onBack, onChange }) {
   const defaults = { diameter: 24, fontSize: 11, leaderScale: 1, toolButtonStyle: "icon-text" };
 
   function set(key, value) {
@@ -1093,28 +1124,27 @@ export function SettingsDialog({ open, settings, onClose, onChange }) {
   const leaderLineWidth = Math.round(40 + (settings.leaderScale - 1) * 28);
 
   return (
-    <div
-      className="dialog-backdrop help-backdrop"
-      role="presentation"
-      onMouseDown={onClose}
-    >
-      <section
-        className="settings-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="settings-title"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="dialog-title help-title">
+    <div className="dashboard-shell">
+      <header className="dashboard-header">
+        <div className="brand">
+          <img className="brand-mark" src="/logo-mark.svg" alt="" aria-hidden="true" />
           <div>
-            <h2 id="settings-title">Settings</h2>
+            <div className="brand-title-row">
+              <h1 id="settings-title">Settings</h1>
+            </div>
             <p>Customize the toolbar and balloon appearance. Saved automatically.</p>
           </div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Close settings">
-            <X size={17} />
-          </button>
         </div>
+        <button className="button secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back to Projects
+        </button>
+      </header>
 
+      <section
+        className="settings-dialog dashboard-main"
+        aria-labelledby="settings-title"
+      >
         <div className="settings-body">
           {/* Toolbar Buttons */}
           <div className="settings-row">
@@ -1260,7 +1290,7 @@ export function SettingsDialog({ open, settings, onClose, onChange }) {
           <button type="button" className="settings-reset-all" onClick={resetAll}>
             Reset all to defaults
           </button>
-          <button type="button" className="settings-close-btn" onClick={onClose}>
+          <button type="button" className="settings-close-btn" onClick={onBack}>
             Done
           </button>
         </div>
