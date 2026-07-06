@@ -452,6 +452,141 @@ kbd {
   gap: 12px;
 }
 
+/* ── Full User Guide (inside Help) ───────────────────────────────── */
+
+.user-guide .guide-body {
+  margin-top: 12px;
+  display: grid;
+  gap: 22px;
+}
+
+.guide-topic {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.guide-topic:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.guide-topic h4 {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+}
+
+.guide-topic p {
+  margin: 6px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.guide-topic ul,
+.guide-topic ol {
+  margin: 6px 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.guide-topic li + li {
+  margin-top: 4px;
+}
+
+.guide-figure {
+  margin: 10px 0;
+}
+
+.guide-figure img {
+  display: block;
+  width: 100%;
+  max-width: 640px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+}
+
+.guide-figure figcaption {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.guide-table-wrap {
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.guide-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  min-width: 420px;
+}
+
+.guide-table-wrap th,
+.guide-table-wrap td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.guide-table-wrap th {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.guide-flow {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  padding: 12px 14px;
+  margin: 10px 0;
+  overflow-x: auto;
+}
+
+.guide-flow-title {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.guide-decision {
+  display: grid;
+  gap: 6px;
+}
+
+.guide-decision-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto minmax(140px, auto);
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.guide-decision-q {
+  color: var(--ink);
+}
+
+.guide-decision-arrow {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.guide-decision-row .status {
+  justify-self: start;
+  width: fit-content;
+}
+
 /* ── Layout switcher bar ──────────────────────────────────────── */
 
 .layout-bar {
@@ -2169,6 +2304,11 @@ td select:focus {
 
   .shortcut-grid {
     grid-template-columns: 1fr;
+  }
+
+  .guide-decision-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
 
 }

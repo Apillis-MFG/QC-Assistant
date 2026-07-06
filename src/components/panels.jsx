@@ -5,6 +5,168 @@ import { methods, types, APP_VERSION } from "../lib/constants.js";
 import { formatBytes, formatDate } from "../lib/utils.js";
 import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer, Field } from "./widgets.jsx";
 
+function GuideFigure({ src, alt, caption }) {
+  return (
+    <figure className="guide-figure">
+      <img src={src} alt={alt} loading="lazy" />
+      {caption ? <figcaption>{caption}</figcaption> : null}
+    </figure>
+  );
+}
+
+function FullUserGuide() {
+  return (
+    <div className="guide-body">
+      <div className="guide-topic">
+        <h4>Projects &amp; Drawings</h4>
+        <p>Everything is stored locally in your browser. A project holds one or more drawings; each drawing keeps its own PDF, metadata, balloons, tolerances, and measurements.</p>
+        <GuideFigure src="/guide/01-dashboard-empty.png" alt="Dashboard with no projects yet" />
+        <p><strong>New Project</strong> creates a project and drops you straight into the workspace with an empty drawing slot.</p>
+        <GuideFigure src="/guide/03-new-project-dialog-filled.png" alt="New Project dialog with a name entered" />
+        <p>Click <strong>Manage</strong> on a project card to edit its name, code, owner, delivery date, and notes, and to add, rename, or delete drawings without opening the workspace.</p>
+        <GuideFigure src="/guide/06-project-detail-with-drawing.png" alt="Project Detail page with one drawing added" caption="Project Detail: info fields, plus one drawing added." />
+        <p>A project can hold up to 25 drawings. You'll see a warning past ~25 MB for a single PDF, or ~500 MB total per project. Changes autosave (debounced) as you work, and the last project/drawing you had open reopens automatically.</p>
+      </div>
+
+      <div className="guide-topic">
+        <h4>Uploading &amp; Viewing a Drawing</h4>
+        <GuideFigure src="/guide/04-workspace-upload-prompt.png" alt="Upload a drawing PDF prompt" />
+        <GuideFigure src="/guide/07-workspace-drawing-layout.png" alt="Drawing-only layout with the PDF loaded, no balloons yet" caption="Drawing-only layout: canvas plus inspector, no table." />
+        <p><strong>Edit</strong> mode has the full toolset. <strong>Measurement</strong> mode locks balloon positions and requirement definitions — only sample values and notes stay editable, so nobody can move a balloon mid-inspection.</p>
+        <p><strong>Layout</strong> (Edit mode) arranges the canvas, table, and inspector: Drawing only, Table only, Side by Side, or Stacked (default). Panel sizes are resizable and remembered.</p>
+      </div>
+
+      <div className="guide-topic">
+        <h4>Capturing Text &amp; OCR</h4>
+        <GuideFigure src="/guide/11-text-select-active.png" alt="Text Select tool active in the workspace" />
+        <p>The <strong>Text Select</strong> tool (<kbd>T</kbd>) pulls text straight off the PDF into "Selected PDF Text." Click embedded text directly, or drag a rectangle over raster/scanned text to run on-device OCR instead. Then send the captured text to Description, Drawing No, Rev, Requirement, Tolerance, or Notes.</p>
+      </div>
+
+      <div className="guide-topic">
+        <h4>Ballooning</h4>
+        <p>Select <strong>Balloon</strong> (<kbd>B</kbd>) and click a dimension callout. QC Assistant snaps to the nearest recognized dimension text and pre-fills the nominal/tolerance when it can parse them — e.g. <code>42.50 ±0.10</code>, <code>Ø12.00 +0.05/-0.02</code>, <code>90° ±0.5°</code>. Drag the circle or leader target to adjust placement afterward.</p>
+        <GuideFigure src="/guide/08-balloons-placed.png" alt="Three balloons manually placed on the drawing" />
+        <p>Single-click selects a balloon; double-click or <kbd>E</kbd> opens reassign/delete. <strong>Add Row</strong> creates a characteristic with no balloon placed yet. <strong>Demo Rows</strong> seeds 7 examples. <strong>Clear Drawing Data</strong> / <strong>Clear All Balloons</strong> wipe with confirmation.</p>
+      </div>
+
+      <div className="guide-topic">
+        <h4>Auto Balloon (Review tool)</h4>
+        <p>The <strong>Review</strong> tool (<kbd>A</kbd>) detects several balloons at once. Drag a rectangle around a cluster of dimensions, review the candidates, then commit the ones you want.</p>
+        <div className="guide-flow">
+          <div className="guide-flow-title">Detection flow</div>
+          <div className="guide-decision">
+            <div className="guide-decision-row">
+              <span className="guide-decision-q">Embedded PDF text found in the box?</span>
+              <span className="guide-decision-arrow">yes →</span>
+              <span className="status ok mini">use it</span>
+            </div>
+            <div className="guide-decision-row">
+              <span className="guide-decision-q">Nothing usable found?</span>
+              <span className="guide-decision-arrow">→</span>
+              <span className="status open mini">fall back to OCR</span>
+            </div>
+            <div className="guide-decision-row">
+              <span className="guide-decision-q">Either path, then dedupe + filter noise</span>
+              <span className="guide-decision-arrow">→</span>
+              <span className="status mini">order clockwise</span>
+            </div>
+            <div className="guide-decision-row">
+              <span className="guide-decision-q">Shown in Review Candidates, remove any unwanted</span>
+              <span className="guide-decision-arrow">→</span>
+              <span className="status ok mini">Add balloons</span>
+            </div>
+          </div>
+        </div>
+        <GuideFigure src="/guide/09-auto-balloon-review-candidates.png" alt="Selection box drawn, three candidates detected and shown for review" />
+        <GuideFigure src="/guide/10-balloons-and-table.png" alt="All six balloons placed, three manual and three from Auto Balloon" />
+      </div>
+
+      <div className="guide-topic">
+        <h4>Characteristics Table</h4>
+        <p>Every balloon has a matching row. Type sets a default Method (dimension→DC, gdt→CMM, note/visual→VS) unless you've chosen one already. USL/LSL compute automatically from Nominal + Tolerance. Sample columns follow the chosen sample count (1, 3, 5, 10, or custom). The table stays sorted by balloon number and stays read-only (except samples/Notes) in Measurement mode.</p>
+      </div>
+
+      <div className="guide-topic">
+        <h4>Tolerance Table</h4>
+        <p>Open <strong>Tolerance</strong> in the toolbar. QC Assistant reads the drawing's title-block note (e.g. <code>X.XX = ±0.05</code>, <code>X° = ±0.5°</code>) and offers to apply it in bulk, keyed by decimal-place count (angles only match dimensions whose unit contains ° or "deg").</p>
+        <GuideFigure src="/guide/12-tolerance-table.png" alt="Tolerance table with auto-detected linear and angular tolerances" />
+        <p><strong>Fill N blank dimensions</strong> / <strong>Apply all rows</strong> only ever fill blanks — an existing tolerance is never overwritten. Override any row, or <strong>Reset</strong> back to auto-detected.</p>
+      </div>
+
+      <div className="guide-topic">
+        <h4>Measurements &amp; Status Logic</h4>
+        <p>Switch to <strong>Measurement</strong> mode to enter samples against a locked view of the drawing.</p>
+        <GuideFigure src="/guide/14-measurement-mode.png" alt="Measurement mode with a table of six requirements and samples entered" />
+        <div className="guide-flow">
+          <div className="guide-flow-title">Status, per requirement — conservative by design</div>
+          <div className="guide-decision">
+            <div className="guide-decision-row">
+              <span className="guide-decision-q">All samples empty?</span>
+              <span className="guide-decision-arrow">yes →</span>
+              <span className="status open mini">OPEN</span>
+            </div>
+            <div className="guide-decision-row">
+              <span className="guide-decision-q">Note/Visual, every filled sample is "OK"?</span>
+              <span className="guide-decision-arrow">yes →</span>
+              <span className="status ok mini">OK</span>
+            </div>
+            <div className="guide-decision-row">
+              <span className="guide-decision-q">Note/Visual, any filled sample isn't "OK"?</span>
+              <span className="guide-decision-arrow">yes →</span>
+              <span className="status fail mini">NG</span>
+            </div>
+            <div className="guide-decision-row">
+              <span className="guide-decision-q">Dimension type, no usable USL/LSL?</span>
+              <span className="guide-decision-arrow">yes →</span>
+              <span className="status open mini">OPEN</span>
+            </div>
+            <div className="guide-decision-row">
+              <span className="guide-decision-q">Any sample non-numeric or outside LSL…USL?</span>
+              <span className="guide-decision-arrow">yes →</span>
+              <span className="status fail mini">NG</span>
+            </div>
+            <div className="guide-decision-row">
+              <span className="guide-decision-q">All samples filled and within limits?</span>
+              <span className="guide-decision-arrow">yes →</span>
+              <span className="status ok mini">OK</span>
+            </div>
+            <div className="guide-decision-row">
+              <span className="guide-decision-q">Otherwise (still some blanks)</span>
+              <span className="guide-decision-arrow">→</span>
+              <span className="status open mini">OPEN</span>
+            </div>
+          </div>
+        </div>
+        <p>Overall status rolls up the same way everywhere it's shown: any <span className="status fail mini">NG</span> → <strong>FAIL</strong>; else any <span className="status open mini">OPEN</span> → <strong>OPEN</strong>; else <strong>PASS</strong>.</p>
+        <GuideFigure src="/guide/15-measurement-mode-status.png" alt="A requirement mid-entry, status still reading OPEN" caption="Status stays OPEN until every sample for that requirement is filled in." />
+      </div>
+
+      <div className="guide-topic">
+        <h4>Settings</h4>
+        <GuideFigure src="/guide/13-settings-dialog.png" alt="Settings dialog with a live balloon preview" />
+        <p>Toolbar button style (Icon + Text or Icon Only), balloon diameter, number font size, and leader length — all save automatically and follow you across every project and drawing.</p>
+      </div>
+
+      <div className="guide-topic">
+        <h4>Exporting</h4>
+        <GuideFigure src="/guide/16-export-toolbar.png" alt="Export buttons enabled in the toolbar" />
+        <p><strong>PDF</strong> draws a red circle, leader line, and balloon number over each requirement's target on the original drawing. <strong>Excel</strong> exports a "QC FAI" workbook: header block, one row per characteristic with ID #, Type, Unit, Nominal, Tolerance, USL, LSL, every sample, computed MIN/MAX, Method, Status, and Notes, plus a Method legend. Both reflect exactly what's in the table the moment you click.</p>
+      </div>
+
+      <div className="guide-topic">
+        <h4>Troubleshooting</h4>
+        <ul>
+          <li><strong>"Local storage quota exceeded"</strong> — your browser's storage for this site is full; delete unused drawings/projects or use a smaller PDF.</li>
+          <li><strong>A requirement stays OPEN</strong> — either not every sample is filled in, or the tolerance couldn't be resolved. Check the Tolerance Table and the row's +Tol/−Tol fields.</li>
+          <li><strong>Auto Balloon found nothing, or found garbage</strong> — it only searches inside the rectangle you drag; try a tighter or looser box, remove bad candidates before committing, or place that one manually.</li>
+          <li><strong>Can't edit a requirement in Measurement mode</strong> — by design, so measurement entry can't change what's being measured. Switch to Edit mode.</li>
+          <li><strong>Text Select won't pick up some text</strong> — that text is a raster scan, not embedded PDF text. Drag a rectangle over it to run OCR instead.</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 export function HelpDialog({ open, onClose }) {
   if (!open) return null;
 
@@ -122,6 +284,14 @@ export function HelpDialog({ open, onClose }) {
               <p>Export the ballooned PDF for distribution and the Excel workbook for the inspection report. Status remains conservative: incomplete rows stay OPEN.</p>
             </div>
 	          </section>
+
+          <details className="help-section version-history user-guide">
+            <summary>
+              <span>Full User Guide</span>
+              <strong>13 topics</strong>
+            </summary>
+            <FullUserGuide />
+          </details>
 
           <details className="help-section version-history">
             <summary>
