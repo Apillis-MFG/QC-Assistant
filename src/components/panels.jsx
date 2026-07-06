@@ -1,9 +1,9 @@
 import { memo, useMemo } from "react";
-import { X, HelpCircle, Plus, FilePlus2, Circle, Trash2, RotateCcw } from "lucide-react";
+import { X, HelpCircle, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
 import { methods, types, APP_VERSION } from "../lib/constants.js";
 import { formatBytes, formatDate } from "../lib/utils.js";
-import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer } from "./widgets.jsx";
+import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer, Field } from "./widgets.jsx";
 
 export function HelpDialog({ open, onClose }) {
   if (!open) return null;
@@ -176,6 +176,7 @@ export function ProjectDashboard({
   projectDialog,
   onNewProject,
   onOpenProject,
+  onManageProject,
   onRenameProject,
   onDeleteProject,
   onDialogChange,
@@ -236,6 +237,7 @@ export function ProjectDashboard({
                   </div>
                   <div className="project-card-actions">
                     <button className="button primary" onClick={() => onOpenProject(project.id)}>Open</button>
+                    <button className="small-button project-action add" onClick={() => onManageProject(project.id)}>Manage</button>
                     <button className="small-button project-action add" onClick={() => onRenameProject(project)}>Edit Name</button>
                     <button className="small-button project-action delete-project" onClick={() => onDeleteProject(project)}>Delete Project</button>
                   </div>
@@ -276,6 +278,154 @@ export function ProjectDashboard({
               <button type="submit" className="button primary" disabled={!projectDialog.name.trim()}>
                 {projectDialog.mode === "create" ? "Create Project" : "Save Name"}
               </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      <HelpDialog open={helpOpen} onClose={onCloseHelp} />
+    </div>
+  );
+}
+
+export function ProjectDetail({
+  project,
+  drawings,
+  ready,
+  fieldDraft,
+  onFieldChange,
+  onSaveFields,
+  onBack,
+  onOpenProjectWorkspace,
+  onAddDrawing,
+  onRenameDrawing,
+  onDeleteDrawing,
+  drawingDialog,
+  onDrawingDialogChange,
+  onDrawingDialogSubmit,
+  onDrawingDialogClose,
+  helpOpen,
+  onOpenHelp,
+  onCloseHelp,
+}) {
+  return (
+    <div className="dashboard-shell">
+      <header className="dashboard-header">
+        <div className="brand">
+          <img className="brand-mark" src="/logo-mark.svg" alt="" aria-hidden="true" />
+          <div>
+            <div className="brand-title-row">
+              <h1>QC Assistant</h1>
+              <span className="version-badge">{APP_VERSION}</span>
+              <button className="icon-button brand-help" onClick={onOpenHelp} title="Help and shortcuts" aria-label="Help and shortcuts">
+                <HelpCircle size={17} />
+              </button>
+            </div>
+            <p>Project details</p>
+          </div>
+        </div>
+        <button className="button secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back to Projects
+        </button>
+      </header>
+
+      <main className="dashboard-main">
+        <section className="dashboard-panel">
+          <div className="dashboard-title">
+            <div>
+              <h2>Project Info</h2>
+              <p>Name and code for this project</p>
+            </div>
+          </div>
+
+          {!ready ? (
+            <div className="dashboard-empty">
+              <FilePlus2 size={34} />
+              <p>Loading project...</p>
+            </div>
+          ) : (
+            <div className="project-detail-form">
+              <div className="project-detail-fields">
+                <Field label="Project Name" value={fieldDraft.name} onChange={(value) => onFieldChange("name", value)} wide />
+                <Field label="Project Code" value={fieldDraft.code} onChange={(value) => onFieldChange("code", value)} compact />
+              </div>
+              <div className="dialog-actions">
+                <button className="button primary" onClick={onSaveFields} disabled={!fieldDraft.name.trim()}>
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="dashboard-panel">
+          <div className="dashboard-title">
+            <div>
+              <h2>Drawings</h2>
+              <p>{drawings.length} drawings</p>
+            </div>
+            <label className="small-button project-action add file-button">
+              <Plus size={14} />
+              Add Drawing
+              <input type="file" accept="application/pdf" onChange={onAddDrawing} />
+            </label>
+          </div>
+
+          {drawings.length ? (
+            <div className="project-list">
+              {drawings.map((drawing) => (
+                <article key={drawing.id} className="project-card">
+                  <div className="project-card-main">
+                    <div>
+                      <h3>{drawing.name}</h3>
+                      <p>
+                        {drawing.pdfName} · {formatBytes(drawing.pdfByteLength)} · Updated {formatDate(drawing.updatedAt)}
+                      </p>
+                    </div>
+                    <strong className={`status ${drawing.status.toLowerCase()}`}>{drawing.status}</strong>
+                  </div>
+                  <div className="project-card-actions">
+                    <button className="button primary" onClick={() => onOpenProjectWorkspace(drawing.id)}>Open</button>
+                    <button className="small-button project-action add" onClick={() => onRenameDrawing(drawing)}>Rename</button>
+                    <button className="small-button project-action delete-drawing" onClick={() => onDeleteDrawing(drawing)}>Delete</button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="dashboard-empty">
+              <FilePlus2 size={38} />
+              <h2>No drawings yet</h2>
+              <label className="button primary">
+                <Plus size={16} />
+                Add Drawing
+                <input type="file" accept="application/pdf" onChange={onAddDrawing} />
+              </label>
+            </div>
+          )}
+        </section>
+      </main>
+
+      {drawingDialog.open ? (
+        <div className="dialog-backdrop" role="presentation">
+          <form className="project-dialog" onSubmit={onDrawingDialogSubmit}>
+            <div className="dialog-title">
+              <h2>Rename Drawing</h2>
+              <button type="button" className="icon-button" onClick={onDrawingDialogClose} aria-label="Close rename dialog">×</button>
+            </div>
+            <label className="stacked-label">
+              Drawing Name
+              <input
+                autoFocus
+                value={drawingDialog.name}
+                onChange={(event) => onDrawingDialogChange(event.target.value)}
+                placeholder="Example: Bracket Rev C"
+              />
+            </label>
+            <div className="dialog-actions">
+              <button type="button" className="button secondary" onClick={onDrawingDialogClose}>Cancel</button>
+              <button type="submit" className="button primary" disabled={!drawingDialog.name.trim()}>Save</button>
             </div>
           </form>
         </div>

@@ -117,6 +117,22 @@ button:disabled {
   overflow: hidden;
 }
 
+.dashboard-main > .dashboard-panel + .dashboard-panel {
+  margin-top: 16px;
+}
+
+.project-detail-form {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.project-detail-fields {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr);
+  gap: 12px;
+}
+
 .dashboard-title {
   display: flex;
   justify-content: space-between;
@@ -1022,7 +1038,22 @@ kbd {
 .brand-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 0;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+}
+
+.brand-actions .icon-button {
+  border-color: transparent;
+  background: transparent;
+}
+
+.brand-actions > .icon-button + .icon-button {
+  margin-left: 4px;
+  border-left: 1px solid var(--line);
+  padding-left: 4px;
 }
 
 .brand-help {
@@ -1107,22 +1138,6 @@ textarea:focus {
 
 .actions {
   gap: 22px;
-}
-
-.upload-action {
-  padding-right: 22px;
-  border-right: 1px solid var(--line);
-}
-
-.upload-action .button {
-  border-color: var(--blue-line);
-  background: var(--blue-soft);
-  color: var(--blue);
-}
-
-.upload-action .button:hover {
-  border-color: var(--blue);
-  background: var(--blue-hover);
 }
 
 .button,
@@ -1963,6 +1978,10 @@ td select:focus {
 
   .metadata-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .project-detail-fields {
+    grid-template-columns: 1fr;
   }
 
   .measurement-area {

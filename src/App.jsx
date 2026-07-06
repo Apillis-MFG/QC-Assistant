@@ -16,7 +16,6 @@ import {
   Table2,
   TextSelect,
   Trash2,
-  Upload,
 } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -65,7 +64,7 @@ import {
   DimensionHighlights,
 } from "./components/widgets.jsx";
 import {
-  ProjectDashboard, HelpDialog, MeasurementWorkspace, BalloonEditor, CharacteristicTable, SettingsDialog,
+  ProjectDashboard, ProjectDetail, HelpDialog, MeasurementWorkspace, BalloonEditor, CharacteristicTable, SettingsDialog,
   ToleranceTableDialog,
 } from "./components/panels.jsx";
 import {
@@ -134,8 +133,13 @@ export default function App() {
   const [drawings, setDrawings] = useState([]);
   const [activeDrawingId, setActiveDrawingId] = useState(null);
   const [projectsReady, setProjectsReady] = useState(false);
-  const [dashboardVisible, setDashboardVisible] = useState(true);
+  const [page, setPage] = useState("dashboard");
   const [projectDialog, setProjectDialog] = useState({ open: false, mode: "create", projectId: null, name: "" });
+  const [detailProjectId, setDetailProjectId] = useState(null);
+  const [detailProject, setDetailProject] = useState(null);
+  const [detailDrawings, setDetailDrawings] = useState([]);
+  const [detailFields, setDetailFields] = useState({ name: "", code: "" });
+  const [drawingDialog, setDrawingDialog] = useState({ open: false, drawingId: null, name: "" });
   const [saveState, setSaveState] = useState({ status: "idle", label: "local: not saved" });
   const [metadata, setMetadata] = useState(emptyMetadata);
   const [toleranceOverrides, setToleranceOverrides] = useState(emptyToleranceOverrides);
@@ -393,7 +397,7 @@ export default function App() {
         setActiveProject(null);
         setDrawings([]);
         setActiveDrawingId(null);
-        setDashboardVisible(true);
+        setPage("dashboard");
         resetDrawingState(
           summaries.length
             ? "Open a project from the dashboard to continue."
@@ -713,6 +717,7 @@ export default function App() {
     const project = {
       id: crypto.randomUUID(),
       name: name.trim() || "Untitled Project",
+      code: "",
       createdAt: now,
       updatedAt: now,
     };
@@ -751,7 +756,7 @@ export default function App() {
       if (projectDialog.mode === "create") {
         const project = await createProject(name);
         setProjectDialog({ open: false, mode: "create", projectId: null, name: "" });
-        setDashboardVisible(false);
+        setPage("workspace");
         await openProjectWorkspace(project.id);
         return;
       }
@@ -765,11 +770,16 @@ export default function App() {
       const updatedProject = {
         id: currentProject.id,
         name,
+        code: currentProject.code,
         createdAt: currentProject.createdAt,
         updatedAt: new Date().toISOString(),
       };
       await saveProject(updatedProject);
       if (activeProject?.id === updatedProject.id) setActiveProject(updatedProject);
+      if (detailProjectId === updatedProject.id) {
+        setDetailProject(updatedProject);
+        setDetailFields({ name: updatedProject.name, code: updatedProject.code || "" });
+      }
       await refreshProjectList();
       setProjectDialog({ open: false, mode: "create", projectId: null, name: "" });
       setSaveState({ status: "saved", label: "local: project renamed" });
@@ -783,7 +793,7 @@ export default function App() {
     if (!projectId) return;
     try {
       await openProjectWorkspace(projectId);
-      setDashboardVisible(false);
+      setPage("workspace");
       await refreshProjectList();
     } catch (error) {
       setMessage(`Could not open project: ${error.message}`);
@@ -1447,6 +1457,159 @@ export default function App() {
     }
   }, [activeProject?.id, refreshProjectList, resetDrawingState]);
 
+  const handleManageProject = useCallback(async (projectId) => {
+    const workspace = await loadProject(projectId);
+    if (!workspace) {
+      setMessage("Project could not be found in local storage.");
+      return;
+    }
+    setDetailProjectId(projectId);
+    setDetailProject(workspace.project);
+    setDetailDrawings(workspace.drawings);
+    setDetailFields({ name: workspace.project.name, code: workspace.project.code || "" });
+    setPage("detail");
+  }, []);
+
+  const handleBackFromDetail = useCallback(async () => {
+    setPage("dashboard");
+    setDetailProjectId(null);
+    setDetailProject(null);
+    setDetailDrawings([]);
+    await refreshProjectList();
+  }, [refreshProjectList]);
+
+  const handleDetailFieldChange = useCallback((field, value) => {
+    setDetailFields((current) => ({ ...current, [field]: value }));
+  }, []);
+
+  const handleSaveDetailFields = useCallback(async () => {
+    const name = detailFields.name.trim();
+    if (!name || !detailProject) return;
+
+    const updatedProject = {
+      ...detailProject,
+      name,
+      code: detailFields.code.trim(),
+      updatedAt: new Date().toISOString(),
+    };
+    await saveProject(updatedProject);
+    setDetailProject(updatedProject);
+    if (activeProject?.id === updatedProject.id) setActiveProject(updatedProject);
+    await refreshProjectList();
+    setMessage(`Saved ${updatedProject.name}.`);
+  }, [activeProject?.id, detailFields, detailProject, refreshProjectList]);
+
+  const handleDetailAddDrawing = useCallback(async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !detailProjectId) return;
+
+    if (detailDrawings.length >= PROJECT_LIMITS.maxDrawings) {
+      setMessage(`This project already has ${PROJECT_LIMITS.maxDrawings} drawings. Create a new project for more drawings.`);
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      const baseName = file.name.replace(/\.[^/.]+$/, "");
+      const bytes = await file.arrayBuffer();
+      const loadedPdf = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
+      const now = new Date().toISOString();
+      const drawing = {
+        id: crypto.randomUUID(),
+        projectId: detailProjectId,
+        name: baseName || file.name,
+        pdfName: file.name,
+        pdfBytes: bytes,
+        pdfByteLength: file.size || bytes.byteLength,
+        pageCount: loadedPdf.numPages,
+        metadata: { ...emptyMetadata, drawingNo: baseName },
+        sampleCount: 5,
+        characteristics: [],
+        pageNumber: 1,
+        zoom: ZOOM_DEFAULT,
+        status: "OPEN",
+        createdAt: now,
+        updatedAt: now,
+      };
+      await saveDrawing(detailProjectId, drawing);
+      const workspace = await loadProject(detailProjectId);
+      setDetailDrawings(workspace?.drawings || []);
+      await refreshProjectList();
+      setMessage(`Added ${file.name}.`);
+    } catch (error) {
+      setMessage(getStorageErrorMessage(error));
+    } finally {
+      event.target.value = "";
+    }
+  }, [detailDrawings.length, detailProjectId, refreshProjectList]);
+
+  const handleDetailOpenDrawing = useCallback(async (drawingId) => {
+    if (!detailProjectId) return;
+    setPage("workspace");
+    await openProjectWorkspace(detailProjectId, drawingId);
+  }, [detailProjectId, openProjectWorkspace]);
+
+  const handleOpenDrawingDialog = useCallback((drawing) => {
+    setDrawingDialog({ open: true, drawingId: drawing.id, name: drawing.name || "" });
+  }, []);
+
+  const handleDrawingDialogChange = useCallback((name) => {
+    setDrawingDialog((current) => ({ ...current, name }));
+  }, []);
+
+  const handleDrawingDialogClose = useCallback(() => {
+    setDrawingDialog((current) => ({ ...current, open: false }));
+  }, []);
+
+  const handleDrawingDialogSubmit = useCallback(async (event) => {
+    event.preventDefault();
+    const name = drawingDialog.name.trim();
+    if (!name || !detailProjectId) return;
+
+    try {
+      const drawing = await loadDrawing(drawingDialog.drawingId);
+      if (!drawing) {
+        setMessage("Drawing could not be found for rename.");
+        return;
+      }
+      const updatedDrawing = { ...drawing, name, updatedAt: new Date().toISOString() };
+      await saveDrawing(detailProjectId, updatedDrawing);
+      setDrawingDialog({ open: false, drawingId: null, name: "" });
+      const workspace = await loadProject(detailProjectId);
+      setDetailDrawings(workspace?.drawings || []);
+      if (activeDrawingId === drawing.id) setDrawings((items) => updateDrawingSummary(items, updatedDrawing));
+    } catch (error) {
+      setMessage(`Could not rename drawing: ${error.message}`);
+    }
+  }, [activeDrawingId, detailProjectId, drawingDialog]);
+
+  const handleDetailDeleteDrawing = useCallback(async (drawing) => {
+    const confirmed = window.confirm(`Delete drawing "${drawing.name}" and its local PDF, balloons, table, and measurements?`);
+    if (!confirmed || !detailProjectId) return;
+
+    try {
+      await deleteDrawing(drawing.id);
+      const workspace = await loadProject(detailProjectId);
+      setDetailDrawings(workspace?.drawings || []);
+      await refreshProjectList();
+
+      if (activeProject?.id === detailProjectId && activeDrawingId === drawing.id) {
+        const remaining = drawings.filter((item) => item.id !== drawing.id);
+        setDrawings(remaining);
+        const nextDrawingId = remaining[0]?.id || null;
+        rememberActiveProject(detailProjectId, nextDrawingId);
+        if (nextDrawingId) {
+          await applyDrawing(nextDrawingId, { projectId: detailProjectId, message: "Deleted drawing. Opened the next drawing." });
+        } else {
+          setActiveDrawingId(null);
+          resetDrawingState("Deleted drawing. Add another drawing PDF to this project.");
+        }
+      }
+    } catch (error) {
+      setMessage(`Could not delete drawing: ${error.message}`);
+    }
+  }, [activeDrawingId, activeProject?.id, applyDrawing, detailProjectId, drawings, refreshProjectList, rememberActiveProject, resetDrawingState]);
+
   const deleteCharacteristic = useCallback((id) => {
     if (!id) return;
     setCharacteristics((items) => renumber(items.filter((item) => item.id !== id)));
@@ -1598,7 +1761,7 @@ export default function App() {
     });
   }, [layoutMode]);
 
-  if (dashboardVisible) {
+  if (page === "dashboard") {
     return (
       <ProjectDashboard
         projectsReady={projectsReady}
@@ -1606,11 +1769,37 @@ export default function App() {
         projectDialog={projectDialog}
         onNewProject={handleNewProject}
         onOpenProject={handleOpenProject}
+        onManageProject={handleManageProject}
         onRenameProject={handleOpenProjectDialog}
         onDeleteProject={handleDeleteProjectFromDashboard}
         onDialogChange={(name) => setProjectDialog((current) => ({ ...current, name }))}
         onDialogSubmit={handleProjectDialogSubmit}
         onDialogClose={handleCloseProjectDialog}
+        onOpenHelp={() => setHelpOpen(true)}
+        helpOpen={helpOpen}
+        onCloseHelp={() => setHelpOpen(false)}
+      />
+    );
+  }
+
+  if (page === "detail") {
+    return (
+      <ProjectDetail
+        project={detailProject}
+        drawings={detailDrawings}
+        ready={Boolean(detailProject)}
+        fieldDraft={detailFields}
+        onFieldChange={handleDetailFieldChange}
+        onSaveFields={handleSaveDetailFields}
+        onBack={handleBackFromDetail}
+        onOpenProjectWorkspace={handleDetailOpenDrawing}
+        onAddDrawing={handleDetailAddDrawing}
+        onRenameDrawing={handleOpenDrawingDialog}
+        onDeleteDrawing={handleDetailDeleteDrawing}
+        drawingDialog={drawingDialog}
+        onDrawingDialogChange={handleDrawingDialogChange}
+        onDrawingDialogSubmit={handleDrawingDialogSubmit}
+        onDrawingDialogClose={handleDrawingDialogClose}
         onOpenHelp={() => setHelpOpen(true)}
         helpOpen={helpOpen}
         onCloseHelp={() => setHelpOpen(false)}
@@ -1647,13 +1836,6 @@ export default function App() {
         </div>
 
         <div className="actions">
-          <div className="action-group upload-action">
-            <label className="button secondary">
-              <Upload size={16} />
-              Upload PDF
-              <input type="file" accept="application/pdf" onChange={handlePdfUpload} />
-            </label>
-          </div>
           <div className="action-group export-actions">
             <button className="button secondary" onClick={exportPdf} disabled={!pdfBytes || !characteristics.length}>
               <Download size={16} />
@@ -1672,7 +1854,7 @@ export default function App() {
           <div className="toolbar-cluster project-cluster" aria-label="Project controls">
             <span className="toolbar-cluster-label">Project</span>
             <div className="toolbar-cluster-controls">
-              <button className="small-button project-action dashboard-link" onClick={() => setDashboardVisible(true)}>Projects</button>
+              <button className="small-button project-action dashboard-link" onClick={() => setPage("dashboard")}>Projects</button>
               <label className="project-field project-select-field">
                 <select value={activeProject?.id || ""} onChange={(event) => handleOpenProject(event.target.value)} disabled={!projectSummaries.length} aria-label="Active project">
                   {!projectSummaries.length ? <option value="">No local projects</option> : null}

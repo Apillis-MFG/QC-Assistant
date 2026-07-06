@@ -192,6 +192,7 @@ function normalizeProject(project) {
     schemaVersion: 1,
     id: project.id,
     name: project.name?.trim() || "Untitled Project",
+    code: project.code?.trim() || "",
     createdAt: project.createdAt || now,
     updatedAt: project.updatedAt || now,
   };
