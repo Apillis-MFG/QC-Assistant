@@ -1771,28 +1771,32 @@ export default function App() {
             <div className="brand-title-row">
               <h1>QC Assistant</h1>
               <span className="version-badge">{APP_VERSION}</span>
-              <div className="brand-actions">
-                <button className="icon-button brand-help" onClick={() => setHelpOpen(true)} title="Help and shortcuts" aria-label="Help and shortcuts">
-                  <HelpCircle size={17} />
-                </button>
-                <button className="icon-button brand-help" onClick={() => setSettingsOpen(true)} title="Balloon settings" aria-label="Balloon settings">
-                  <Settings size={17} />
-                </button>
-              </div>
             </div>
             <p>Drawing ballooning and inspection report builder</p>
           </div>
         </div>
 
         <div className="actions">
-          <div className="action-group export-actions">
-            <button className="button secondary" onClick={exportPdf} disabled={!pdfBytes || !characteristics.length}>
-              <Download size={16} />
-              PDF
+          <div className="action-group header-actions">
+            <button
+              type="button"
+              className="icon-button icon-button-labeled"
+              onClick={() => setSettingsOpen(true)}
+              data-tooltip="Balloon settings"
+              aria-label="Balloon settings"
+            >
+              <Settings size={16} />
+              <span className="icon-button-text">Settings</span>
             </button>
-            <button className="button primary" onClick={exportExcel} disabled={!characteristics.length}>
-              <Save size={16} />
-              Excel
+            <button
+              type="button"
+              className="icon-button icon-button-labeled"
+              onClick={() => setHelpOpen(true)}
+              data-tooltip="Help and shortcuts (?)"
+              aria-label="Help and shortcuts"
+            >
+              <HelpCircle size={16} />
+              <span className="icon-button-text">Help</span>
             </button>
           </div>
         </div>
@@ -1824,8 +1828,24 @@ export default function App() {
                   ))}
                 </select>
               </label>
-              <button className="icon-button" onClick={() => setToleranceTableOpen(true)} title="Tolerance table" aria-label="Tolerance table">
-                <Ruler size={17} />
+              <button
+                type="button"
+                className="icon-button icon-button-labeled"
+                onClick={() => setToleranceTableOpen(true)}
+                data-tooltip="Tolerance table"
+                aria-label="Tolerance table"
+              >
+                <Ruler size={16} />
+                <span className="icon-button-text">Tolerance</span>
+              </button>
+              <div className="toolbar-divider" aria-hidden="true" />
+              <button className="button secondary" onClick={exportPdf} disabled={!pdfBytes || !characteristics.length}>
+                <Download size={16} />
+                PDF
+              </button>
+              <button className="button primary" onClick={exportExcel} disabled={!characteristics.length}>
+                <Save size={16} />
+                Excel
               </button>
             </div>
           </div>
@@ -1906,26 +1926,41 @@ export default function App() {
         <section ref={drawingPanelRef} className="drawing-panel">
           <div className="panel-toolbar">
             <div className="tool-group">
-              <ToolButton active={mode === "select"} title="Select (V)" onClick={() => switchMode("select")} icon={<MousePointer2 size={17} />} />
+              <ToolButton
+                active={mode === "select"}
+                title="Select (V)"
+                label="Select"
+                onClick={() => switchMode("select")}
+                icon={<MousePointer2 size={17} />}
+              />
               <ToolButton
                 active={mode === "balloon"}
-                title="Add balloon (B)"
+                title="Add Balloon (B)"
+                label="Balloon"
                 onClick={() => switchMode("balloon")}
                 icon={<Circle size={17} />}
               />
               <ToolButton
                 active={mode === "autoBalloon"}
-                title="Review balloon candidates (A)"
+                title="Review Balloon Candidates (A)"
+                label="Review"
                 onClick={() => switchMode("autoBalloon")}
                 icon={<ScanSearch size={17} />}
               />
               <ToolButton
                 active={mode === "text"}
-                title="Text select (T)"
+                title="Text Select (T)"
+                label="Text"
                 onClick={() => switchMode("text")}
                 icon={<TextSelect size={17} />}
               />
-              <ToolButton title="Pan mode (H)" onClick={() => switchMode("pan")} active={mode === "pan"} icon={<Hand size={17} />} />
+              <ToolButton
+                title="Pan Mode (H)"
+                label="Pan"
+                onClick={() => switchMode("pan")}
+                active={mode === "pan"}
+                icon={<Hand size={17} />}
+              />
             </div>
             <DrawingNavToolbar
               zoom={zoom}

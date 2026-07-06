@@ -994,33 +994,16 @@ kbd {
   white-space: nowrap;
 }
 
-.brand-actions {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--bg);
-}
-
-.brand-actions .icon-button {
-  border-color: transparent;
-  background: transparent;
-}
-
-.brand-actions > .icon-button + .icon-button {
-  margin-left: 4px;
-  border-left: 1px solid var(--line);
-  padding-left: 4px;
-}
-
 .brand-help {
   width: 30px;
   height: 30px;
   min-height: 30px;
   color: var(--muted);
   flex: 0 0 auto;
+}
+
+.header-actions {
+  gap: 8px;
 }
 
 .version-badge {
@@ -1157,6 +1140,58 @@ textarea:focus {
 
 .icon-button.danger {
   color: var(--fail);
+}
+
+.icon-button-labeled {
+  width: auto;
+  padding: 0 10px 0 8px;
+  gap: 6px;
+}
+
+.icon-button-text {
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.toolbar-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+  margin: 0 2px;
+}
+
+/* ── Fast hover tooltips (replaces slow native title delay) ─────── */
+
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 90ms ease, transform 90ms ease;
+  transition-delay: 120ms;
+  z-index: 60;
+  box-shadow: var(--shadow);
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .small-button {
