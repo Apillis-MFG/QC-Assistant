@@ -1763,7 +1763,7 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell" data-layout={layoutMode}>
+    <div className="app-shell" data-layout={layoutMode} data-toolbar-style={balloonSettings.toolButtonStyle}>
       <header className="topbar">
         <div className="brand">
           <img className="brand-mark" src="/logo-mark.svg" alt="" aria-hidden="true" />
@@ -1782,8 +1782,8 @@ export default function App() {
               type="button"
               className="icon-button icon-button-labeled"
               onClick={() => setSettingsOpen(true)}
-              data-tooltip="Balloon settings"
-              aria-label="Balloon settings"
+              data-tooltip="Settings"
+              aria-label="Settings"
             >
               <Settings size={16} />
               <span className="icon-button-text">Settings</span>

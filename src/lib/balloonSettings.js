@@ -4,6 +4,7 @@ export const defaultBalloonSettings = {
   diameter: 24,
   fontSize: 11,
   leaderScale: 1,
+  toolButtonStyle: "icon-text",
 };
 
 export function loadBalloonSettings() {
@@ -14,6 +15,7 @@ export function loadBalloonSettings() {
       diameter: Number.isFinite(saved?.diameter) ? saved.diameter : defaultBalloonSettings.diameter,
       fontSize: Number.isFinite(saved?.fontSize) ? saved.fontSize : defaultBalloonSettings.fontSize,
       leaderScale: Number.isFinite(saved?.leaderScale) ? saved.leaderScale : defaultBalloonSettings.leaderScale,
+      toolButtonStyle: saved?.toolButtonStyle === "icon-only" ? "icon-only" : defaultBalloonSettings.toolButtonStyle,
     };
   } catch {
     return { ...defaultBalloonSettings };

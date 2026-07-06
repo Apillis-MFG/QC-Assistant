@@ -13,6 +13,9 @@
   --blue-soft: #e8eef7;
   --blue-hover: #f2f6fc;
   --blue-line: #cdd9ec;
+  --primary: var(--blue);
+  --primary-dark: #203d63;
+  --primary-soft: var(--blue-soft);
   --selected-bg: var(--blue);
   --selected-bg-hover: #203d63;
   --selected-line: var(--blue);
@@ -408,9 +411,9 @@ kbd {
 }
 
 .help-tool.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 
 .help-export {
@@ -419,8 +422,8 @@ kbd {
 }
 
 .help-export.primary {
-  border-color: var(--accent);
-  background: var(--accent);
+  border-color: var(--primary);
+  background: var(--primary);
   color: var(--paper);
 }
 
@@ -1102,13 +1105,13 @@ textarea:focus {
 }
 
 .button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
+  border-color: var(--primary);
+  background: var(--primary);
   color: var(--paper);
 }
 
 .button.primary:hover {
-  background: var(--accent-dark);
+  background: var(--primary-dark);
 }
 
 .button.secondary:hover,
@@ -1143,7 +1146,11 @@ textarea:focus {
 }
 
 .icon-button-labeled {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: auto;
+  height: 34px;
   padding: 0 10px 0 8px;
   gap: 6px;
 }
@@ -1152,6 +1159,16 @@ textarea:focus {
   font-size: 11px;
   font-weight: 750;
   white-space: nowrap;
+  line-height: 1;
+}
+
+.app-shell[data-toolbar-style="icon-only"] .icon-button-text {
+  display: none;
+}
+
+.app-shell[data-toolbar-style="icon-only"] .icon-button-labeled {
+  width: 34px;
+  padding: 0;
 }
 
 .toolbar-divider {
@@ -1777,8 +1794,8 @@ textarea:focus {
 }
 
 .primary-compact {
-  border-color: var(--accent);
-  background: var(--accent);
+  border-color: var(--primary);
+  background: var(--primary);
   color: #fff;
 }
 
@@ -2192,6 +2209,41 @@ td select:focus {
   color: var(--ink);
 }
 
+.settings-section-title {
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0;
+}
+
+.settings-segmented {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 2px;
+  background: var(--bg);
+  width: fit-content;
+}
+
+.settings-segmented-option {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.settings-segmented-option.active {
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
 .settings-preview-section {
   background: var(--bg);
   border: 1px solid var(--line);
@@ -2270,14 +2322,14 @@ td select:focus {
   padding: 5px 16px;
   border: none;
   border-radius: 6px;
-  background: var(--accent);
+  background: var(--primary);
   color: white;
   cursor: pointer;
   font-weight: 600;
 }
 
 .settings-close-btn:hover {
-  background: var(--accent-dark);
+  background: var(--primary-dark);
 }
 
 /* ── Tolerance Table Dialog ──────────────────────────────────── */

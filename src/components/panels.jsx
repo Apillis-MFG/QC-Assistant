@@ -233,7 +233,6 @@ export function ProjectDashboard({
                         {project.drawingCount} drawings · {formatBytes(project.totalBytes)} · Updated {formatDate(project.updatedAt)}
                       </p>
                     </div>
-                    <strong className={`status ${project.status.toLowerCase()}`}>{project.status}</strong>
                   </div>
                   <div className="project-card-actions">
                     <button className="button primary" onClick={() => onOpenProject(project.id)}>Open</button>
@@ -383,7 +382,6 @@ export function ProjectDetail({
                         {drawing.pdfName} · {formatBytes(drawing.pdfByteLength)} · Updated {formatDate(drawing.updatedAt)}
                       </p>
                     </div>
-                    <strong className={`status ${drawing.status.toLowerCase()}`}>{drawing.status}</strong>
                   </div>
                   <div className="project-card-actions">
                     <button className="button primary" onClick={() => onOpenProjectWorkspace(drawing.id)}>Open</button>
@@ -866,7 +864,7 @@ export function CharacteristicTable({
 export function SettingsDialog({ open, settings, onClose, onChange }) {
   if (!open) return null;
 
-  const defaults = { diameter: 24, fontSize: 11, leaderScale: 1 };
+  const defaults = { diameter: 24, fontSize: 11, leaderScale: 1, toolButtonStyle: "icon-text" };
 
   function set(key, value) {
     onChange({ ...settings, [key]: value });
@@ -897,8 +895,8 @@ export function SettingsDialog({ open, settings, onClose, onChange }) {
       >
         <div className="dialog-title help-title">
           <div>
-            <h2 id="settings-title">Balloon Settings</h2>
-            <p>Customize balloon appearance. Saved automatically.</p>
+            <h2 id="settings-title">Settings</h2>
+            <p>Customize the toolbar and balloon appearance. Saved automatically.</p>
           </div>
           <button type="button" className="icon-button" onClick={onClose} aria-label="Close settings">
             <X size={17} />
@@ -906,8 +904,36 @@ export function SettingsDialog({ open, settings, onClose, onChange }) {
         </div>
 
         <div className="settings-body">
+          {/* Toolbar Buttons */}
+          <div className="settings-row">
+            <p className="settings-section-title">Toolbar</p>
+            <div className="settings-row-header">
+              <label>Button style</label>
+            </div>
+            <p className="settings-row-desc">Show a text label next to toolbar icons, or icons only.</p>
+            <div className="settings-segmented" role="radiogroup" aria-label="Toolbar button style">
+              <button
+                type="button"
+                className={`settings-segmented-option ${settings.toolButtonStyle !== "icon-only" ? "active" : ""}`}
+                onClick={() => set("toolButtonStyle", "icon-text")}
+                aria-pressed={settings.toolButtonStyle !== "icon-only"}
+              >
+                Icon + Text
+              </button>
+              <button
+                type="button"
+                className={`settings-segmented-option ${settings.toolButtonStyle === "icon-only" ? "active" : ""}`}
+                onClick={() => set("toolButtonStyle", "icon-only")}
+                aria-pressed={settings.toolButtonStyle === "icon-only"}
+              >
+                Icon Only
+              </button>
+            </div>
+          </div>
+
           {/* Balloon Diameter */}
           <div className="settings-row">
+            <p className="settings-section-title">Balloon appearance</p>
             <div className="settings-row-header">
               <label htmlFor="setting-diameter">Balloon diameter</label>
               <button
