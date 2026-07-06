@@ -136,6 +136,10 @@ button:disabled {
   gap: 12px;
 }
 
+.project-detail-fields .field.wide {
+  grid-column: 1 / -1;
+}
+
 .dashboard-title {
   display: flex;
   justify-content: space-between;

@@ -193,6 +193,9 @@ function normalizeProject(project) {
     id: project.id,
     name: project.name?.trim() || "Untitled Project",
     code: project.code?.trim() || "",
+    owner: project.owner?.trim() || "",
+    estimatedDeliveryDate: project.estimatedDeliveryDate || "",
+    notes: project.notes || "",
     createdAt: project.createdAt || now,
     updatedAt: project.updatedAt || now,
   };

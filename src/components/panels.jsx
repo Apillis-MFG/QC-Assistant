@@ -18,6 +18,11 @@ export function HelpDialog({ open, onClose }) {
     ["Esc", "Close help, cancel selection UI"],
   ];
 
+  const releaseNotes060 = [
+    "Improved the UI overall.",
+    "Icon buttons now support a Text label alongside the icon, with a setting to choose Icon only or Icon + Text.",
+  ];
+
   const releaseNotes050 = [
     "Tolerance inputs now preserve common leading-decimal drawing values like .005, +.005, and -.002.",
     "The tolerance table can fill every blank dimension with the same drawing pattern in one pass without overwriting entered tolerances.",
@@ -121,8 +126,16 @@ export function HelpDialog({ open, onClose }) {
           <details className="help-section version-history">
             <summary>
               <span>Version History</span>
-              <strong>v0.5.0</strong>
+              <strong>v0.6.0</strong>
             </summary>
+            <div className="release-note">
+              <h3>v0.6.0</h3>
+              <ul>
+                {releaseNotes060.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
             <div className="release-note">
               <h3>v0.5.0</h3>
               <ul>
@@ -352,6 +365,15 @@ export function ProjectDetail({
               <div className="project-detail-fields">
                 <Field label="Project Name" value={fieldDraft.name} onChange={(value) => onFieldChange("name", value)} wide />
                 <Field label="Project Code" value={fieldDraft.code} onChange={(value) => onFieldChange("code", value)} compact />
+                <Field label="Project Owner" value={fieldDraft.owner} onChange={(value) => onFieldChange("owner", value)} compact />
+                <Field
+                  label="Estimated Delivery Date"
+                  type="date"
+                  value={fieldDraft.estimatedDeliveryDate}
+                  onChange={(value) => onFieldChange("estimatedDeliveryDate", value)}
+                  compact
+                />
+                <Field label="Notes" value={fieldDraft.notes} onChange={(value) => onFieldChange("notes", value)} wide multiline />
               </div>
               <div className="dialog-actions">
                 <button className="button primary" onClick={onSaveFields} disabled={!fieldDraft.name.trim() || !fieldsDirty}>
