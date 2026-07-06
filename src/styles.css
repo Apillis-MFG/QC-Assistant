@@ -73,10 +73,10 @@ button:disabled {
 }
 
 .topbar {
-  display: grid;
-  grid-template-columns: minmax(280px, auto) minmax(360px, 1fr) auto;
-  gap: 18px;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 18px;
   padding: 14px 18px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
@@ -438,7 +438,7 @@ kbd {
   padding: 8px 18px;
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 14px;
   overflow-x: auto;
 }
@@ -450,6 +450,14 @@ kbd {
   gap: 8px;
   min-width: 0;
   flex: 1 1 auto;
+}
+
+.layout-bar-row {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
 }
 
 .toolbar-cluster {
@@ -480,20 +488,11 @@ kbd {
   min-width: 0;
 }
 
-.project-cluster,
-.drawing-cluster {
+.project-cluster {
   width: fit-content;
   max-width: 100%;
-}
-
-.project-cluster {
   background: var(--cluster-project-bg);
   border-color: var(--blue-line);
-}
-
-.drawing-cluster {
-  background: var(--cluster-drawing-bg);
-  border-color: var(--ok-soft-strong);
 }
 
 .view-mode-cluster {
@@ -510,10 +509,6 @@ kbd {
   color: var(--blue);
 }
 
-.drawing-cluster .toolbar-cluster-label {
-  color: var(--ok);
-}
-
 .view-mode-cluster .toolbar-cluster-label {
   color: var(--accent);
 }
@@ -522,14 +517,30 @@ kbd {
   color: var(--open);
 }
 
-.view-controls {
+.drawing-info-section .drawing-info-fields {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: flex-end;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.drawing-info-field {
   min-width: 0;
-  flex: 0 0 auto;
+}
+
+.drawing-info-field-no {
+  flex: 1 1 60%;
+}
+
+.drawing-info-field-rev {
+  flex: 1 1 30%;
+}
+
+.drawing-info-field-desc {
+  flex: 1 1 100%;
+}
+
+.drawing-info-field .field input {
+  width: 100%;
 }
 
 .project-field {
@@ -590,17 +601,6 @@ kbd {
   background: var(--blue-hover);
 }
 
-.project-action.save {
-  border-color: var(--ok);
-  background: var(--ok-soft);
-  color: var(--ok);
-}
-
-.project-action.save:hover {
-  border-color: var(--ok);
-  background: var(--ok-soft-strong);
-}
-
 .project-action.delete-drawing {
   border-color: var(--fail-line);
   background: var(--fail-soft);
@@ -625,50 +625,9 @@ kbd {
 
 .project-action.delete-project:disabled,
 .project-action.delete-drawing:disabled,
-.project-action.save:disabled,
 .project-action.dashboard-link:disabled,
 .project-action.add:disabled {
   opacity: 0.48;
-}
-
-.save-state {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 0 8px;
-  color: var(--muted);
-  background: var(--paper);
-  font-size: 11px;
-  font-weight: 800;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  text-transform: none;
-  white-space: nowrap;
-}
-
-.save-state.saving {
-  color: var(--blue);
-  background: var(--blue-soft);
-  border-color: var(--blue-line);
-}
-
-.save-state.saved {
-  color: var(--ok);
-  background: var(--ok-soft);
-  border-color: var(--ok-soft-strong);
-}
-
-.save-state.warning {
-  color: var(--open);
-  background: var(--cluster-layout-bg);
-  border-color: var(--cluster-layout-line);
-}
-
-.save-state.error {
-  color: var(--fail);
-  background: var(--fail-soft);
-  border-color: var(--fail-line);
 }
 
 .layout-tabs {
@@ -1083,12 +1042,6 @@ kbd {
   color: var(--muted);
   font-size: 12px;
   margin-top: 2px;
-}
-
-.metadata-grid {
-  display: grid;
-  grid-template-columns: minmax(130px, 1fr) 76px minmax(180px, 1.4fr);
-  gap: 10px;
 }
 
 .field,
@@ -1594,23 +1547,6 @@ textarea:focus {
   padding: 12px;
 }
 
-.status-card {
-  border: 1px solid var(--line);
-  background: #fbfcfe;
-  border-radius: 7px;
-  padding: 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.status-card span {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 750;
-}
-
 .status {
   display: inline-flex;
   justify-content: center;
@@ -1973,11 +1909,7 @@ td select:focus {
 
 @media (max-width: 1100px) {
   .topbar {
-    grid-template-columns: 1fr;
-  }
-
-  .metadata-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex-wrap: wrap;
   }
 
   .project-detail-fields {
@@ -2076,14 +2008,13 @@ td select:focus {
     flex-direction: column;
   }
 
-  .view-controls,
+  .layout-bar-row,
   .toolbar-cluster,
   .toolbar-cluster-controls {
     flex-wrap: wrap;
   }
 
-  .view-controls {
-    justify-content: flex-start;
+  .layout-bar-row {
     width: 100%;
   }
 
@@ -2116,10 +2047,6 @@ td select:focus {
   .project-field select,
   .drawing-field select {
     width: min(220px, 100%);
-  }
-
-  .metadata-grid {
-    grid-template-columns: 1fr;
   }
 
   .actions,

@@ -50,7 +50,7 @@ import {
 } from "./lib/constants.js";
 import {
   buildDrawingSnapshot, updateDrawingSummary, getStorageWarning, getStorageErrorMessage,
-  formatBytes, formatDate, setMetadataValue, mapTextItem, metadataLabel, fieldLabel,
+  formatDate, setMetadataValue, mapTextItem, metadataLabel, fieldLabel,
   getNormalizedPoint, normalizeRect, getDefaultBalloonPosition, cropCanvasArea, clamp,
   parseDimension, findNearestTextDimension, findDimensionAtPoint, getTextItemBounds,
 } from "./lib/utils.js";
@@ -250,11 +250,6 @@ export default function App() {
   useEffect(() => {
     activeDrawingRef.current = activeDrawing;
   }, [activeDrawing]);
-
-  const projectStorageBytes = useMemo(
-    () => drawings.reduce((sum, drawing) => sum + (drawing.pdfByteLength || 0), 0),
-    [drawings],
-  );
 
   const contentAreaStyle = useMemo(() => ({
     "--split-v-inspector-width": `${panelSizes.splitV.inspectorWidth}px`,
@@ -649,23 +644,6 @@ export default function App() {
   useEffect(() => {
     persistActiveDrawingRef.current = persistActiveDrawing;
   }, [persistActiveDrawing]);
-
-  const handleManualSave = useCallback(async () => {
-    if (activeDrawingId) {
-      await persistActiveDrawingRef.current?.("manual");
-      setMessage("Saved active drawing to the local project.");
-      return;
-    }
-
-    if (activeProject?.id) {
-      const projectRecord = { ...activeProject, updatedAt: new Date().toISOString() };
-      await saveProject(projectRecord);
-      setActiveProject(projectRecord);
-      await refreshProjectList();
-      setSaveState({ status: "saved", label: "local: project saved" });
-      setMessage("Saved project locally.");
-    }
-  }, [activeDrawingId, activeProject, refreshProjectList]);
 
   useEffect(() => {
     if (!projectsReady || applyingDrawingRef.current || !activeProject?.id || !activeDrawingId) return;
@@ -1414,29 +1392,6 @@ export default function App() {
     setMessage("Cleared inspection data for the active drawing.");
   }, []);
 
-  const handleDeleteActiveDrawing = useCallback(async () => {
-    if (!activeDrawingId || !activeProject?.id) return;
-    const confirmed = window.confirm("Delete this drawing and its local PDF, balloons, table, and measurements?");
-    if (!confirmed) return;
-
-    try {
-      await deleteDrawing(activeDrawingId);
-      const remaining = drawings.filter((drawing) => drawing.id !== activeDrawingId);
-      setDrawings(remaining);
-      await refreshProjectList();
-      const nextDrawingId = remaining[0]?.id || null;
-      rememberActiveProject(activeProject.id, nextDrawingId);
-      if (nextDrawingId) {
-        await applyDrawing(nextDrawingId, { projectId: activeProject.id, message: "Deleted drawing. Opened the next drawing." });
-      } else {
-        setActiveDrawingId(null);
-        resetDrawingState("Deleted drawing. Add another drawing PDF to this project.");
-      }
-    } catch (error) {
-      setMessage(`Could not delete drawing: ${error.message}`);
-    }
-  }, [activeDrawingId, activeProject?.id, applyDrawing, drawings, refreshProjectList, rememberActiveProject, resetDrawingState]);
-
   const handleDeleteProjectFromDashboard = useCallback(async (project) => {
     const confirmed = window.confirm(`Delete project "${project.name}" and all local drawings?`);
     if (!confirmed) return;
@@ -1829,12 +1784,6 @@ export default function App() {
           </div>
         </div>
 
-        <div className="metadata-grid">
-          <Field label="Drawing No" value={metadata.drawingNo} onChange={(value) => setMetadataValue(setMetadata, "drawingNo", value)} />
-          <Field label="Rev" value={metadata.revision} onChange={(value) => setMetadataValue(setMetadata, "revision", value)} compact />
-          <Field label="Description" value={metadata.description} onChange={(value) => setMetadataValue(setMetadata, "description", value)} wide />
-        </div>
-
         <div className="actions">
           <div className="action-group export-actions">
             <button className="button secondary" onClick={exportPdf} disabled={!pdfBytes || !characteristics.length}>
@@ -1865,18 +1814,6 @@ export default function App() {
                   ))}
                 </select>
               </label>
-              <span className={`save-state ${saveState.status}`} title={`${formatBytes(projectStorageBytes)} in this project`}>
-                {saveState.label}
-              </span>
-              <button className="icon-button" onClick={() => setToleranceTableOpen(true)} title="Tolerance table" aria-label="Tolerance table">
-                <Ruler size={17} />
-              </button>
-            </div>
-          </div>
-
-          <div className="toolbar-cluster drawing-cluster" aria-label="Drawing controls">
-            <span className="toolbar-cluster-label">Drawing</span>
-            <div className="toolbar-cluster-controls">
               <label className="project-field drawing-field">
                 <select value={activeDrawingId || ""} onChange={(event) => handleOpenDrawing(event.target.value)} disabled={!drawings.length} aria-label="Active drawing">
                   {!drawings.length ? <option value="">No drawings</option> : null}
@@ -1887,60 +1824,51 @@ export default function App() {
                   ))}
                 </select>
               </label>
-              <label className="small-button project-action add file-button">
-                <Plus size={14} />
-                Add Drawing
-                <input type="file" accept="application/pdf" onChange={handlePdfUpload} />
-              </label>
-              <button className="small-button project-action save" onClick={handleManualSave} disabled={!activeProject}>
-                <Save size={14} />
-                Save
-              </button>
-              <button className="small-button project-action delete-drawing" onClick={handleDeleteActiveDrawing} disabled={!activeDrawingId} title="Delete active drawing only">
-                <Trash2 size={14} />
-                Delete Active Drawing
+              <button className="icon-button" onClick={() => setToleranceTableOpen(true)} title="Tolerance table" aria-label="Tolerance table">
+                <Ruler size={17} />
               </button>
             </div>
           </div>
-        </div>
-        <div className="view-controls" aria-label="View mode controls">
-          <div className="toolbar-cluster view-mode-cluster">
-            <span className="toolbar-cluster-label">Mode</span>
-            <div className="workspace-tabs" aria-label="Project mode">
-              <button className={`workspace-tab ${workspaceMode === "edit" ? "active" : ""}`} onClick={() => switchWorkspaceMode("edit")}>
-                <Circle size={14} />
-                Edit
-              </button>
-              <button className={`workspace-tab ${workspaceMode === "measurement" ? "active" : ""}`} onClick={() => switchWorkspaceMode("measurement")}>
-                <Table2 size={14} />
-                Measurement
-              </button>
-            </div>
-          </div>
-          {workspaceMode === "edit" ? (
-            <div className="toolbar-cluster layout-mode-cluster">
-              <span className="toolbar-cluster-label">Layout</span>
-              <div className="layout-tabs" aria-label="Drawing layout">
-                <button className={`layout-tab ${layoutMode === "drawing" ? "active" : ""}`} onClick={() => setLayoutMode("drawing")} title="Drawing canvas only">
-                  <PanelLeft size={14} />
-                  Drawing
+
+          <div className="layout-bar-row">
+            <div className="toolbar-cluster view-mode-cluster">
+              <span className="toolbar-cluster-label">Mode</span>
+              <div className="workspace-tabs" aria-label="Project mode">
+                <button className={`workspace-tab ${workspaceMode === "edit" ? "active" : ""}`} onClick={() => switchWorkspaceMode("edit")}>
+                  <Circle size={14} />
+                  Edit
                 </button>
-                <button className={`layout-tab ${layoutMode === "table" ? "active" : ""}`} onClick={() => setLayoutMode("table")} title="QC table only">
+                <button className={`workspace-tab ${workspaceMode === "measurement" ? "active" : ""}`} onClick={() => switchWorkspaceMode("measurement")}>
                   <Table2 size={14} />
-                  Table
-                </button>
-                <div className="layout-tab-divider" />
-                <button className={`layout-tab ${layoutMode === "split-h" ? "active" : ""}`} onClick={() => setLayoutMode("split-h")} title="Side by side">
-                  <ArrowLeftRight size={14} />
-                  Side by Side
-                </button>
-                <button className={`layout-tab ${layoutMode === "split-v" ? "active" : ""}`} onClick={() => setLayoutMode("split-v")} title="Stacked">
-                  <ArrowUpDown size={14} />
-                  Stacked
+                  Measurement
                 </button>
               </div>
             </div>
-          ) : null}
+            {workspaceMode === "edit" ? (
+              <div className="toolbar-cluster layout-mode-cluster">
+                <span className="toolbar-cluster-label">Layout</span>
+                <div className="layout-tabs" aria-label="Drawing layout">
+                  <button className={`layout-tab ${layoutMode === "drawing" ? "active" : ""}`} onClick={() => setLayoutMode("drawing")} title="Drawing canvas only">
+                    <PanelLeft size={14} />
+                    Drawing
+                  </button>
+                  <button className={`layout-tab ${layoutMode === "table" ? "active" : ""}`} onClick={() => setLayoutMode("table")} title="QC table only">
+                    <Table2 size={14} />
+                    Table
+                  </button>
+                  <div className="layout-tab-divider" />
+                  <button className={`layout-tab ${layoutMode === "split-h" ? "active" : ""}`} onClick={() => setLayoutMode("split-h")} title="Side by side">
+                    <ArrowLeftRight size={14} />
+                    Side by Side
+                  </button>
+                  <button className={`layout-tab ${layoutMode === "split-v" ? "active" : ""}`} onClick={() => setLayoutMode("split-v")} title="Stacked">
+                    <ArrowUpDown size={14} />
+                    Stacked
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -2156,9 +2084,21 @@ export default function App() {
         />
 
         <aside ref={inspectorRef} className="inspector">
-          <div className="status-card">
-            <span>Package Status</span>
-            <strong className={`status ${projectStatus.toLowerCase()}`}>{projectStatus}</strong>
+          <div className="inspector-section drawing-info-section">
+            <div className="section-title">
+              <h2>Drawing Info</h2>
+            </div>
+            <div className="drawing-info-fields">
+              <div className="drawing-info-field drawing-info-field-no">
+                <Field label="Drawing No" value={metadata.drawingNo} onChange={(value) => setMetadataValue(setMetadata, "drawingNo", value)} />
+              </div>
+              <div className="drawing-info-field drawing-info-field-rev">
+                <Field label="Rev" value={metadata.revision} onChange={(value) => setMetadataValue(setMetadata, "revision", value)} compact />
+              </div>
+              <div className="drawing-info-field drawing-info-field-desc">
+                <Field label="Description" value={metadata.description} onChange={(value) => setMetadataValue(setMetadata, "description", value)} wide />
+              </div>
+            </div>
           </div>
 
           <div className="inspector-section">
