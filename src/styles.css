@@ -895,6 +895,21 @@ kbd {
   max-width: 150px;
 }
 
+.sample-count-row {
+  display: flex;
+  gap: 6px;
+}
+
+.sample-count-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.sample-count-custom {
+  width: 64px;
+  flex-shrink: 0;
+}
+
 .measurement-table-scroll {
   min-height: 0;
   overflow: auto;

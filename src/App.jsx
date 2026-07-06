@@ -2219,11 +2219,27 @@ export default function App() {
             </div>
             <label className="stacked-label">
               Samples
-              <select value={sampleCount} onChange={(event) => setSampleCount(Number(event.target.value))}>
-                {[1, 3, 5, 10].map((count) => (
-                  <option key={count} value={count}>{count}</option>
-                ))}
-              </select>
+              <div className="sample-count-row">
+                <select value={sampleCount} onChange={(event) => setSampleCount(Number(event.target.value))}>
+                  {[1, 3, 5, 10].map((count) => (
+                    <option key={count} value={count}>{count}</option>
+                  ))}
+                  {![1, 3, 5, 10].includes(sampleCount) && (
+                    <option value={sampleCount}>{sampleCount}</option>
+                  )}
+                </select>
+                <input
+                  type="number"
+                  min={1}
+                  className="sample-count-custom"
+                  placeholder="Custom"
+                  value={sampleCount}
+                  onChange={(event) => {
+                    const parsed = Math.max(1, Math.round(Number(event.target.value) || 1));
+                    setSampleCount(parsed);
+                  }}
+                />
+              </div>
             </label>
             <div className="split-actions">
               <button className="button secondary" onClick={addManualRow} disabled={!activeDrawingId}>

@@ -556,11 +556,27 @@ export function MeasurementWorkspace({
         <div className="measurement-controls">
           <label className="stacked-label">
             Samples
-            <select value={sampleCount} onChange={(event) => onSampleCountChange(Number(event.target.value))}>
-              {[1, 3, 5, 10].map((count) => (
-                <option key={count} value={count}>{count}</option>
-              ))}
-            </select>
+            <div className="sample-count-row">
+              <select value={sampleCount} onChange={(event) => onSampleCountChange(Number(event.target.value))}>
+                {[1, 3, 5, 10].map((count) => (
+                  <option key={count} value={count}>{count}</option>
+                ))}
+                {![1, 3, 5, 10].includes(sampleCount) && (
+                  <option value={sampleCount}>{sampleCount}</option>
+                )}
+              </select>
+              <input
+                type="number"
+                min={1}
+                className="sample-count-custom"
+                placeholder="Custom"
+                value={sampleCount}
+                onChange={(event) => {
+                  const parsed = Math.max(1, Math.round(Number(event.target.value) || 1));
+                  onSampleCountChange(parsed);
+                }}
+              />
+            </div>
           </label>
           <span className="mode-chip">Balloon geometry locked</span>
         </div>
