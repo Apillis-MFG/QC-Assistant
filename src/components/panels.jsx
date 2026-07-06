@@ -228,7 +228,10 @@ export function ProjectDashboard({
                 <article key={project.id} className="project-card">
                   <div className="project-card-main">
                     <div>
-                      <h3>{project.name}</h3>
+                      <h3>
+                        {project.name}
+                        {project.code ? <span className="project-card-code">{project.code}</span> : null}
+                      </h3>
                       <p>
                         {project.drawingCount} drawings · {formatBytes(project.totalBytes)} · Updated {formatDate(project.updatedAt)}
                       </p>
@@ -292,6 +295,7 @@ export function ProjectDetail({
   drawings,
   ready,
   fieldDraft,
+  fieldsDirty,
   onFieldChange,
   onSaveFields,
   onBack,
@@ -350,7 +354,7 @@ export function ProjectDetail({
                 <Field label="Project Code" value={fieldDraft.code} onChange={(value) => onFieldChange("code", value)} compact />
               </div>
               <div className="dialog-actions">
-                <button className="button primary" onClick={onSaveFields} disabled={!fieldDraft.name.trim()}>
+                <button className="button primary" onClick={onSaveFields} disabled={!fieldDraft.name.trim() || !fieldsDirty}>
                   Save
                 </button>
               </div>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeftRight,
   ArrowUpDown,
+  ChevronLeft,
   Circle,
   Download,
   Hand,
@@ -1744,6 +1745,11 @@ export default function App() {
         drawings={detailDrawings}
         ready={Boolean(detailProject)}
         fieldDraft={detailFields}
+        fieldsDirty={
+          Boolean(detailProject) &&
+          (detailFields.name.trim() !== (detailProject.name || "") ||
+            detailFields.code.trim() !== (detailProject.code || ""))
+        }
         onFieldChange={handleDetailFieldChange}
         onSaveFields={handleSaveDetailFields}
         onBack={handleBackFromDetail}
@@ -1805,9 +1811,11 @@ export default function App() {
       <div className="layout-bar">
         <div className="project-controls">
           <div className="toolbar-cluster project-cluster" aria-label="Project controls">
-            <span className="toolbar-cluster-label">Project</span>
             <div className="toolbar-cluster-controls">
-              <button className="small-button project-action dashboard-link" onClick={() => setPage("dashboard")}>Projects</button>
+              <button className="small-button project-action dashboard-link dashboard-link-active" onClick={() => setPage("dashboard")}>
+                <ChevronLeft size={14} />
+                Projects
+              </button>
               <label className="project-field project-select-field">
                 <select value={activeProject?.id || ""} onChange={(event) => handleOpenProject(event.target.value)} disabled={!projectSummaries.length} aria-label="Active project">
                   {!projectSummaries.length ? <option value="">No local projects</option> : null}
