@@ -19,19 +19,30 @@ function getLeaderLine({ x, y, targetX, targetY, radius = 13 }) {
   };
 }
 
-export function Field({ label, value, onChange, compact = false, wide = false }) {
+export function Field({ label, value, onChange, compact = false, wide = false, type = "text", multiline = false }) {
   return (
     <label className={`field ${compact ? "compact" : ""} ${wide ? "wide" : ""}`}>
       <span>{label}</span>
-      <input value={value} onChange={(event) => onChange(event.target.value)} />
+      {multiline ? (
+        <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={3} />
+      ) : (
+        <input type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+      )}
     </label>
   );
 }
 
-export function ToolButton({ active, title, onClick, icon }) {
+export function ToolButton({ active, title, label, onClick, icon }) {
   return (
-    <button className={`icon-button ${active ? "active" : ""}`} onClick={onClick} title={title}>
+    <button
+      type="button"
+      className={`icon-button icon-button-labeled ${active ? "active" : ""}`}
+      onClick={onClick}
+      data-tooltip={title}
+      aria-label={title}
+    >
       {icon}
+      {label ? <span className="icon-button-text">{label}</span> : null}
     </button>
   );
 }
@@ -206,11 +217,11 @@ export function DrawingNavToolbar({ zoom, pageNumber, pageCount, onZoomOut, onZo
   return (
     <>
       <div className="tool-group">
-        <button className="icon-button" onClick={onZoomOut} title="Zoom out">
+        <button className="icon-button" onClick={onZoomOut} data-tooltip="Zoom out" aria-label="Zoom out">
           <ZoomOut size={17} />
         </button>
         <span className="zoom-label">{Math.round(zoom * 100)}%</span>
-        <button className="icon-button" onClick={onZoomIn} title="Zoom in">
+        <button className="icon-button" onClick={onZoomIn} data-tooltip="Zoom in" aria-label="Zoom in">
           <ZoomIn size={17} />
         </button>
       </div>

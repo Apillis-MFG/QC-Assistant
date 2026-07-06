@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeftRight,
   ArrowUpDown,
+  ChevronLeft,
   Circle,
   Download,
   Hand,
@@ -16,7 +17,6 @@ import {
   Table2,
   TextSelect,
   Trash2,
-  Upload,
 } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -51,7 +51,7 @@ import {
 } from "./lib/constants.js";
 import {
   buildDrawingSnapshot, updateDrawingSummary, getStorageWarning, getStorageErrorMessage,
-  formatBytes, formatDate, setMetadataValue, mapTextItem, metadataLabel, fieldLabel,
+  formatDate, setMetadataValue, mapTextItem, metadataLabel, fieldLabel,
   getNormalizedPoint, normalizeRect, getDefaultBalloonPosition, cropCanvasArea, clamp,
   parseDimension, findNearestTextDimension, findDimensionAtPoint, getTextItemBounds,
 } from "./lib/utils.js";
@@ -65,7 +65,7 @@ import {
   DimensionHighlights,
 } from "./components/widgets.jsx";
 import {
-  ProjectDashboard, HelpDialog, MeasurementWorkspace, BalloonEditor, CharacteristicTable, SettingsDialog,
+  ProjectDashboard, ProjectDetail, HelpDialog, MeasurementWorkspace, BalloonEditor, CharacteristicTable, SettingsDialog,
   ToleranceTableDialog,
 } from "./components/panels.jsx";
 import {
@@ -134,8 +134,13 @@ export default function App() {
   const [drawings, setDrawings] = useState([]);
   const [activeDrawingId, setActiveDrawingId] = useState(null);
   const [projectsReady, setProjectsReady] = useState(false);
-  const [dashboardVisible, setDashboardVisible] = useState(true);
+  const [page, setPage] = useState("dashboard");
   const [projectDialog, setProjectDialog] = useState({ open: false, mode: "create", projectId: null, name: "" });
+  const [detailProjectId, setDetailProjectId] = useState(null);
+  const [detailProject, setDetailProject] = useState(null);
+  const [detailDrawings, setDetailDrawings] = useState([]);
+  const [detailFields, setDetailFields] = useState({ name: "", code: "", owner: "", estimatedDeliveryDate: "", notes: "" });
+  const [drawingDialog, setDrawingDialog] = useState({ open: false, drawingId: null, name: "" });
   const [saveState, setSaveState] = useState({ status: "idle", label: "local: not saved" });
   const [metadata, setMetadata] = useState(emptyMetadata);
   const [toleranceOverrides, setToleranceOverrides] = useState(emptyToleranceOverrides);
@@ -246,11 +251,6 @@ export default function App() {
   useEffect(() => {
     activeDrawingRef.current = activeDrawing;
   }, [activeDrawing]);
-
-  const projectStorageBytes = useMemo(
-    () => drawings.reduce((sum, drawing) => sum + (drawing.pdfByteLength || 0), 0),
-    [drawings],
-  );
 
   const contentAreaStyle = useMemo(() => ({
     "--split-v-inspector-width": `${panelSizes.splitV.inspectorWidth}px`,
@@ -393,7 +393,7 @@ export default function App() {
         setActiveProject(null);
         setDrawings([]);
         setActiveDrawingId(null);
-        setDashboardVisible(true);
+        setPage("dashboard");
         resetDrawingState(
           summaries.length
             ? "Open a project from the dashboard to continue."
@@ -646,23 +646,6 @@ export default function App() {
     persistActiveDrawingRef.current = persistActiveDrawing;
   }, [persistActiveDrawing]);
 
-  const handleManualSave = useCallback(async () => {
-    if (activeDrawingId) {
-      await persistActiveDrawingRef.current?.("manual");
-      setMessage("Saved active drawing to the local project.");
-      return;
-    }
-
-    if (activeProject?.id) {
-      const projectRecord = { ...activeProject, updatedAt: new Date().toISOString() };
-      await saveProject(projectRecord);
-      setActiveProject(projectRecord);
-      await refreshProjectList();
-      setSaveState({ status: "saved", label: "local: project saved" });
-      setMessage("Saved project locally.");
-    }
-  }, [activeDrawingId, activeProject, refreshProjectList]);
-
   useEffect(() => {
     if (!projectsReady || applyingDrawingRef.current || !activeProject?.id || !activeDrawingId) return;
     window.clearTimeout(saveTimerRef.current);
@@ -713,6 +696,7 @@ export default function App() {
     const project = {
       id: crypto.randomUUID(),
       name: name.trim() || "Untitled Project",
+      code: "",
       createdAt: now,
       updatedAt: now,
     };
@@ -751,7 +735,7 @@ export default function App() {
       if (projectDialog.mode === "create") {
         const project = await createProject(name);
         setProjectDialog({ open: false, mode: "create", projectId: null, name: "" });
-        setDashboardVisible(false);
+        setPage("workspace");
         await openProjectWorkspace(project.id);
         return;
       }
@@ -765,11 +749,16 @@ export default function App() {
       const updatedProject = {
         id: currentProject.id,
         name,
+        code: currentProject.code,
         createdAt: currentProject.createdAt,
         updatedAt: new Date().toISOString(),
       };
       await saveProject(updatedProject);
       if (activeProject?.id === updatedProject.id) setActiveProject(updatedProject);
+      if (detailProjectId === updatedProject.id) {
+        setDetailProject(updatedProject);
+        setDetailFields({ name: updatedProject.name, code: updatedProject.code || "" });
+      }
       await refreshProjectList();
       setProjectDialog({ open: false, mode: "create", projectId: null, name: "" });
       setSaveState({ status: "saved", label: "local: project renamed" });
@@ -783,7 +772,7 @@ export default function App() {
     if (!projectId) return;
     try {
       await openProjectWorkspace(projectId);
-      setDashboardVisible(false);
+      setPage("workspace");
       await refreshProjectList();
     } catch (error) {
       setMessage(`Could not open project: ${error.message}`);
@@ -1404,29 +1393,6 @@ export default function App() {
     setMessage("Cleared inspection data for the active drawing.");
   }, []);
 
-  const handleDeleteActiveDrawing = useCallback(async () => {
-    if (!activeDrawingId || !activeProject?.id) return;
-    const confirmed = window.confirm("Delete this drawing and its local PDF, balloons, table, and measurements?");
-    if (!confirmed) return;
-
-    try {
-      await deleteDrawing(activeDrawingId);
-      const remaining = drawings.filter((drawing) => drawing.id !== activeDrawingId);
-      setDrawings(remaining);
-      await refreshProjectList();
-      const nextDrawingId = remaining[0]?.id || null;
-      rememberActiveProject(activeProject.id, nextDrawingId);
-      if (nextDrawingId) {
-        await applyDrawing(nextDrawingId, { projectId: activeProject.id, message: "Deleted drawing. Opened the next drawing." });
-      } else {
-        setActiveDrawingId(null);
-        resetDrawingState("Deleted drawing. Add another drawing PDF to this project.");
-      }
-    } catch (error) {
-      setMessage(`Could not delete drawing: ${error.message}`);
-    }
-  }, [activeDrawingId, activeProject?.id, applyDrawing, drawings, refreshProjectList, rememberActiveProject, resetDrawingState]);
-
   const handleDeleteProjectFromDashboard = useCallback(async (project) => {
     const confirmed = window.confirm(`Delete project "${project.name}" and all local drawings?`);
     if (!confirmed) return;
@@ -1446,6 +1412,168 @@ export default function App() {
       setMessage(`Could not delete project: ${error.message}`);
     }
   }, [activeProject?.id, refreshProjectList, resetDrawingState]);
+
+  const handleManageProject = useCallback(async (projectId) => {
+    const workspace = await loadProject(projectId);
+    if (!workspace) {
+      setMessage("Project could not be found in local storage.");
+      return;
+    }
+    setDetailProjectId(projectId);
+    setDetailProject(workspace.project);
+    setDetailDrawings(workspace.drawings);
+    setDetailFields({
+      name: workspace.project.name,
+      code: workspace.project.code || "",
+      owner: workspace.project.owner || "",
+      estimatedDeliveryDate: workspace.project.estimatedDeliveryDate || "",
+      notes: workspace.project.notes || "",
+    });
+    setPage("detail");
+  }, []);
+
+  const handleBackFromDetail = useCallback(async () => {
+    setPage("dashboard");
+    setDetailProjectId(null);
+    setDetailProject(null);
+    setDetailDrawings([]);
+    await refreshProjectList();
+  }, [refreshProjectList]);
+
+  const handleDetailFieldChange = useCallback((field, value) => {
+    setDetailFields((current) => ({ ...current, [field]: value }));
+  }, []);
+
+  const handleSaveDetailFields = useCallback(async () => {
+    const name = detailFields.name.trim();
+    if (!name || !detailProject) return;
+
+    const updatedProject = {
+      ...detailProject,
+      name,
+      code: detailFields.code.trim(),
+      owner: detailFields.owner.trim(),
+      estimatedDeliveryDate: detailFields.estimatedDeliveryDate,
+      notes: detailFields.notes,
+      updatedAt: new Date().toISOString(),
+    };
+    await saveProject(updatedProject);
+    setDetailProject(updatedProject);
+    if (activeProject?.id === updatedProject.id) setActiveProject(updatedProject);
+    await refreshProjectList();
+    setMessage(`Saved ${updatedProject.name}.`);
+  }, [activeProject?.id, detailFields, detailProject, refreshProjectList]);
+
+  const handleDetailAddDrawing = useCallback(async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !detailProjectId) return;
+
+    if (detailDrawings.length >= PROJECT_LIMITS.maxDrawings) {
+      setMessage(`This project already has ${PROJECT_LIMITS.maxDrawings} drawings. Create a new project for more drawings.`);
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      const baseName = file.name.replace(/\.[^/.]+$/, "");
+      const bytes = await file.arrayBuffer();
+      const loadedPdf = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
+      const now = new Date().toISOString();
+      const drawing = {
+        id: crypto.randomUUID(),
+        projectId: detailProjectId,
+        name: baseName || file.name,
+        pdfName: file.name,
+        pdfBytes: bytes,
+        pdfByteLength: file.size || bytes.byteLength,
+        pageCount: loadedPdf.numPages,
+        metadata: { ...emptyMetadata, drawingNo: baseName },
+        sampleCount: 5,
+        characteristics: [],
+        pageNumber: 1,
+        zoom: ZOOM_DEFAULT,
+        status: "OPEN",
+        createdAt: now,
+        updatedAt: now,
+      };
+      await saveDrawing(detailProjectId, drawing);
+      const workspace = await loadProject(detailProjectId);
+      setDetailDrawings(workspace?.drawings || []);
+      await refreshProjectList();
+      setMessage(`Added ${file.name}.`);
+    } catch (error) {
+      setMessage(getStorageErrorMessage(error));
+    } finally {
+      event.target.value = "";
+    }
+  }, [detailDrawings.length, detailProjectId, refreshProjectList]);
+
+  const handleDetailOpenDrawing = useCallback(async (drawingId) => {
+    if (!detailProjectId) return;
+    setPage("workspace");
+    await openProjectWorkspace(detailProjectId, drawingId);
+  }, [detailProjectId, openProjectWorkspace]);
+
+  const handleOpenDrawingDialog = useCallback((drawing) => {
+    setDrawingDialog({ open: true, drawingId: drawing.id, name: drawing.name || "" });
+  }, []);
+
+  const handleDrawingDialogChange = useCallback((name) => {
+    setDrawingDialog((current) => ({ ...current, name }));
+  }, []);
+
+  const handleDrawingDialogClose = useCallback(() => {
+    setDrawingDialog((current) => ({ ...current, open: false }));
+  }, []);
+
+  const handleDrawingDialogSubmit = useCallback(async (event) => {
+    event.preventDefault();
+    const name = drawingDialog.name.trim();
+    if (!name || !detailProjectId) return;
+
+    try {
+      const drawing = await loadDrawing(drawingDialog.drawingId);
+      if (!drawing) {
+        setMessage("Drawing could not be found for rename.");
+        return;
+      }
+      const updatedDrawing = { ...drawing, name, updatedAt: new Date().toISOString() };
+      await saveDrawing(detailProjectId, updatedDrawing);
+      setDrawingDialog({ open: false, drawingId: null, name: "" });
+      const workspace = await loadProject(detailProjectId);
+      setDetailDrawings(workspace?.drawings || []);
+      if (activeDrawingId === drawing.id) setDrawings((items) => updateDrawingSummary(items, updatedDrawing));
+    } catch (error) {
+      setMessage(`Could not rename drawing: ${error.message}`);
+    }
+  }, [activeDrawingId, detailProjectId, drawingDialog]);
+
+  const handleDetailDeleteDrawing = useCallback(async (drawing) => {
+    const confirmed = window.confirm(`Delete drawing "${drawing.name}" and its local PDF, balloons, table, and measurements?`);
+    if (!confirmed || !detailProjectId) return;
+
+    try {
+      await deleteDrawing(drawing.id);
+      const workspace = await loadProject(detailProjectId);
+      setDetailDrawings(workspace?.drawings || []);
+      await refreshProjectList();
+
+      if (activeProject?.id === detailProjectId && activeDrawingId === drawing.id) {
+        const remaining = drawings.filter((item) => item.id !== drawing.id);
+        setDrawings(remaining);
+        const nextDrawingId = remaining[0]?.id || null;
+        rememberActiveProject(detailProjectId, nextDrawingId);
+        if (nextDrawingId) {
+          await applyDrawing(nextDrawingId, { projectId: detailProjectId, message: "Deleted drawing. Opened the next drawing." });
+        } else {
+          setActiveDrawingId(null);
+          resetDrawingState("Deleted drawing. Add another drawing PDF to this project.");
+        }
+      }
+    } catch (error) {
+      setMessage(`Could not delete drawing: ${error.message}`);
+    }
+  }, [activeDrawingId, activeProject?.id, applyDrawing, detailProjectId, drawings, refreshProjectList, rememberActiveProject, resetDrawingState]);
 
   const deleteCharacteristic = useCallback((id) => {
     if (!id) return;
@@ -1598,7 +1726,7 @@ export default function App() {
     });
   }, [layoutMode]);
 
-  if (dashboardVisible) {
+  if (page === "dashboard") {
     return (
       <ProjectDashboard
         projectsReady={projectsReady}
@@ -1606,6 +1734,7 @@ export default function App() {
         projectDialog={projectDialog}
         onNewProject={handleNewProject}
         onOpenProject={handleOpenProject}
+        onManageProject={handleManageProject}
         onRenameProject={handleOpenProjectDialog}
         onDeleteProject={handleDeleteProjectFromDashboard}
         onDialogChange={(name) => setProjectDialog((current) => ({ ...current, name }))}
@@ -1618,8 +1747,41 @@ export default function App() {
     );
   }
 
+  if (page === "detail") {
+    return (
+      <ProjectDetail
+        project={detailProject}
+        drawings={detailDrawings}
+        ready={Boolean(detailProject)}
+        fieldDraft={detailFields}
+        fieldsDirty={
+          Boolean(detailProject) &&
+          (detailFields.name.trim() !== (detailProject.name || "") ||
+            detailFields.code.trim() !== (detailProject.code || "") ||
+            detailFields.owner.trim() !== (detailProject.owner || "") ||
+            detailFields.estimatedDeliveryDate !== (detailProject.estimatedDeliveryDate || "") ||
+            detailFields.notes !== (detailProject.notes || ""))
+        }
+        onFieldChange={handleDetailFieldChange}
+        onSaveFields={handleSaveDetailFields}
+        onBack={handleBackFromDetail}
+        onOpenProjectWorkspace={handleDetailOpenDrawing}
+        onAddDrawing={handleDetailAddDrawing}
+        onRenameDrawing={handleOpenDrawingDialog}
+        onDeleteDrawing={handleDetailDeleteDrawing}
+        drawingDialog={drawingDialog}
+        onDrawingDialogChange={handleDrawingDialogChange}
+        onDrawingDialogSubmit={handleDrawingDialogSubmit}
+        onDrawingDialogClose={handleDrawingDialogClose}
+        onOpenHelp={() => setHelpOpen(true)}
+        helpOpen={helpOpen}
+        onCloseHelp={() => setHelpOpen(false)}
+      />
+    );
+  }
+
   return (
-    <div className="app-shell" data-layout={layoutMode}>
+    <div className="app-shell" data-layout={layoutMode} data-toolbar-style={balloonSettings.toolButtonStyle}>
       <header className="topbar">
         <div className="brand">
           <img className="brand-mark" src="/logo-mark.svg" alt="" aria-hidden="true" />
@@ -1627,41 +1789,32 @@ export default function App() {
             <div className="brand-title-row">
               <h1>QC Assistant</h1>
               <span className="version-badge">{APP_VERSION}</span>
-              <div className="brand-actions">
-                <button className="icon-button brand-help" onClick={() => setHelpOpen(true)} title="Help and shortcuts" aria-label="Help and shortcuts">
-                  <HelpCircle size={17} />
-                </button>
-                <button className="icon-button brand-help" onClick={() => setSettingsOpen(true)} title="Balloon settings" aria-label="Balloon settings">
-                  <Settings size={17} />
-                </button>
-              </div>
             </div>
             <p>Drawing ballooning and inspection report builder</p>
           </div>
         </div>
 
-        <div className="metadata-grid">
-          <Field label="Drawing No" value={metadata.drawingNo} onChange={(value) => setMetadataValue(setMetadata, "drawingNo", value)} />
-          <Field label="Rev" value={metadata.revision} onChange={(value) => setMetadataValue(setMetadata, "revision", value)} compact />
-          <Field label="Description" value={metadata.description} onChange={(value) => setMetadataValue(setMetadata, "description", value)} wide />
-        </div>
-
         <div className="actions">
-          <div className="action-group upload-action">
-            <label className="button secondary">
-              <Upload size={16} />
-              Upload PDF
-              <input type="file" accept="application/pdf" onChange={handlePdfUpload} />
-            </label>
-          </div>
-          <div className="action-group export-actions">
-            <button className="button secondary" onClick={exportPdf} disabled={!pdfBytes || !characteristics.length}>
-              <Download size={16} />
-              PDF
+          <div className="action-group header-actions">
+            <button
+              type="button"
+              className="icon-button icon-button-labeled"
+              onClick={() => setSettingsOpen(true)}
+              data-tooltip="Settings"
+              aria-label="Settings"
+            >
+              <Settings size={16} />
+              <span className="icon-button-text">Settings</span>
             </button>
-            <button className="button primary" onClick={exportExcel} disabled={!characteristics.length}>
-              <Save size={16} />
-              Excel
+            <button
+              type="button"
+              className="icon-button icon-button-labeled"
+              onClick={() => setHelpOpen(true)}
+              data-tooltip="Help and shortcuts (?)"
+              aria-label="Help and shortcuts"
+            >
+              <HelpCircle size={16} />
+              <span className="icon-button-text">Help</span>
             </button>
           </div>
         </div>
@@ -1670,9 +1823,11 @@ export default function App() {
       <div className="layout-bar">
         <div className="project-controls">
           <div className="toolbar-cluster project-cluster" aria-label="Project controls">
-            <span className="toolbar-cluster-label">Project</span>
             <div className="toolbar-cluster-controls">
-              <button className="small-button project-action dashboard-link" onClick={() => setDashboardVisible(true)}>Projects</button>
+              <button className="small-button project-action dashboard-link dashboard-link-active" onClick={() => setPage("dashboard")}>
+                <ChevronLeft size={14} />
+                Projects
+              </button>
               <label className="project-field project-select-field">
                 <select value={activeProject?.id || ""} onChange={(event) => handleOpenProject(event.target.value)} disabled={!projectSummaries.length} aria-label="Active project">
                   {!projectSummaries.length ? <option value="">No local projects</option> : null}
@@ -1683,18 +1838,6 @@ export default function App() {
                   ))}
                 </select>
               </label>
-              <span className={`save-state ${saveState.status}`} title={`${formatBytes(projectStorageBytes)} in this project`}>
-                {saveState.label}
-              </span>
-              <button className="icon-button" onClick={() => setToleranceTableOpen(true)} title="Tolerance table" aria-label="Tolerance table">
-                <Ruler size={17} />
-              </button>
-            </div>
-          </div>
-
-          <div className="toolbar-cluster drawing-cluster" aria-label="Drawing controls">
-            <span className="toolbar-cluster-label">Drawing</span>
-            <div className="toolbar-cluster-controls">
               <label className="project-field drawing-field">
                 <select value={activeDrawingId || ""} onChange={(event) => handleOpenDrawing(event.target.value)} disabled={!drawings.length} aria-label="Active drawing">
                   {!drawings.length ? <option value="">No drawings</option> : null}
@@ -1705,60 +1848,67 @@ export default function App() {
                   ))}
                 </select>
               </label>
-              <label className="small-button project-action add file-button">
-                <Plus size={14} />
-                Add Drawing
-                <input type="file" accept="application/pdf" onChange={handlePdfUpload} />
-              </label>
-              <button className="small-button project-action save" onClick={handleManualSave} disabled={!activeProject}>
-                <Save size={14} />
-                Save
+              <button
+                type="button"
+                className="icon-button icon-button-labeled"
+                onClick={() => setToleranceTableOpen(true)}
+                data-tooltip="Tolerance table"
+                aria-label="Tolerance table"
+              >
+                <Ruler size={16} />
+                <span className="icon-button-text">Tolerance</span>
               </button>
-              <button className="small-button project-action delete-drawing" onClick={handleDeleteActiveDrawing} disabled={!activeDrawingId} title="Delete active drawing only">
-                <Trash2 size={14} />
-                Delete Active Drawing
+              <div className="toolbar-divider" aria-hidden="true" />
+              <button className="button secondary" onClick={exportPdf} disabled={!pdfBytes || !characteristics.length}>
+                <Download size={16} />
+                PDF
               </button>
-            </div>
-          </div>
-        </div>
-        <div className="view-controls" aria-label="View mode controls">
-          <div className="toolbar-cluster view-mode-cluster">
-            <span className="toolbar-cluster-label">Mode</span>
-            <div className="workspace-tabs" aria-label="Project mode">
-              <button className={`workspace-tab ${workspaceMode === "edit" ? "active" : ""}`} onClick={() => switchWorkspaceMode("edit")}>
-                <Circle size={14} />
-                Edit
-              </button>
-              <button className={`workspace-tab ${workspaceMode === "measurement" ? "active" : ""}`} onClick={() => switchWorkspaceMode("measurement")}>
-                <Table2 size={14} />
-                Measurement
+              <button className="button primary" onClick={exportExcel} disabled={!characteristics.length}>
+                <Save size={16} />
+                Excel
               </button>
             </div>
           </div>
-          {workspaceMode === "edit" ? (
-            <div className="toolbar-cluster layout-mode-cluster">
-              <span className="toolbar-cluster-label">Layout</span>
-              <div className="layout-tabs" aria-label="Drawing layout">
-                <button className={`layout-tab ${layoutMode === "drawing" ? "active" : ""}`} onClick={() => setLayoutMode("drawing")} title="Drawing canvas only">
-                  <PanelLeft size={14} />
-                  Drawing
+
+          <div className="layout-bar-row">
+            <div className="toolbar-cluster view-mode-cluster">
+              <span className="toolbar-cluster-label">Mode</span>
+              <div className="workspace-tabs" aria-label="Project mode">
+                <button className={`workspace-tab ${workspaceMode === "edit" ? "active" : ""}`} onClick={() => switchWorkspaceMode("edit")}>
+                  <Circle size={14} />
+                  Edit
                 </button>
-                <button className={`layout-tab ${layoutMode === "table" ? "active" : ""}`} onClick={() => setLayoutMode("table")} title="QC table only">
+                <button className={`workspace-tab ${workspaceMode === "measurement" ? "active" : ""}`} onClick={() => switchWorkspaceMode("measurement")}>
                   <Table2 size={14} />
-                  Table
-                </button>
-                <div className="layout-tab-divider" />
-                <button className={`layout-tab ${layoutMode === "split-h" ? "active" : ""}`} onClick={() => setLayoutMode("split-h")} title="Side by side">
-                  <ArrowLeftRight size={14} />
-                  Side by Side
-                </button>
-                <button className={`layout-tab ${layoutMode === "split-v" ? "active" : ""}`} onClick={() => setLayoutMode("split-v")} title="Stacked">
-                  <ArrowUpDown size={14} />
-                  Stacked
+                  Measurement
                 </button>
               </div>
             </div>
-          ) : null}
+            {workspaceMode === "edit" ? (
+              <div className="toolbar-cluster layout-mode-cluster">
+                <span className="toolbar-cluster-label">Layout</span>
+                <div className="layout-tabs" aria-label="Drawing layout">
+                  <button className={`layout-tab ${layoutMode === "drawing" ? "active" : ""}`} onClick={() => setLayoutMode("drawing")} title="Drawing canvas only">
+                    <PanelLeft size={14} />
+                    Drawing
+                  </button>
+                  <button className={`layout-tab ${layoutMode === "table" ? "active" : ""}`} onClick={() => setLayoutMode("table")} title="QC table only">
+                    <Table2 size={14} />
+                    Table
+                  </button>
+                  <div className="layout-tab-divider" />
+                  <button className={`layout-tab ${layoutMode === "split-h" ? "active" : ""}`} onClick={() => setLayoutMode("split-h")} title="Side by side">
+                    <ArrowLeftRight size={14} />
+                    Side by Side
+                  </button>
+                  <button className={`layout-tab ${layoutMode === "split-v" ? "active" : ""}`} onClick={() => setLayoutMode("split-v")} title="Stacked">
+                    <ArrowUpDown size={14} />
+                    Stacked
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -1796,26 +1946,41 @@ export default function App() {
         <section ref={drawingPanelRef} className="drawing-panel">
           <div className="panel-toolbar">
             <div className="tool-group">
-              <ToolButton active={mode === "select"} title="Select (V)" onClick={() => switchMode("select")} icon={<MousePointer2 size={17} />} />
+              <ToolButton
+                active={mode === "select"}
+                title="Select (V)"
+                label="Select"
+                onClick={() => switchMode("select")}
+                icon={<MousePointer2 size={17} />}
+              />
               <ToolButton
                 active={mode === "balloon"}
-                title="Add balloon (B)"
+                title="Add Balloon (B)"
+                label="Balloon"
                 onClick={() => switchMode("balloon")}
                 icon={<Circle size={17} />}
               />
               <ToolButton
                 active={mode === "autoBalloon"}
-                title="Review balloon candidates (A)"
+                title="Review Balloon Candidates (A)"
+                label="Review"
                 onClick={() => switchMode("autoBalloon")}
                 icon={<ScanSearch size={17} />}
               />
               <ToolButton
                 active={mode === "text"}
-                title="Text select (T)"
+                title="Text Select (T)"
+                label="Text"
                 onClick={() => switchMode("text")}
                 icon={<TextSelect size={17} />}
               />
-              <ToolButton title="Pan mode (H)" onClick={() => switchMode("pan")} active={mode === "pan"} icon={<Hand size={17} />} />
+              <ToolButton
+                title="Pan Mode (H)"
+                label="Pan"
+                onClick={() => switchMode("pan")}
+                active={mode === "pan"}
+                icon={<Hand size={17} />}
+              />
             </div>
             <DrawingNavToolbar
               zoom={zoom}
@@ -1974,9 +2139,21 @@ export default function App() {
         />
 
         <aside ref={inspectorRef} className="inspector">
-          <div className="status-card">
-            <span>Package Status</span>
-            <strong className={`status ${projectStatus.toLowerCase()}`}>{projectStatus}</strong>
+          <div className="inspector-section drawing-info-section">
+            <div className="section-title">
+              <h2>Drawing Info</h2>
+            </div>
+            <div className="drawing-info-fields">
+              <div className="drawing-info-field drawing-info-field-no">
+                <Field label="Drawing No" value={metadata.drawingNo} onChange={(value) => setMetadataValue(setMetadata, "drawingNo", value)} />
+              </div>
+              <div className="drawing-info-field drawing-info-field-rev">
+                <Field label="Rev" value={metadata.revision} onChange={(value) => setMetadataValue(setMetadata, "revision", value)} compact />
+              </div>
+              <div className="drawing-info-field drawing-info-field-desc">
+                <Field label="Description" value={metadata.description} onChange={(value) => setMetadataValue(setMetadata, "description", value)} wide />
+              </div>
+            </div>
           </div>
 
           <div className="inspector-section">
@@ -2042,11 +2219,27 @@ export default function App() {
             </div>
             <label className="stacked-label">
               Samples
-              <select value={sampleCount} onChange={(event) => setSampleCount(Number(event.target.value))}>
-                {[1, 3, 5, 10].map((count) => (
-                  <option key={count} value={count}>{count}</option>
-                ))}
-              </select>
+              <div className="sample-count-row">
+                <select value={sampleCount} onChange={(event) => setSampleCount(Number(event.target.value))}>
+                  {[1, 3, 5, 10].map((count) => (
+                    <option key={count} value={count}>{count}</option>
+                  ))}
+                  {![1, 3, 5, 10].includes(sampleCount) && (
+                    <option value={sampleCount}>{sampleCount}</option>
+                  )}
+                </select>
+                <input
+                  type="number"
+                  min={1}
+                  className="sample-count-custom"
+                  placeholder="Custom"
+                  value={sampleCount}
+                  onChange={(event) => {
+                    const parsed = Math.max(1, Math.round(Number(event.target.value) || 1));
+                    setSampleCount(parsed);
+                  }}
+                />
+              </div>
             </label>
             <div className="split-actions">
               <button className="button secondary" onClick={addManualRow} disabled={!activeDrawingId}>
