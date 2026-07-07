@@ -1,4 +1,5 @@
-import { X, FilePlus2, ZoomIn, ZoomOut, Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { X, FilePlus2, ZoomIn, ZoomOut, Upload, HelpCircle, Keyboard, BookOpen, History } from "lucide-react";
 
 function getLeaderLine({ x, y, targetX, targetY, radius = 13 }) {
   const targetGap = 3;
@@ -17,6 +18,87 @@ function getLeaderLine({ x, y, targetX, targetY, radius = 13 }) {
     endX: targetX - ux * targetGap,
     endY: targetY - uy * targetGap,
   };
+}
+
+export function HelpMenu({ onOpenShortcuts, onOpenUserGuide, onOpenVersionHistory, labeled = false }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="help-menu" ref={containerRef}>
+      <button
+        type="button"
+        className={labeled ? "icon-button icon-button-labeled" : "icon-button brand-help"}
+        onClick={() => setOpen((current) => !current)}
+        data-tooltip={labeled ? "Help and shortcuts (?)" : undefined}
+        title={labeled ? undefined : "Help and shortcuts"}
+        aria-label="Help and shortcuts"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <HelpCircle size={labeled ? 16 : 17} />
+        {labeled ? <span className="icon-button-text">Help</span> : null}
+      </button>
+      {open ? (
+        <div className="help-menu-list" role="menu">
+          <button
+            type="button"
+            role="menuitem"
+            className="help-menu-item"
+            onClick={() => {
+              setOpen(false);
+              onOpenShortcuts();
+            }}
+          >
+            <Keyboard size={14} />
+            Shortcuts
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="help-menu-item"
+            onClick={() => {
+              setOpen(false);
+              onOpenUserGuide();
+            }}
+          >
+            <BookOpen size={14} />
+            User's Guide
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="help-menu-item"
+            onClick={() => {
+              setOpen(false);
+              onOpenVersionHistory();
+            }}
+          >
+            <History size={14} />
+            Version History
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function Field({ label, value, onChange, compact = false, wide = false, type = "text", multiline = false }) {

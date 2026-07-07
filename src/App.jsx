@@ -7,7 +7,6 @@ import {
   Circle,
   Download,
   Hand,
-  HelpCircle,
   MousePointer2,
   PanelLeft,
   Plus,
@@ -63,10 +62,10 @@ import {
 import {
   Field, ToolButton, ResizeHandle, TextLayer, LeaderLayer,
   AutoBalloonPreview, AutoBalloonReview, DrawingNavToolbar, PdfUploadPrompt,
-  DimensionHighlights,
+  DimensionHighlights, HelpMenu,
 } from "./components/widgets.jsx";
 import {
-  ProjectDashboard, ProjectDetail, NewProjectPage, GuidePage, MeasurementWorkspace, BalloonEditor, CharacteristicTable, SettingsPage,
+  ProjectDashboard, ProjectDetail, NewProjectPage, GuidePage, UserGuidePage, VersionHistoryPage, MeasurementWorkspace, BalloonEditor, CharacteristicTable, SettingsPage,
   ToleranceTableDialog,
 } from "./components/panels.jsx";
 import {
@@ -1760,7 +1759,9 @@ export default function App() {
       onDialogChange={(name) => setProjectDialog((current) => ({ ...current, name }))}
       onDialogSubmit={handleProjectDialogSubmit}
       onDialogClose={handleCloseProjectDialog}
-      onOpenGuide={() => navigate("/guide")}
+      onOpenGuide={() => navigate("/guide", { state: { from: location.pathname } })}
+      onOpenUserGuide={() => navigate("/guide/user-guide", { state: { from: location.pathname } })}
+      onOpenVersionHistory={() => navigate("/guide/version-history", { state: { from: location.pathname } })}
     />
   );
 
@@ -1798,19 +1799,25 @@ export default function App() {
       onDrawingDialogChange={handleDrawingDialogChange}
       onDrawingDialogSubmit={handleDrawingDialogSubmit}
       onDrawingDialogClose={handleDrawingDialogClose}
-      onOpenGuide={() => navigate("/guide")}
+      onOpenGuide={() => navigate("/guide", { state: { from: location.pathname } })}
+      onOpenUserGuide={() => navigate("/guide/user-guide", { state: { from: location.pathname } })}
+      onOpenVersionHistory={() => navigate("/guide/version-history", { state: { from: location.pathname } })}
     />
   );
 
   const settingsElement = (
     <SettingsPage
       settings={balloonSettings}
-      onBack={() => navigate("/projects")}
+      onBack={() => navigate(location.state?.from || "/projects")}
       onChange={setBalloonSettings}
     />
   );
 
-  const guideElement = <GuidePage onBack={() => navigate("/projects")} />;
+  const guideElement = <GuidePage onBack={() => navigate(location.state?.from || "/projects")} />;
+
+  const userGuideElement = <UserGuidePage onBack={() => navigate(location.state?.from || "/projects")} />;
+
+  const versionHistoryElement = <VersionHistoryPage onBack={() => navigate(location.state?.from || "/projects")} />;
 
   const workspaceElement = (
     <div className="app-shell" data-layout={layoutMode} data-toolbar-style={balloonSettings.toolButtonStyle}>
@@ -1831,23 +1838,19 @@ export default function App() {
             <button
               type="button"
               className="icon-button icon-button-labeled"
-              onClick={() => navigate("/settings")}
+              onClick={() => navigate("/settings", { state: { from: location.pathname } })}
               data-tooltip="Settings"
               aria-label="Settings"
             >
               <Settings size={16} />
               <span className="icon-button-text">Settings</span>
             </button>
-            <button
-              type="button"
-              className="icon-button icon-button-labeled"
-              onClick={() => navigate("/guide")}
-              data-tooltip="Help and shortcuts (?)"
-              aria-label="Help and shortcuts"
-            >
-              <HelpCircle size={16} />
-              <span className="icon-button-text">Help</span>
-            </button>
+            <HelpMenu
+              labeled
+              onOpenShortcuts={() => navigate("/guide", { state: { from: location.pathname } })}
+              onOpenUserGuide={() => navigate("/guide/user-guide", { state: { from: location.pathname } })}
+              onOpenVersionHistory={() => navigate("/guide/version-history", { state: { from: location.pathname } })}
+            />
           </div>
         </div>
       </header>
@@ -2366,6 +2369,8 @@ export default function App() {
       />
       <Route path="/settings" element={settingsElement} />
       <Route path="/guide" element={guideElement} />
+      <Route path="/guide/user-guide" element={userGuideElement} />
+      <Route path="/guide/version-history" element={versionHistoryElement} />
       <Route path="*" element={<Navigate to="/projects" replace />} />
     </Routes>
   );

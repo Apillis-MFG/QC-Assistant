@@ -283,10 +283,11 @@ button:disabled {
 }
 
 .help-dialog {
-  width: min(920px, 100%);
-  max-height: calc(100vh - 40px);
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -308,8 +309,6 @@ button:disabled {
 }
 
 .help-content {
-  min-height: 0;
-  overflow: auto;
   display: grid;
   gap: 12px;
   padding: 14px;
@@ -1183,6 +1182,47 @@ kbd {
   min-height: 30px;
   color: var(--muted);
   flex: 0 0 auto;
+}
+
+.help-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.help-menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+}
+
+.help-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 9px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.help-menu-item:hover,
+.help-menu-item:focus-visible {
+  background: #f8fafc;
 }
 
 .header-actions {
@@ -2290,10 +2330,6 @@ td select:focus {
     padding: 10px;
   }
 
-  .help-dialog {
-    max-height: calc(100vh - 20px);
-  }
-
   .help-title {
     padding: 12px;
   }
@@ -2313,7 +2349,22 @@ td select:focus {
 
 }
 
-/* ── Settings Dialog ─────────────────────────────────────────── */
+/* ── Settings Page ───────────────────────────────────────────── */
+
+.settings-page {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Settings Dialog (Tolerance Table modal reuses this) ───────── */
 
 .settings-dialog {
   background: var(--panel);

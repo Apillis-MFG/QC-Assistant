@@ -1,9 +1,9 @@
 import { memo, useMemo } from "react";
-import { X, HelpCircle, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft } from "lucide-react";
+import { X, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
 import { methods, types, APP_VERSION } from "../lib/constants.js";
 import { formatBytes, formatDate } from "../lib/utils.js";
-import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer, Field } from "./widgets.jsx";
+import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer, Field, HelpMenu } from "./widgets.jsx";
 
 function GuideFigure({ src, alt, caption }) {
   return (
@@ -178,40 +178,6 @@ export function GuidePage({ onBack }) {
     ["Esc", "Close help, cancel selection UI"],
   ];
 
-  const releaseNotes060 = [
-    "Improved the UI overall.",
-    "Icon buttons now support a Text label alongside the icon, with a setting to choose Icon only or Icon + Text.",
-  ];
-
-  const releaseNotes050 = [
-    "Tolerance inputs now preserve common leading-decimal drawing values like .005, +.005, and -.002.",
-    "The tolerance table can fill every blank dimension with the same drawing pattern in one pass without overwriting entered tolerances.",
-  ];
-
-  const releaseNotes040 = [
-    "Added settings to customize balloon appearance and behavior so engineers can tune the marker style to match their drawing workflow.",
-  ];
-
-  const releaseNotes031 = [
-    "Changing a balloon type from the table now keeps the selected-balloon editor in sync with the same requirement.",
-    "Type changes now update the inspection method through one shared rule, so the table and right sidebar stay consistent.",
-  ];
-
-  const releaseNotes030 = [
-    "The toolbar is now organised into clear sections for project controls and drawing controls — less hunting, faster access.",
-    "Auto Balloon is now a dedicated panel: detect candidates, review them, and confirm in one place without interrupting your workflow.",
-    "Switch between drawing view and measurement entry with a single toggle to stay in context while filling in values.",
-    "Drawings open at a better default zoom that fits most standard PDF sheet sizes without manual adjustment.",
-    "Unsaved changes are now clearly indicated on the workspace tab so you always know what has been saved.",
-    "Rows with incomplete or indeterminate limits always show OPEN — nothing slips through as falsely passed.",
-  ];
-
-  const releaseNotes020 = [
-    "Project management support with local projects and up to 25 drawings per project. Large PDFs over 25 MB show a storage warning, and projects over 500 MB show a project storage warning.",
-    "Auto Balloon support: drag a selected area, review detected balloon candidates, then add confirmed balloons with aligned leaders.",
-    "Shortcuts added for faster workflow: B Balloon, A Auto Balloon candidate review, V Select, H Pan, T Text/OCR, E Edit selected balloon, Esc cancel/close.",
-  ];
-
   return (
     <div className="dashboard-shell">
       <header className="dashboard-header">
@@ -226,7 +192,7 @@ export function GuidePage({ onBack }) {
         </div>
         <button className="button secondary" onClick={onBack}>
           <ArrowLeft size={16} />
-          Back to Projects
+          Back
         </button>
       </header>
 
@@ -286,69 +252,145 @@ export function GuidePage({ onBack }) {
             </div>
 	          </section>
 
-          <details className="help-section version-history user-guide">
-            <summary>
-              <span>Full User Guide</span>
-              <strong>13 topics</strong>
-            </summary>
-            <FullUserGuide />
-          </details>
+        </div>
+      </section>
+    </div>
+  );
+}
 
-          <details className="help-section version-history">
-            <summary>
-              <span>Version History</span>
-              <strong>v0.6.0</strong>
-            </summary>
-            <div className="release-note">
-              <h3>v0.6.0</h3>
-              <ul>
-                {releaseNotes060.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
+export function VersionHistoryPage({ onBack }) {
+  const releaseNotes060 = [
+    "Improved the UI overall.",
+    "Icon buttons now support a Text label alongside the icon, with a setting to choose Icon only or Icon + Text.",
+  ];
+
+  const releaseNotes050 = [
+    "Tolerance inputs now preserve common leading-decimal drawing values like .005, +.005, and -.002.",
+    "The tolerance table can fill every blank dimension with the same drawing pattern in one pass without overwriting entered tolerances.",
+  ];
+
+  const releaseNotes040 = [
+    "Added settings to customize balloon appearance and behavior so engineers can tune the marker style to match their drawing workflow.",
+  ];
+
+  const releaseNotes031 = [
+    "Changing a balloon type from the table now keeps the selected-balloon editor in sync with the same requirement.",
+    "Type changes now update the inspection method through one shared rule, so the table and right sidebar stay consistent.",
+  ];
+
+  const releaseNotes030 = [
+    "The toolbar is now organised into clear sections for project controls and drawing controls — less hunting, faster access.",
+    "Auto Balloon is now a dedicated panel: detect candidates, review them, and confirm in one place without interrupting your workflow.",
+    "Switch between drawing view and measurement entry with a single toggle to stay in context while filling in values.",
+    "Drawings open at a better default zoom that fits most standard PDF sheet sizes without manual adjustment.",
+    "Unsaved changes are now clearly indicated on the workspace tab so you always know what has been saved.",
+    "Rows with incomplete or indeterminate limits always show OPEN — nothing slips through as falsely passed.",
+  ];
+
+  const releaseNotes020 = [
+    "Project management support with local projects and up to 25 drawings per project. Large PDFs over 25 MB show a storage warning, and projects over 500 MB show a project storage warning.",
+    "Auto Balloon support: drag a selected area, review detected balloon candidates, then add confirmed balloons with aligned leaders.",
+    "Shortcuts added for faster workflow: B Balloon, A Auto Balloon candidate review, V Select, H Pan, T Text/OCR, E Edit selected balloon, Esc cancel/close.",
+  ];
+
+  return (
+    <div className="dashboard-shell">
+      <header className="dashboard-header">
+        <div className="brand">
+          <img className="brand-mark" src="/logo-mark.svg" alt="" aria-hidden="true" />
+          <div>
+            <div className="brand-title-row">
+              <h1>Version History</h1>
+              <span className="version-badge">{APP_VERSION}</span>
             </div>
-            <div className="release-note">
-              <h3>v0.5.0</h3>
-              <ul>
-                {releaseNotes050.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
+            <p>What's changed, release by release.</p>
+          </div>
+        </div>
+        <button className="button secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back
+        </button>
+      </header>
+
+      <section className="help-dialog dashboard-main" aria-labelledby="version-history-title">
+        <div className="help-content">
+          <div className="release-note">
+            <h3>v0.6.0</h3>
+            <ul>
+              {releaseNotes060.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="release-note">
+            <h3>v0.5.0</h3>
+            <ul>
+              {releaseNotes050.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="release-note">
+            <h3>v0.4.0</h3>
+            <ul>
+              {releaseNotes040.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="release-note">
+            <h3>v0.3.1</h3>
+            <ul>
+              {releaseNotes031.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="release-note">
+            <h3>v0.3.0</h3>
+            <ul>
+              {releaseNotes030.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="release-note">
+            <h3>v0.2.0</h3>
+            <ul>
+              {releaseNotes020.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function UserGuidePage({ onBack }) {
+  return (
+    <div className="dashboard-shell">
+      <header className="dashboard-header">
+        <div className="brand">
+          <img className="brand-mark" src="/logo-mark.svg" alt="" aria-hidden="true" />
+          <div>
+            <div className="brand-title-row">
+              <h1>User's Guide</h1>
             </div>
-            <div className="release-note">
-              <h3>v0.4.0</h3>
-              <ul>
-                {releaseNotes040.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="release-note">
-              <h3>v0.3.1</h3>
-              <ul>
-                {releaseNotes031.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="release-note">
-              <h3>v0.3.0</h3>
-              <ul>
-                {releaseNotes030.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="release-note">
-              <h3>v0.2.0</h3>
-              <ul>
-                {releaseNotes020.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-            </div>
-          </details>
-	        </div>
+            <p>Every topic, in order, from upload to export.</p>
+          </div>
+        </div>
+        <button className="button secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back
+        </button>
+      </header>
+
+      <section className="help-dialog dashboard-main" aria-labelledby="user-guide-title">
+        <div className="help-content">
+          <FullUserGuide />
+        </div>
       </section>
     </div>
   );
@@ -367,6 +409,8 @@ export function ProjectDashboard({
   onDialogSubmit,
   onDialogClose,
   onOpenGuide,
+  onOpenUserGuide,
+  onOpenVersionHistory,
 }) {
   return (
     <div className="dashboard-shell">
@@ -377,9 +421,11 @@ export function ProjectDashboard({
             <div className="brand-title-row">
               <h1>QC Assistant</h1>
               <span className="version-badge">{APP_VERSION}</span>
-              <button className="icon-button brand-help" onClick={onOpenGuide} title="Help and shortcuts" aria-label="Help and shortcuts">
-                <HelpCircle size={17} />
-              </button>
+              <HelpMenu
+                onOpenShortcuts={onOpenGuide}
+                onOpenUserGuide={onOpenUserGuide}
+                onOpenVersionHistory={onOpenVersionHistory}
+              />
             </div>
             <p>Local inspection projects</p>
           </div>
@@ -528,6 +574,8 @@ export function ProjectDetail({
   onDrawingDialogSubmit,
   onDrawingDialogClose,
   onOpenGuide,
+  onOpenUserGuide,
+  onOpenVersionHistory,
 }) {
   return (
     <div className="dashboard-shell">
@@ -538,9 +586,11 @@ export function ProjectDetail({
             <div className="brand-title-row">
               <h1>QC Assistant</h1>
               <span className="version-badge">{APP_VERSION}</span>
-              <button className="icon-button brand-help" onClick={onOpenGuide} title="Help and shortcuts" aria-label="Help and shortcuts">
-                <HelpCircle size={17} />
-              </button>
+              <HelpMenu
+                onOpenShortcuts={onOpenGuide}
+                onOpenUserGuide={onOpenUserGuide}
+                onOpenVersionHistory={onOpenVersionHistory}
+              />
             </div>
             <p>Project details</p>
           </div>
@@ -1137,12 +1187,12 @@ export function SettingsPage({ settings, onBack, onChange }) {
         </div>
         <button className="button secondary" onClick={onBack}>
           <ArrowLeft size={16} />
-          Back to Projects
+          Back
         </button>
       </header>
 
       <section
-        className="settings-dialog dashboard-main"
+        className="settings-page dashboard-main"
         aria-labelledby="settings-title"
       >
         <div className="settings-body">
