@@ -259,6 +259,11 @@ export function GuidePage({ onBack }) {
 }
 
 export function VersionHistoryPage({ onBack }) {
+  const releaseNotes070 = [
+    "Improved project management with React Router-based navigation and new dedicated project pages.",
+    "Improved UI layout, including a new Help menu for quick access to shortcuts, the user guide, and version history.",
+  ];
+
   const releaseNotes060 = [
     "Improved the UI overall.",
     "Icon buttons now support a Text label alongside the icon, with a setting to choose Icon only or Icon + Text.",
@@ -314,6 +319,14 @@ export function VersionHistoryPage({ onBack }) {
 
       <section className="help-dialog dashboard-main" aria-labelledby="version-history-title">
         <div className="help-content">
+          <div className="release-note">
+            <h3>v0.7.0</h3>
+            <ul>
+              {releaseNotes070.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
           <div className="release-note">
             <h3>v0.6.0</h3>
             <ul>
