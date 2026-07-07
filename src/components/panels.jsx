@@ -1,9 +1,9 @@
 import { memo, useMemo } from "react";
-import { X, HelpCircle, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft } from "lucide-react";
+import { X, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
 import { methods, types, APP_VERSION } from "../lib/constants.js";
 import { formatBytes, formatDate } from "../lib/utils.js";
-import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer, Field } from "./widgets.jsx";
+import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer, Field, HelpMenu } from "./widgets.jsx";
 
 function GuideFigure({ src, alt, caption }) {
   return (
@@ -14,7 +14,7 @@ function GuideFigure({ src, alt, caption }) {
   );
 }
 
-function FullUserGuide() {
+export function FullUserGuide() {
   return (
     <div className="guide-body">
       <div className="guide-topic">
@@ -167,9 +167,7 @@ function FullUserGuide() {
   );
 }
 
-export function HelpDialog({ open, onClose }) {
-  if (!open) return null;
-
+export function GuidePage({ onBack }) {
   const shortcuts = [
     ["B", "Balloon tool"],
     ["A", "Review balloon candidates (Auto Balloon)"],
@@ -180,59 +178,28 @@ export function HelpDialog({ open, onClose }) {
     ["Esc", "Close help, cancel selection UI"],
   ];
 
-  const releaseNotes060 = [
-    "Improved the UI overall.",
-    "Icon buttons now support a Text label alongside the icon, with a setting to choose Icon only or Icon + Text.",
-  ];
-
-  const releaseNotes050 = [
-    "Tolerance inputs now preserve common leading-decimal drawing values like .005, +.005, and -.002.",
-    "The tolerance table can fill every blank dimension with the same drawing pattern in one pass without overwriting entered tolerances.",
-  ];
-
-  const releaseNotes040 = [
-    "Added settings to customize balloon appearance and behavior so engineers can tune the marker style to match their drawing workflow.",
-  ];
-
-  const releaseNotes031 = [
-    "Changing a balloon type from the table now keeps the selected-balloon editor in sync with the same requirement.",
-    "Type changes now update the inspection method through one shared rule, so the table and right sidebar stay consistent.",
-  ];
-
-  const releaseNotes030 = [
-    "The toolbar is now organised into clear sections for project controls and drawing controls — less hunting, faster access.",
-    "Auto Balloon is now a dedicated panel: detect candidates, review them, and confirm in one place without interrupting your workflow.",
-    "Switch between drawing view and measurement entry with a single toggle to stay in context while filling in values.",
-    "Drawings open at a better default zoom that fits most standard PDF sheet sizes without manual adjustment.",
-    "Unsaved changes are now clearly indicated on the workspace tab so you always know what has been saved.",
-    "Rows with incomplete or indeterminate limits always show OPEN — nothing slips through as falsely passed.",
-  ];
-
-  const releaseNotes020 = [
-    "Project management support with local projects and up to 25 drawings per project. Large PDFs over 25 MB show a storage warning, and projects over 500 MB show a project storage warning.",
-    "Auto Balloon support: drag a selected area, review detected balloon candidates, then add confirmed balloons with aligned leaders.",
-    "Shortcuts added for faster workflow: B Balloon, A Auto Balloon candidate review, V Select, H Pan, T Text/OCR, E Edit selected balloon, Esc cancel/close.",
-  ];
-
   return (
-    <div className="dialog-backdrop help-backdrop" role="presentation" onMouseDown={onClose}>
-      <section
-        className="help-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="help-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="dialog-title help-title">
+    <div className="dashboard-shell">
+      <header className="dashboard-header">
+        <div className="brand">
+          <img className="brand-mark" src="/logo-mark.svg" alt="" aria-hidden="true" />
           <div>
-            <h2 id="help-title">QC Assistant Help</h2>
+            <div className="brand-title-row">
+              <h1>QC Assistant Help</h1>
+            </div>
             <p>Fast path from drawing upload to submittable FAI exports.</p>
           </div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Close help">
-            <X size={17} />
-          </button>
         </div>
+        <button className="button secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back
+        </button>
+      </header>
 
+      <section
+        className="help-dialog dashboard-main"
+        aria-labelledby="help-title"
+      >
         <div className="help-content">
           <section className="help-section help-hero">
             <div>
@@ -285,69 +252,145 @@ export function HelpDialog({ open, onClose }) {
             </div>
 	          </section>
 
-          <details className="help-section version-history user-guide">
-            <summary>
-              <span>Full User Guide</span>
-              <strong>13 topics</strong>
-            </summary>
-            <FullUserGuide />
-          </details>
+        </div>
+      </section>
+    </div>
+  );
+}
 
-          <details className="help-section version-history">
-            <summary>
-              <span>Version History</span>
-              <strong>v0.6.0</strong>
-            </summary>
-            <div className="release-note">
-              <h3>v0.6.0</h3>
-              <ul>
-                {releaseNotes060.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
+export function VersionHistoryPage({ onBack }) {
+  const releaseNotes060 = [
+    "Improved the UI overall.",
+    "Icon buttons now support a Text label alongside the icon, with a setting to choose Icon only or Icon + Text.",
+  ];
+
+  const releaseNotes050 = [
+    "Tolerance inputs now preserve common leading-decimal drawing values like .005, +.005, and -.002.",
+    "The tolerance table can fill every blank dimension with the same drawing pattern in one pass without overwriting entered tolerances.",
+  ];
+
+  const releaseNotes040 = [
+    "Added settings to customize balloon appearance and behavior so engineers can tune the marker style to match their drawing workflow.",
+  ];
+
+  const releaseNotes031 = [
+    "Changing a balloon type from the table now keeps the selected-balloon editor in sync with the same requirement.",
+    "Type changes now update the inspection method through one shared rule, so the table and right sidebar stay consistent.",
+  ];
+
+  const releaseNotes030 = [
+    "The toolbar is now organised into clear sections for project controls and drawing controls — less hunting, faster access.",
+    "Auto Balloon is now a dedicated panel: detect candidates, review them, and confirm in one place without interrupting your workflow.",
+    "Switch between drawing view and measurement entry with a single toggle to stay in context while filling in values.",
+    "Drawings open at a better default zoom that fits most standard PDF sheet sizes without manual adjustment.",
+    "Unsaved changes are now clearly indicated on the workspace tab so you always know what has been saved.",
+    "Rows with incomplete or indeterminate limits always show OPEN — nothing slips through as falsely passed.",
+  ];
+
+  const releaseNotes020 = [
+    "Project management support with local projects and up to 25 drawings per project. Large PDFs over 25 MB show a storage warning, and projects over 500 MB show a project storage warning.",
+    "Auto Balloon support: drag a selected area, review detected balloon candidates, then add confirmed balloons with aligned leaders.",
+    "Shortcuts added for faster workflow: B Balloon, A Auto Balloon candidate review, V Select, H Pan, T Text/OCR, E Edit selected balloon, Esc cancel/close.",
+  ];
+
+  return (
+    <div className="dashboard-shell">
+      <header className="dashboard-header">
+        <div className="brand">
+          <img className="brand-mark" src="/logo-mark.svg" alt="" aria-hidden="true" />
+          <div>
+            <div className="brand-title-row">
+              <h1>Version History</h1>
+              <span className="version-badge">{APP_VERSION}</span>
             </div>
-            <div className="release-note">
-              <h3>v0.5.0</h3>
-              <ul>
-                {releaseNotes050.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
+            <p>What's changed, release by release.</p>
+          </div>
+        </div>
+        <button className="button secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back
+        </button>
+      </header>
+
+      <section className="help-dialog dashboard-main" aria-labelledby="version-history-title">
+        <div className="help-content">
+          <div className="release-note">
+            <h3>v0.6.0</h3>
+            <ul>
+              {releaseNotes060.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="release-note">
+            <h3>v0.5.0</h3>
+            <ul>
+              {releaseNotes050.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="release-note">
+            <h3>v0.4.0</h3>
+            <ul>
+              {releaseNotes040.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="release-note">
+            <h3>v0.3.1</h3>
+            <ul>
+              {releaseNotes031.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="release-note">
+            <h3>v0.3.0</h3>
+            <ul>
+              {releaseNotes030.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="release-note">
+            <h3>v0.2.0</h3>
+            <ul>
+              {releaseNotes020.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function UserGuidePage({ onBack }) {
+  return (
+    <div className="dashboard-shell">
+      <header className="dashboard-header">
+        <div className="brand">
+          <img className="brand-mark" src="/logo-mark.svg" alt="" aria-hidden="true" />
+          <div>
+            <div className="brand-title-row">
+              <h1>User's Guide</h1>
             </div>
-            <div className="release-note">
-              <h3>v0.4.0</h3>
-              <ul>
-                {releaseNotes040.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="release-note">
-              <h3>v0.3.1</h3>
-              <ul>
-                {releaseNotes031.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="release-note">
-              <h3>v0.3.0</h3>
-              <ul>
-                {releaseNotes030.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="release-note">
-              <h3>v0.2.0</h3>
-              <ul>
-                {releaseNotes020.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-            </div>
-          </details>
-	        </div>
+            <p>Every topic, in order, from upload to export.</p>
+          </div>
+        </div>
+        <button className="button secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back
+        </button>
+      </header>
+
+      <section className="help-dialog dashboard-main" aria-labelledby="user-guide-title">
+        <div className="help-content">
+          <FullUserGuide />
+        </div>
       </section>
     </div>
   );
@@ -365,9 +408,9 @@ export function ProjectDashboard({
   onDialogChange,
   onDialogSubmit,
   onDialogClose,
-  onOpenHelp,
-  helpOpen,
-  onCloseHelp,
+  onOpenGuide,
+  onOpenUserGuide,
+  onOpenVersionHistory,
 }) {
   return (
     <div className="dashboard-shell">
@@ -378,9 +421,11 @@ export function ProjectDashboard({
             <div className="brand-title-row">
               <h1>QC Assistant</h1>
               <span className="version-badge">{APP_VERSION}</span>
-              <button className="icon-button brand-help" onClick={onOpenHelp} title="Help and shortcuts" aria-label="Help and shortcuts">
-                <HelpCircle size={17} />
-              </button>
+              <HelpMenu
+                onOpenShortcuts={onOpenGuide}
+                onOpenUserGuide={onOpenUserGuide}
+                onOpenVersionHistory={onOpenVersionHistory}
+              />
             </div>
             <p>Local inspection projects</p>
           </div>
@@ -446,7 +491,7 @@ export function ProjectDashboard({
         <div className="dialog-backdrop" role="presentation">
           <form className="project-dialog" onSubmit={onDialogSubmit}>
             <div className="dialog-title">
-              <h2>{projectDialog.mode === "create" ? "New Project" : "Edit Project Name"}</h2>
+              <h2>Edit Project Name</h2>
               <button type="button" className="icon-button" onClick={onDialogClose} aria-label="Close project dialog">×</button>
             </div>
             <label className="stacked-label">
@@ -460,15 +505,53 @@ export function ProjectDashboard({
             </label>
             <div className="dialog-actions">
               <button type="button" className="button secondary" onClick={onDialogClose}>Cancel</button>
-              <button type="submit" className="button primary" disabled={!projectDialog.name.trim()}>
-                {projectDialog.mode === "create" ? "Create Project" : "Save Name"}
-              </button>
+              <button type="submit" className="button primary" disabled={!projectDialog.name.trim()}>Save Name</button>
             </div>
           </form>
         </div>
       ) : null}
+    </div>
+  );
+}
 
-      <HelpDialog open={helpOpen} onClose={onCloseHelp} />
+export function NewProjectPage({ name, onNameChange, onSubmit, onCancel }) {
+  return (
+    <div className="dashboard-shell">
+      <header className="dashboard-header">
+        <div className="brand">
+          <img className="brand-mark" src="/logo-mark.svg" alt="" aria-hidden="true" />
+          <div>
+            <div className="brand-title-row">
+              <h1>New Project</h1>
+            </div>
+            <p>Create a project to hold one or more drawings.</p>
+          </div>
+        </div>
+        <button className="button secondary" onClick={onCancel}>
+          <ArrowLeft size={16} />
+          Back to Projects
+        </button>
+      </header>
+
+      <main className="dashboard-main">
+        <section className="dashboard-panel">
+          <form className="project-detail-form" onSubmit={onSubmit}>
+            <label className="stacked-label">
+              Project Name
+              <input
+                autoFocus
+                value={name}
+                onChange={(event) => onNameChange(event.target.value)}
+                placeholder="Example: BS-Extrusion"
+              />
+            </label>
+            <div className="dialog-actions">
+              <button type="button" className="button secondary" onClick={onCancel}>Cancel</button>
+              <button type="submit" className="button primary" disabled={!name.trim()}>Create Project</button>
+            </div>
+          </form>
+        </section>
+      </main>
     </div>
   );
 }
@@ -490,9 +573,9 @@ export function ProjectDetail({
   onDrawingDialogChange,
   onDrawingDialogSubmit,
   onDrawingDialogClose,
-  helpOpen,
-  onOpenHelp,
-  onCloseHelp,
+  onOpenGuide,
+  onOpenUserGuide,
+  onOpenVersionHistory,
 }) {
   return (
     <div className="dashboard-shell">
@@ -503,9 +586,11 @@ export function ProjectDetail({
             <div className="brand-title-row">
               <h1>QC Assistant</h1>
               <span className="version-badge">{APP_VERSION}</span>
-              <button className="icon-button brand-help" onClick={onOpenHelp} title="Help and shortcuts" aria-label="Help and shortcuts">
-                <HelpCircle size={17} />
-              </button>
+              <HelpMenu
+                onOpenShortcuts={onOpenGuide}
+                onOpenUserGuide={onOpenUserGuide}
+                onOpenVersionHistory={onOpenVersionHistory}
+              />
             </div>
             <p>Project details</p>
           </div>
@@ -624,8 +709,6 @@ export function ProjectDetail({
           </form>
         </div>
       ) : null}
-
-      <HelpDialog open={helpOpen} onClose={onCloseHelp} />
     </div>
   );
 }
@@ -1073,9 +1156,7 @@ export function CharacteristicTable({
   );
 }
 
-export function SettingsDialog({ open, settings, onClose, onChange }) {
-  if (!open) return null;
-
+export function SettingsPage({ settings, onBack, onChange }) {
   const defaults = { diameter: 24, fontSize: 11, leaderScale: 1, toolButtonStyle: "icon-text" };
 
   function set(key, value) {
@@ -1093,28 +1174,27 @@ export function SettingsDialog({ open, settings, onClose, onChange }) {
   const leaderLineWidth = Math.round(40 + (settings.leaderScale - 1) * 28);
 
   return (
-    <div
-      className="dialog-backdrop help-backdrop"
-      role="presentation"
-      onMouseDown={onClose}
-    >
-      <section
-        className="settings-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="settings-title"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="dialog-title help-title">
+    <div className="dashboard-shell">
+      <header className="dashboard-header">
+        <div className="brand">
+          <img className="brand-mark" src="/logo-mark.svg" alt="" aria-hidden="true" />
           <div>
-            <h2 id="settings-title">Settings</h2>
+            <div className="brand-title-row">
+              <h1 id="settings-title">Settings</h1>
+            </div>
             <p>Customize the toolbar and balloon appearance. Saved automatically.</p>
           </div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Close settings">
-            <X size={17} />
-          </button>
         </div>
+        <button className="button secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back
+        </button>
+      </header>
 
+      <section
+        className="settings-page dashboard-main"
+        aria-labelledby="settings-title"
+      >
         <div className="settings-body">
           {/* Toolbar Buttons */}
           <div className="settings-row">
@@ -1260,7 +1340,7 @@ export function SettingsDialog({ open, settings, onClose, onChange }) {
           <button type="button" className="settings-reset-all" onClick={resetAll}>
             Reset all to defaults
           </button>
-          <button type="button" className="settings-close-btn" onClick={onClose}>
+          <button type="button" className="settings-close-btn" onClick={onBack}>
             Done
           </button>
         </div>

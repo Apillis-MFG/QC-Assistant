@@ -12,7 +12,10 @@
       "Bash(npx --yes playwright --version)",
       "Bash(curl -sf http://127.0.0.1:5173)",
       "Bash(break)",
-      "Bash(pnpm add *)"
+      "Bash(pnpm add *)",
+      "Bash(npm -v)",
+      "Bash(corepack --version)",
+      "Bash(find / -maxdepth 4 -iname \"pnpm*\")"
     ],
     "additionalDirectories": [
       "/tmp"

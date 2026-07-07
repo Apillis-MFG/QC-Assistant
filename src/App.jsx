@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from "react-router-dom";
 import {
   ArrowLeftRight,
   ArrowUpDown,
@@ -6,7 +7,6 @@ import {
   Circle,
   Download,
   Hand,
-  HelpCircle,
   MousePointer2,
   PanelLeft,
   Plus,
@@ -62,10 +62,10 @@ import {
 import {
   Field, ToolButton, ResizeHandle, TextLayer, LeaderLayer,
   AutoBalloonPreview, AutoBalloonReview, DrawingNavToolbar, PdfUploadPrompt,
-  DimensionHighlights,
+  DimensionHighlights, HelpMenu,
 } from "./components/widgets.jsx";
 import {
-  ProjectDashboard, ProjectDetail, HelpDialog, MeasurementWorkspace, BalloonEditor, CharacteristicTable, SettingsDialog,
+  ProjectDashboard, ProjectDetail, NewProjectPage, GuidePage, UserGuidePage, VersionHistoryPage, MeasurementWorkspace, BalloonEditor, CharacteristicTable, SettingsPage,
   ToleranceTableDialog,
 } from "./components/panels.jsx";
 import {
@@ -129,13 +129,15 @@ function formatLocalSaveLog(drawingCount) {
 }
 
 export default function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [projectSummaries, setProjectSummaries] = useState([]);
   const [activeProject, setActiveProject] = useState(null);
   const [drawings, setDrawings] = useState([]);
   const [activeDrawingId, setActiveDrawingId] = useState(null);
   const [projectsReady, setProjectsReady] = useState(false);
-  const [page, setPage] = useState("dashboard");
-  const [projectDialog, setProjectDialog] = useState({ open: false, mode: "create", projectId: null, name: "" });
+  const [projectDialog, setProjectDialog] = useState({ open: false, projectId: null, name: "" });
+  const [newProjectName, setNewProjectName] = useState("");
   const [detailProjectId, setDetailProjectId] = useState(null);
   const [detailProject, setDetailProject] = useState(null);
   const [detailDrawings, setDetailDrawings] = useState([]);
@@ -165,8 +167,6 @@ export default function App() {
   const [autoBalloonBusy, setAutoBalloonBusy] = useState(false);
   const [autoBalloonCandidates, setAutoBalloonCandidates] = useState([]);
   const [autoBalloonReviewOpen, setAutoBalloonReviewOpen] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [toleranceTableOpen, setToleranceTableOpen] = useState(false);
   const [balloonSettings, setBalloonSettings] = useState(loadBalloonSettings);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -380,8 +380,19 @@ export default function App() {
     });
   }, [applyDrawing, rememberActiveProject]);
 
+  const loadWorkspaceForRoute = useCallback(async (projectId, drawingId) => {
+    if (!projectId) return;
+    await openProjectWorkspace(projectId, drawingId || null);
+    await refreshProjectList();
+  }, [openProjectWorkspace, refreshProjectList]);
+
   useEffect(() => {
     let cancelled = false;
+    // Only reset to the dashboard when the app was actually loaded at "/" -
+    // a deep link (e.g. /projects/:id/drawings/:id) must be left alone so its
+    // own route effect can load it, since this async restore may resolve
+    // after that route's data is already loaded.
+    const landedAtRoot = location.pathname === "/";
 
     async function restoreWorkspace() {
       try {
@@ -390,15 +401,17 @@ export default function App() {
         if (cancelled) return;
         setProjectSummaries(summaries);
 
-        setActiveProject(null);
-        setDrawings([]);
-        setActiveDrawingId(null);
-        setPage("dashboard");
-        resetDrawingState(
-          summaries.length
-            ? "Open a project from the dashboard to continue."
-            : "Create a project to begin.",
-        );
+        if (landedAtRoot) {
+          setActiveProject(null);
+          setDrawings([]);
+          setActiveDrawingId(null);
+          navigate("/projects", { replace: true });
+          resetDrawingState(
+            summaries.length
+              ? "Open a project from the dashboard to continue."
+              : "Create a project to begin.",
+          );
+        }
         setSaveState({ status: "idle", label: "Not saved" });
       } catch (error) {
         if (!cancelled) {
@@ -414,7 +427,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [resetDrawingState]);
+  }, [resetDrawingState, navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -510,8 +523,11 @@ export default function App() {
     setMessage("Edit mode: add balloons, capture drawing text, and refine requirement setup.");
   }, []);
 
+  const isWorkspaceRoute = /^\/projects\/[^/]+\/drawings(\/|$)/.test(location.pathname);
+
   useEffect(() => {
     const handleShortcut = (event) => {
+      if (!isWorkspaceRoute) return;
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target;
       const tagName = target?.tagName?.toLowerCase();
@@ -524,15 +540,13 @@ export default function App() {
 
       const key = event.key.toLowerCase();
       if (key === "escape") {
-        if (settingsOpen || toleranceTableOpen) {
+        if (toleranceTableOpen) {
           event.preventDefault();
-          setSettingsOpen(false);
           setToleranceTableOpen(false);
           return;
         }
-        if (helpOpen || editingBalloonId || ocrRect || autoBalloonRect || autoBalloonReviewOpen || pendingTarget) {
+        if (editingBalloonId || ocrRect || autoBalloonRect || autoBalloonReviewOpen || pendingTarget) {
           event.preventDefault();
-          setHelpOpen(false);
           setEditingBalloonId(null);
           setPendingTarget(null);
           setOcrRect(null);
@@ -542,7 +556,7 @@ export default function App() {
         }
         return;
       }
-      if (helpOpen || settingsOpen || toleranceTableOpen) return;
+      if (toleranceTableOpen) return;
       if (workspaceMode === "measurement") return;
 
       const shortcutModes = {
@@ -567,7 +581,7 @@ export default function App() {
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [autoBalloonRect, autoBalloonReviewOpen, editingBalloonId, helpOpen, settingsOpen, toleranceTableOpen, ocrRect, pageNumber, pendingTarget, selected, switchMode, workspaceMode]);
+  }, [autoBalloonRect, autoBalloonReviewOpen, editingBalloonId, isWorkspaceRoute, toleranceTableOpen, ocrRect, pageNumber, pendingTarget, selected, switchMode, workspaceMode]);
 
   const persistActiveDrawing = useCallback(async (reason = "auto") => {
     if (!projectsReady || !activeProject?.id || !activeDrawingId) return;
@@ -712,11 +726,29 @@ export default function App() {
   }, [refreshProjectList, rememberActiveProject, resetDrawingState]);
 
   const handleNewProject = useCallback(() => {
-    setProjectDialog({ open: true, mode: "create", projectId: null, name: "" });
-  }, []);
+    setNewProjectName("");
+    navigate("/projects/new");
+  }, [navigate]);
+
+  const handleCreateProject = useCallback(async (event) => {
+    event.preventDefault();
+    const name = newProjectName.trim();
+    if (!name) {
+      setMessage("Project name is required.");
+      return;
+    }
+
+    try {
+      const project = await createProject(name);
+      setNewProjectName("");
+      navigate(`/projects/${project.id}/drawings`);
+    } catch (error) {
+      setMessage(`Could not create project: ${error.message}`);
+    }
+  }, [createProject, navigate, newProjectName]);
 
   const handleOpenProjectDialog = useCallback((project) => {
-    setProjectDialog({ open: true, mode: "rename", projectId: project.id, name: project.name || "" });
+    setProjectDialog({ open: true, projectId: project.id, name: project.name || "" });
   }, []);
 
   const handleCloseProjectDialog = useCallback(() => {
@@ -732,14 +764,6 @@ export default function App() {
     }
 
     try {
-      if (projectDialog.mode === "create") {
-        const project = await createProject(name);
-        setProjectDialog({ open: false, mode: "create", projectId: null, name: "" });
-        setPage("workspace");
-        await openProjectWorkspace(project.id);
-        return;
-      }
-
       const currentProject = projectSummaries.find((project) => project.id === projectDialog.projectId);
       if (!currentProject) {
         setMessage("Project could not be found for rename.");
@@ -760,31 +784,25 @@ export default function App() {
         setDetailFields({ name: updatedProject.name, code: updatedProject.code || "" });
       }
       await refreshProjectList();
-      setProjectDialog({ open: false, mode: "create", projectId: null, name: "" });
+      setProjectDialog({ open: false, projectId: null, name: "" });
       setSaveState({ status: "saved", label: "local: project renamed" });
       setMessage(`Renamed project to ${name}.`);
     } catch (error) {
       setMessage(`Could not save project name: ${error.message}`);
     }
-  }, [activeProject?.id, createProject, openProjectWorkspace, projectDialog, projectSummaries, refreshProjectList]);
+  }, [activeProject?.id, detailProjectId, projectDialog, projectSummaries, refreshProjectList]);
 
-  const handleOpenProject = useCallback(async (projectId) => {
+  const handleOpenProject = useCallback((projectId) => {
     if (!projectId) return;
-    try {
-      await openProjectWorkspace(projectId);
-      setPage("workspace");
-      await refreshProjectList();
-    } catch (error) {
-      setMessage(`Could not open project: ${error.message}`);
-    }
-  }, [openProjectWorkspace, refreshProjectList]);
+    navigate(`/projects/${projectId}/drawings`);
+  }, [navigate]);
 
   const handleOpenDrawing = useCallback(async (drawingId) => {
-    if (!drawingId || drawingId === activeDrawingId) return;
+    if (!drawingId || drawingId === activeDrawingId || !activeProject?.id) return;
     window.clearTimeout(saveTimerRef.current);
     await persistActiveDrawingRef.current?.("manual");
-    await applyDrawing(drawingId, { projectId: activeProject?.id });
-  }, [activeDrawingId, activeProject?.id, applyDrawing]);
+    navigate(`/projects/${activeProject.id}/drawings/${drawingId}`);
+  }, [activeDrawingId, activeProject?.id, navigate]);
 
   const handlePdfUpload = useCallback(async (event) => {
     const file = event.target.files?.[0];
@@ -1413,7 +1431,7 @@ export default function App() {
     }
   }, [activeProject?.id, refreshProjectList, resetDrawingState]);
 
-  const handleManageProject = useCallback(async (projectId) => {
+  const loadDetailForProject = useCallback(async (projectId) => {
     const workspace = await loadProject(projectId);
     if (!workspace) {
       setMessage("Project could not be found in local storage.");
@@ -1429,16 +1447,19 @@ export default function App() {
       estimatedDeliveryDate: workspace.project.estimatedDeliveryDate || "",
       notes: workspace.project.notes || "",
     });
-    setPage("detail");
   }, []);
 
+  const handleManageProject = useCallback((projectId) => {
+    navigate(`/projects/${projectId}`);
+  }, [navigate]);
+
   const handleBackFromDetail = useCallback(async () => {
-    setPage("dashboard");
+    navigate("/projects");
     setDetailProjectId(null);
     setDetailProject(null);
     setDetailDrawings([]);
     await refreshProjectList();
-  }, [refreshProjectList]);
+  }, [navigate, refreshProjectList]);
 
   const handleDetailFieldChange = useCallback((field, value) => {
     setDetailFields((current) => ({ ...current, [field]: value }));
@@ -1508,11 +1529,10 @@ export default function App() {
     }
   }, [detailDrawings.length, detailProjectId, refreshProjectList]);
 
-  const handleDetailOpenDrawing = useCallback(async (drawingId) => {
+  const handleDetailOpenDrawing = useCallback((drawingId) => {
     if (!detailProjectId) return;
-    setPage("workspace");
-    await openProjectWorkspace(detailProjectId, drawingId);
-  }, [detailProjectId, openProjectWorkspace]);
+    navigate(`/projects/${detailProjectId}/drawings/${drawingId}`);
+  }, [detailProjectId, navigate]);
 
   const handleOpenDrawingDialog = useCallback((drawing) => {
     setDrawingDialog({ open: true, drawingId: drawing.id, name: drawing.name || "" });
@@ -1726,61 +1746,80 @@ export default function App() {
     });
   }, [layoutMode]);
 
-  if (page === "dashboard") {
-    return (
-      <ProjectDashboard
-        projectsReady={projectsReady}
-        projects={projectSummaries}
-        projectDialog={projectDialog}
-        onNewProject={handleNewProject}
-        onOpenProject={handleOpenProject}
-        onManageProject={handleManageProject}
-        onRenameProject={handleOpenProjectDialog}
-        onDeleteProject={handleDeleteProjectFromDashboard}
-        onDialogChange={(name) => setProjectDialog((current) => ({ ...current, name }))}
-        onDialogSubmit={handleProjectDialogSubmit}
-        onDialogClose={handleCloseProjectDialog}
-        onOpenHelp={() => setHelpOpen(true)}
-        helpOpen={helpOpen}
-        onCloseHelp={() => setHelpOpen(false)}
-      />
-    );
-  }
+  const dashboardElement = (
+    <ProjectDashboard
+      projectsReady={projectsReady}
+      projects={projectSummaries}
+      projectDialog={projectDialog}
+      onNewProject={handleNewProject}
+      onOpenProject={handleOpenProject}
+      onManageProject={handleManageProject}
+      onRenameProject={handleOpenProjectDialog}
+      onDeleteProject={handleDeleteProjectFromDashboard}
+      onDialogChange={(name) => setProjectDialog((current) => ({ ...current, name }))}
+      onDialogSubmit={handleProjectDialogSubmit}
+      onDialogClose={handleCloseProjectDialog}
+      onOpenGuide={() => navigate("/guide", { state: { from: location.pathname } })}
+      onOpenUserGuide={() => navigate("/guide/user-guide", { state: { from: location.pathname } })}
+      onOpenVersionHistory={() => navigate("/guide/version-history", { state: { from: location.pathname } })}
+    />
+  );
 
-  if (page === "detail") {
-    return (
-      <ProjectDetail
-        project={detailProject}
-        drawings={detailDrawings}
-        ready={Boolean(detailProject)}
-        fieldDraft={detailFields}
-        fieldsDirty={
-          Boolean(detailProject) &&
-          (detailFields.name.trim() !== (detailProject.name || "") ||
-            detailFields.code.trim() !== (detailProject.code || "") ||
-            detailFields.owner.trim() !== (detailProject.owner || "") ||
-            detailFields.estimatedDeliveryDate !== (detailProject.estimatedDeliveryDate || "") ||
-            detailFields.notes !== (detailProject.notes || ""))
-        }
-        onFieldChange={handleDetailFieldChange}
-        onSaveFields={handleSaveDetailFields}
-        onBack={handleBackFromDetail}
-        onOpenProjectWorkspace={handleDetailOpenDrawing}
-        onAddDrawing={handleDetailAddDrawing}
-        onRenameDrawing={handleOpenDrawingDialog}
-        onDeleteDrawing={handleDetailDeleteDrawing}
-        drawingDialog={drawingDialog}
-        onDrawingDialogChange={handleDrawingDialogChange}
-        onDrawingDialogSubmit={handleDrawingDialogSubmit}
-        onDrawingDialogClose={handleDrawingDialogClose}
-        onOpenHelp={() => setHelpOpen(true)}
-        helpOpen={helpOpen}
-        onCloseHelp={() => setHelpOpen(false)}
-      />
-    );
-  }
+  const newProjectElement = (
+    <NewProjectPage
+      name={newProjectName}
+      onNameChange={setNewProjectName}
+      onSubmit={handleCreateProject}
+      onCancel={() => navigate("/projects")}
+    />
+  );
 
-  return (
+  const detailElement = (
+    <ProjectDetail
+      project={detailProject}
+      drawings={detailDrawings}
+      ready={Boolean(detailProject)}
+      fieldDraft={detailFields}
+      fieldsDirty={
+        Boolean(detailProject) &&
+        (detailFields.name.trim() !== (detailProject.name || "") ||
+          detailFields.code.trim() !== (detailProject.code || "") ||
+          detailFields.owner.trim() !== (detailProject.owner || "") ||
+          detailFields.estimatedDeliveryDate !== (detailProject.estimatedDeliveryDate || "") ||
+          detailFields.notes !== (detailProject.notes || ""))
+      }
+      onFieldChange={handleDetailFieldChange}
+      onSaveFields={handleSaveDetailFields}
+      onBack={handleBackFromDetail}
+      onOpenProjectWorkspace={handleDetailOpenDrawing}
+      onAddDrawing={handleDetailAddDrawing}
+      onRenameDrawing={handleOpenDrawingDialog}
+      onDeleteDrawing={handleDetailDeleteDrawing}
+      drawingDialog={drawingDialog}
+      onDrawingDialogChange={handleDrawingDialogChange}
+      onDrawingDialogSubmit={handleDrawingDialogSubmit}
+      onDrawingDialogClose={handleDrawingDialogClose}
+      onOpenGuide={() => navigate("/guide", { state: { from: location.pathname } })}
+      onOpenUserGuide={() => navigate("/guide/user-guide", { state: { from: location.pathname } })}
+      onOpenVersionHistory={() => navigate("/guide/version-history", { state: { from: location.pathname } })}
+    />
+  );
+
+  const settingsElement = (
+    <SettingsPage
+      settings={balloonSettings}
+      onBack={() => navigate(location.state?.from || "/projects")}
+      onChange={setBalloonSettings}
+    />
+  );
+
+  const guideElement = <GuidePage onBack={() => navigate(location.state?.from || "/projects")} />;
+
+  const userGuideElement = <UserGuidePage onBack={() => navigate(location.state?.from || "/projects")} />;
+
+  const versionHistoryElement = <VersionHistoryPage onBack={() => navigate(location.state?.from || "/projects")} />;
+
+  const workspaceElement = (
     <div className="app-shell" data-layout={layoutMode} data-toolbar-style={balloonSettings.toolButtonStyle}>
       <header className="topbar">
         <div className="brand">
@@ -1799,23 +1838,19 @@ export default function App() {
             <button
               type="button"
               className="icon-button icon-button-labeled"
-              onClick={() => setSettingsOpen(true)}
+              onClick={() => navigate("/settings", { state: { from: location.pathname } })}
               data-tooltip="Settings"
               aria-label="Settings"
             >
               <Settings size={16} />
               <span className="icon-button-text">Settings</span>
             </button>
-            <button
-              type="button"
-              className="icon-button icon-button-labeled"
-              onClick={() => setHelpOpen(true)}
-              data-tooltip="Help and shortcuts (?)"
-              aria-label="Help and shortcuts"
-            >
-              <HelpCircle size={16} />
-              <span className="icon-button-text">Help</span>
-            </button>
+            <HelpMenu
+              labeled
+              onOpenShortcuts={() => navigate("/guide", { state: { from: location.pathname } })}
+              onOpenUserGuide={() => navigate("/guide/user-guide", { state: { from: location.pathname } })}
+              onOpenVersionHistory={() => navigate("/guide/version-history", { state: { from: location.pathname } })}
+            />
           </div>
         </div>
       </header>
@@ -1824,7 +1859,7 @@ export default function App() {
         <div className="project-controls">
           <div className="toolbar-cluster project-cluster" aria-label="Project controls">
             <div className="toolbar-cluster-controls">
-              <button className="small-button project-action dashboard-link dashboard-link-active" onClick={() => setPage("dashboard")}>
+              <button className="small-button project-action dashboard-link dashboard-link-active" onClick={() => navigate("/projects")}>
                 <ChevronLeft size={14} />
                 Projects
               </button>
@@ -2302,13 +2337,6 @@ export default function App() {
 
       </div>
       )}
-      <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
-      <SettingsDialog
-        open={settingsOpen}
-        settings={balloonSettings}
-        onClose={() => setSettingsOpen(false)}
-        onChange={setBalloonSettings}
-      />
       <ToleranceTableDialog
         open={toleranceTableOpen}
         onClose={() => setToleranceTableOpen(false)}
@@ -2321,4 +2349,45 @@ export default function App() {
       />
     </div>
   );
+
+  return (
+    <Routes>
+      <Route path="/" element={<Navigate to="/projects" replace />} />
+      <Route path="/projects" element={dashboardElement} />
+      <Route path="/projects/new" element={newProjectElement} />
+      <Route
+        path="/projects/:projectId"
+        element={<DetailRoute onParams={loadDetailForProject}>{detailElement}</DetailRoute>}
+      />
+      <Route
+        path="/projects/:projectId/drawings"
+        element={<WorkspaceRoute onParams={loadWorkspaceForRoute}>{workspaceElement}</WorkspaceRoute>}
+      />
+      <Route
+        path="/projects/:projectId/drawings/:drawingId"
+        element={<WorkspaceRoute onParams={loadWorkspaceForRoute}>{workspaceElement}</WorkspaceRoute>}
+      />
+      <Route path="/settings" element={settingsElement} />
+      <Route path="/guide" element={guideElement} />
+      <Route path="/guide/user-guide" element={userGuideElement} />
+      <Route path="/guide/version-history" element={versionHistoryElement} />
+      <Route path="*" element={<Navigate to="/projects" replace />} />
+    </Routes>
+  );
+}
+
+function DetailRoute({ onParams, children }) {
+  const { projectId } = useParams();
+  useEffect(() => {
+    onParams(projectId);
+  }, [projectId, onParams]);
+  return children;
+}
+
+function WorkspaceRoute({ onParams, children }) {
+  const { projectId, drawingId } = useParams();
+  useEffect(() => {
+    onParams(projectId, drawingId);
+  }, [projectId, drawingId, onParams]);
+  return children;
 }
