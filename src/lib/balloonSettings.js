@@ -5,6 +5,7 @@ export const defaultBalloonSettings = {
   fontSize: 11,
   leaderScale: 1,
   toolButtonStyle: "icon-text",
+  showLeaderLine: true,
 };
 
 export function loadBalloonSettings() {
@@ -16,6 +17,8 @@ export function loadBalloonSettings() {
       fontSize: Number.isFinite(saved?.fontSize) ? saved.fontSize : defaultBalloonSettings.fontSize,
       leaderScale: Number.isFinite(saved?.leaderScale) ? saved.leaderScale : defaultBalloonSettings.leaderScale,
       toolButtonStyle: saved?.toolButtonStyle === "icon-only" ? "icon-only" : defaultBalloonSettings.toolButtonStyle,
+      showLeaderLine:
+        typeof saved?.showLeaderLine === "boolean" ? saved.showLeaderLine : defaultBalloonSettings.showLeaderLine,
     };
   } catch {
     return { ...defaultBalloonSettings };

@@ -65,7 +65,7 @@ export function getStatus(characteristic, sampleCount) {
   return values.every((value) => value !== "") ? "OK" : "OPEN";
 }
 
-export async function exportBalloonedPdf({ pdfBytes, characteristics, fileName }) {
+export async function exportBalloonedPdf({ pdfBytes, characteristics, fileName, showLeaderLine = true }) {
   if (!pdfBytes) throw new Error("Upload a PDF before exporting.");
 
   const pdfDoc = await PDFDocument.load(pdfBytes);
@@ -83,7 +83,7 @@ export async function exportBalloonedPdf({ pdfBytes, characteristics, fileName }
     const label = String(item.balloonNo);
     const fontSize = item.balloonNo > 99 ? 7.5 : 8.5;
     const textWidth = font.widthOfTextAtSize(label, fontSize);
-    const leader = getLeaderGeometry({ x, y, targetX, targetY, radius });
+    const leader = showLeaderLine ? getLeaderGeometry({ x, y, targetX, targetY, radius }) : null;
 
     if (leader) {
       page.drawLine({

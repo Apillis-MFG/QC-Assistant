@@ -15,7 +15,8 @@
       "Bash(pnpm add *)",
       "Bash(npm -v)",
       "Bash(corepack --version)",
-      "Bash(find / -maxdepth 4 -iname \"pnpm*\")"
+      "Bash(find / -maxdepth 4 -iname \"pnpm*\")",
+      "Bash(./node_modules/.bin/vite build *)"
     ],
     "additionalDirectories": [
       "/tmp"

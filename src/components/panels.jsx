@@ -259,6 +259,12 @@ export function GuidePage({ onBack }) {
 }
 
 export function VersionHistoryPage({ onBack }) {
+  const releaseNotes080 = [
+    "Added a Settings toggle to show or hide the balloon leader line, for drawings where a marker sits directly on its feature.",
+    "When the leader line is hidden, new balloons are placed exactly at the click point instead of offset, and the target marker is hidden to match.",
+    "The leader-line setting is respected everywhere balloons are drawn: the edit view, measurement view, auto-balloon preview, and exported PDFs.",
+  ];
+
   const releaseNotes070 = [
     "Improved project management with React Router-based navigation and new dedicated project pages.",
     "Improved UI layout, including a new Help menu for quick access to shortcuts, the user guide, and version history.",
@@ -319,6 +325,14 @@ export function VersionHistoryPage({ onBack }) {
 
       <section className="help-dialog dashboard-main" aria-labelledby="version-history-title">
         <div className="help-content">
+          <div className="release-note">
+            <h3>v0.8.0</h3>
+            <ul>
+              {releaseNotes080.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
           <div className="release-note">
             <h3>v0.7.0</h3>
             <ul>
@@ -752,6 +766,7 @@ export function MeasurementWorkspace({
   onSampleChange,
   onSampleCountChange,
   balloonDiameter = 24,
+  showLeaderLine = true,
 }) {
   return (
     <main className="measurement-area">
@@ -790,6 +805,7 @@ export function MeasurementWorkspace({
                 width={canvasSize.width}
                 height={canvasSize.height}
                 balloonDiameter={balloonDiameter}
+                visible={showLeaderLine}
               />
               {currentPageBalloons.map((item) => (
                 <button
@@ -1170,7 +1186,7 @@ export function CharacteristicTable({
 }
 
 export function SettingsPage({ settings, onBack, onChange }) {
-  const defaults = { diameter: 24, fontSize: 11, leaderScale: 1, toolButtonStyle: "icon-text" };
+  const defaults = { diameter: 24, fontSize: 11, leaderScale: 1, toolButtonStyle: "icon-text", showLeaderLine: true };
 
   function set(key, value) {
     onChange({ ...settings, [key]: value });
@@ -1327,14 +1343,54 @@ export function SettingsPage({ settings, onBack, onChange }) {
             </div>
           </div>
 
+          {/* Leader Line Visibility */}
+          <div className="settings-row">
+            <div className="settings-row-header">
+              <label>Leader line</label>
+              <button
+                type="button"
+                className="settings-reset-btn"
+                onClick={() => resetOne("showLeaderLine")}
+                title="Reset to default"
+                aria-label="Reset leader line visibility"
+              >
+                <RotateCcw size={10} style={{ marginRight: 3, verticalAlign: "middle" }} />
+                Reset
+              </button>
+            </div>
+            <p className="settings-row-desc">
+              Show the line connecting a balloon to its target point. Default: Show.
+            </p>
+            <div className="settings-segmented" role="radiogroup" aria-label="Leader line visibility">
+              <button
+                type="button"
+                className={`settings-segmented-option ${settings.showLeaderLine ? "active" : ""}`}
+                onClick={() => set("showLeaderLine", true)}
+                aria-pressed={settings.showLeaderLine}
+              >
+                Show
+              </button>
+              <button
+                type="button"
+                className={`settings-segmented-option ${!settings.showLeaderLine ? "active" : ""}`}
+                onClick={() => set("showLeaderLine", false)}
+                aria-pressed={!settings.showLeaderLine}
+              >
+                Hide
+              </button>
+            </div>
+          </div>
+
           {/* Live Preview */}
           <div className="settings-preview-section">
             <span className="settings-preview-label">Preview</span>
             <div className="settings-preview-area">
-              <div
-                className="settings-preview-leader"
-                style={{ right: settings.diameter / 2, width: leaderLineWidth }}
-              />
+              {settings.showLeaderLine ? (
+                <div
+                  className="settings-preview-leader"
+                  style={{ right: settings.diameter / 2, width: leaderLineWidth }}
+                />
+              ) : null}
               <div
                 className="settings-preview-balloon"
                 style={{
