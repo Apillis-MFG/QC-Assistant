@@ -259,6 +259,12 @@ export function GuidePage({ onBack }) {
 }
 
 export function VersionHistoryPage({ onBack }) {
+  const releaseNotes080 = [
+    "Added a Settings toggle to show or hide the balloon leader line, for drawings where a marker sits directly on its feature.",
+    "When the leader line is hidden, new balloons are placed exactly at the click point instead of offset, and the target marker is hidden to match.",
+    "The leader-line setting is respected everywhere balloons are drawn: the edit view, measurement view, auto-balloon preview, and exported PDFs.",
+  ];
+
   const releaseNotes070 = [
     "Improved project management with React Router-based navigation and new dedicated project pages.",
     "Improved UI layout, including a new Help menu for quick access to shortcuts, the user guide, and version history.",
@@ -319,6 +325,14 @@ export function VersionHistoryPage({ onBack }) {
 
       <section className="help-dialog dashboard-main" aria-labelledby="version-history-title">
         <div className="help-content">
+          <div className="release-note">
+            <h3>v0.8.0</h3>
+            <ul>
+              {releaseNotes080.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
           <div className="release-note">
             <h3>v0.7.0</h3>
             <ul>
