@@ -752,6 +752,7 @@ export function MeasurementWorkspace({
   onSampleChange,
   onSampleCountChange,
   balloonDiameter = 24,
+  showLeaderLine = true,
 }) {
   return (
     <main className="measurement-area">
@@ -790,6 +791,7 @@ export function MeasurementWorkspace({
                 width={canvasSize.width}
                 height={canvasSize.height}
                 balloonDiameter={balloonDiameter}
+                visible={showLeaderLine}
               />
               {currentPageBalloons.map((item) => (
                 <button
@@ -1170,7 +1172,7 @@ export function CharacteristicTable({
 }
 
 export function SettingsPage({ settings, onBack, onChange }) {
-  const defaults = { diameter: 24, fontSize: 11, leaderScale: 1, toolButtonStyle: "icon-text" };
+  const defaults = { diameter: 24, fontSize: 11, leaderScale: 1, toolButtonStyle: "icon-text", showLeaderLine: true };
 
   function set(key, value) {
     onChange({ ...settings, [key]: value });
@@ -1327,14 +1329,54 @@ export function SettingsPage({ settings, onBack, onChange }) {
             </div>
           </div>
 
+          {/* Leader Line Visibility */}
+          <div className="settings-row">
+            <div className="settings-row-header">
+              <label>Leader line</label>
+              <button
+                type="button"
+                className="settings-reset-btn"
+                onClick={() => resetOne("showLeaderLine")}
+                title="Reset to default"
+                aria-label="Reset leader line visibility"
+              >
+                <RotateCcw size={10} style={{ marginRight: 3, verticalAlign: "middle" }} />
+                Reset
+              </button>
+            </div>
+            <p className="settings-row-desc">
+              Show the line connecting a balloon to its target point. Default: Show.
+            </p>
+            <div className="settings-segmented" role="radiogroup" aria-label="Leader line visibility">
+              <button
+                type="button"
+                className={`settings-segmented-option ${settings.showLeaderLine ? "active" : ""}`}
+                onClick={() => set("showLeaderLine", true)}
+                aria-pressed={settings.showLeaderLine}
+              >
+                Show
+              </button>
+              <button
+                type="button"
+                className={`settings-segmented-option ${!settings.showLeaderLine ? "active" : ""}`}
+                onClick={() => set("showLeaderLine", false)}
+                aria-pressed={!settings.showLeaderLine}
+              >
+                Hide
+              </button>
+            </div>
+          </div>
+
           {/* Live Preview */}
           <div className="settings-preview-section">
             <span className="settings-preview-label">Preview</span>
             <div className="settings-preview-area">
-              <div
-                className="settings-preview-leader"
-                style={{ right: settings.diameter / 2, width: leaderLineWidth }}
-              />
+              {settings.showLeaderLine ? (
+                <div
+                  className="settings-preview-leader"
+                  style={{ right: settings.diameter / 2, width: leaderLineWidth }}
+                />
+              ) : null}
               <div
                 className="settings-preview-balloon"
                 style={{

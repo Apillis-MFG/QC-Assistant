@@ -187,8 +187,8 @@ export function TextLayer({ active, items, onCapture }) {
   );
 }
 
-export function LeaderLayer({ balloons, selectedId, width, height, balloonDiameter = 24 }) {
-  if (!width || !height) return null;
+export function LeaderLayer({ balloons, selectedId, width, height, balloonDiameter = 24, visible = true }) {
+  if (!width || !height || !visible) return null;
   const radius = Math.round(balloonDiameter / 2) + 1;
   return (
     <svg className="leader-layer" viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
@@ -218,31 +218,33 @@ export function LeaderLayer({ balloons, selectedId, width, height, balloonDiamet
   );
 }
 
-export function AutoBalloonPreview({ candidates, width, height }) {
+export function AutoBalloonPreview({ candidates, width, height, showLeaderLine = true }) {
   if (!width || !height || !candidates.length) return null;
 
   return (
     <div className="auto-balloon-preview" aria-hidden="true">
-      <svg className="auto-balloon-leader-layer" viewBox={`0 0 ${width} ${height}`}>
-        {candidates.map((item) => {
-          const geometry = getLeaderLine({
-            x: item.x * width,
-            y: item.y * height,
-            targetX: item.targetX * width,
-            targetY: item.targetY * height,
-          });
-          return (
-            <line
-              key={`leader-${item.id}`}
-              className="auto-balloon-leader"
-              x1={geometry.startX}
-              y1={geometry.startY}
-              x2={geometry.endX}
-              y2={geometry.endY}
-            />
-          );
-        })}
-      </svg>
+      {showLeaderLine ? (
+        <svg className="auto-balloon-leader-layer" viewBox={`0 0 ${width} ${height}`}>
+          {candidates.map((item) => {
+            const geometry = getLeaderLine({
+              x: item.x * width,
+              y: item.y * height,
+              targetX: item.targetX * width,
+              targetY: item.targetY * height,
+            });
+            return (
+              <line
+                key={`leader-${item.id}`}
+                className="auto-balloon-leader"
+                x1={geometry.startX}
+                y1={geometry.startY}
+                x2={geometry.endX}
+                y2={geometry.endY}
+              />
+            );
+          })}
+        </svg>
+      ) : null}
       {candidates.map((item) => (
         <span
           key={item.id}
@@ -252,13 +254,15 @@ export function AutoBalloonPreview({ candidates, width, height }) {
           {item.balloonNo}
         </span>
       ))}
-      {candidates.map((item) => (
-        <span
-          key={`target-${item.id}`}
-          className="auto-balloon-target"
-          style={{ left: `${item.targetX * 100}%`, top: `${item.targetY * 100}%` }}
-        />
-      ))}
+      {showLeaderLine
+        ? candidates.map((item) => (
+            <span
+              key={`target-${item.id}`}
+              className="auto-balloon-target"
+              style={{ left: `${item.targetX * 100}%`, top: `${item.targetY * 100}%` }}
+            />
+          ))
+        : null}
     </div>
   );
 }

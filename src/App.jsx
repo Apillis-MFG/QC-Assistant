@@ -913,7 +913,9 @@ export default function App() {
                 : {};
             })();
 
-        const position = getDefaultBalloonPosition(target, balloonSettings.leaderScale);
+        const position = balloonSettings.showLeaderLine
+          ? getDefaultBalloonPosition(target, balloonSettings.leaderScale)
+          : target;
         const next = createCharacteristic({
           balloonNo: nextBalloonNo(characteristics),
           x: position.x,
@@ -932,7 +934,7 @@ export default function App() {
         setEditingBalloonId(null);
       }
     },
-    [characteristics, mode, pageNumber, pdfDoc],
+    [characteristics, mode, pageNumber, pdfDoc, balloonSettings.leaderScale, balloonSettings.showLeaderLine],
   );
 
   const selectCharacteristic = useCallback((id) => {
@@ -1609,12 +1611,17 @@ export default function App() {
 
   const exportPdf = useCallback(async () => {
     try {
-      await exportBalloonedPdf({ pdfBytes, characteristics, fileName: pdfName });
+      await exportBalloonedPdf({
+        pdfBytes,
+        characteristics,
+        fileName: pdfName,
+        showLeaderLine: balloonSettings.showLeaderLine,
+      });
       setMessage("Exported ballooned PDF.");
     } catch (error) {
       setMessage(error.message);
     }
-  }, [characteristics, pdfBytes, pdfName]);
+  }, [characteristics, pdfBytes, pdfName, balloonSettings.showLeaderLine]);
 
   const exportExcel = useCallback(() => {
     try {
@@ -1974,6 +1981,7 @@ export default function App() {
           onSampleChange={updateSample}
           onSampleCountChange={setSampleCount}
           balloonDiameter={balloonSettings.diameter}
+          showLeaderLine={balloonSettings.showLeaderLine}
         />
       ) : (
       <div ref={contentAreaRef} className="content-area" style={contentAreaStyle}>
@@ -2068,6 +2076,7 @@ export default function App() {
                   width={canvasSize.width}
                   height={canvasSize.height}
                   balloonDiameter={balloonSettings.diameter}
+                  visible={balloonSettings.showLeaderLine}
                 />
                 {ocrRect ? (
                   <div
@@ -2095,8 +2104,9 @@ export default function App() {
                   candidates={autoBalloonCandidates}
                   width={canvasSize.width}
                   height={canvasSize.height}
+                  showLeaderLine={balloonSettings.showLeaderLine}
                 />
-                {selected?.page === pageNumber ? (
+                {selected?.page === pageNumber && balloonSettings.showLeaderLine ? (
                   <button
                     className="target-handle"
                     style={{
