@@ -80,7 +80,7 @@ Upload drawing PDF
   -> export ballooned PDF + Excel FAI workbook
 ```
 
-Do not build cloud sync, user accounts, AI auto-ballooning, or collaboration features on this path.
+This local, no-login path must keep working exactly as-is. Cloud sync, accounts, and company/vendor collaboration exist as a separate opt-in path (a user explicitly "shares" a project) — see `supabase/` and `src/lib/supabaseStore.js` — and must never become a requirement for the flow above.
 
 ## Engineering Rules
 

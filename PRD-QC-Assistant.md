@@ -337,8 +337,8 @@ Current stack:
 
 Architecture rules:
 
-- Keep the app client-side.
-- Do not add auth or backend in v1.
+- Keep the app client-side by default; local (IndexedDB, no login) projects remain the primary path with zero backend dependency.
+- Auth/backend (Supabase) is supported as an opt-in path for company-vendor project sharing only, entered by explicitly "sharing" a project — never a requirement for the local workflow.
 - Keep state in `App.jsx` unless a future refactor is explicitly chosen.
 - Keep export and inspection math in `exporters.js`.
 - Add tests before expanding math behavior.

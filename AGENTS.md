@@ -62,10 +62,9 @@ Important naming rule:
 
 Deferred concepts — do not build unless explicitly requested:
 
-- User accounts or cloud storage.
-- Multi-user collaboration.
 - Drawing version management.
-- AI auto-ballooning or automatic requirement extraction.
+
+Supported, but opt-in only: a project stays local-only (IndexedDB, no login) by default. A user can explicitly "share" a project to make it cloud-backed (Supabase), which enables company/vendor accounts and multi-user collaboration on that project (see `supabase/`, `src/lib/supabaseStore.js`, `src/context/AuthContext.jsx`). Do not make cloud/auth a requirement for the local workflow.
 
 ## Current Strategic Priority
 
