@@ -197,6 +197,7 @@ export default function App() {
   const saveTimerRef = useRef(null);
   const applyingDrawingRef = useRef(false);
   const persistActiveDrawingRef = useRef(null);
+  const projectSummariesRef = useRef([]);
   const drawingsRef = useRef([]);
   const activeDrawingRef = useRef(null);
 
@@ -313,6 +314,7 @@ export default function App() {
     // fix may still be sitting in IndexedDB on some browsers).
     const cloudIds = new Set(cloud.map((project) => project.id));
     const summaries = [...local.filter((project) => !cloudIds.has(project.id)), ...cloud];
+    projectSummariesRef.current = summaries;
     setProjectSummaries(summaries);
     return summaries;
   }, [orgIds]);
@@ -385,7 +387,7 @@ export default function App() {
   }, [rememberActiveProject, resetDrawingState]);
 
   const openProjectWorkspace = useCallback(async (projectId, preferredDrawingId = null) => {
-    const summary = projectSummaries.find((project) => project.id === projectId);
+    const summary = projectSummariesRef.current.find((project) => project.id === projectId);
     // The summary lookup is only a hint -- projectSummaries can still be
     // mid-load (e.g. on a direct/refreshed deep link, before the cloud list
     // has merged in) so a miss here doesn't necessarily mean "local". Try the
@@ -427,7 +429,7 @@ export default function App() {
         ? `Opened ${workspace.project.name}.`
         : `Opened ${workspace.project.name}. Add a drawing PDF to begin.`,
     });
-  }, [applyDrawing, navigate, projectSummaries, rememberActiveProject, user]);
+  }, [applyDrawing, navigate, rememberActiveProject, user]);
 
   const loadWorkspaceForRoute = useCallback(async (projectId, drawingId) => {
     if (!projectId) return;
@@ -448,6 +450,7 @@ export default function App() {
         await requestPersistentStorage();
         const summaries = await listProjects();
         if (cancelled) return;
+        projectSummariesRef.current = summaries;
         setProjectSummaries(summaries);
 
         if (landedAtRoot) {
@@ -677,9 +680,25 @@ export default function App() {
         const savedDrawing = await supabaseStore.saveDrawing(activeProject.id, snapshot);
         // Balloon numbers for any newly-created balloons are only known
         // authoritatively after the server allocates them on save; reconcile
-        // local characteristic state (balloonNo, samples) against the result.
+        // local characteristic state (balloonNo) against the result. Keep the
+        // same array/item references when nothing actually changed -- always
+        // replacing them with fresh objects from the round-trip would change
+        // `characteristics` identity on every save, re-triggering the
+        // autosave effect (which depends on it) and looping forever.
         if (Array.isArray(savedDrawing.characteristics)) {
-          setCharacteristics(savedDrawing.characteristics);
+          const balloonNoById = new Map(savedDrawing.characteristics.map((item) => [item.id, item.balloonNo]));
+          setCharacteristics((current) => {
+            let changed = false;
+            const next = current.map((item) => {
+              const balloonNo = balloonNoById.get(item.id);
+              if (balloonNo != null && balloonNo !== item.balloonNo) {
+                changed = true;
+                return { ...item, balloonNo };
+              }
+              return item;
+            });
+            return changed ? next : current;
+          });
         }
         const nextDrawings = updateDrawingSummary(drawingsRef.current, savedDrawing);
         setActiveProject((current) => ({ ...current, ...projectRecord }));
@@ -757,7 +776,10 @@ export default function App() {
     const channel = supabaseStore.subscribeToDrawing(activeDrawingId, {
       onCharacteristicChange: ({ eventType, new: newRow, old: oldRow }) => {
         setCharacteristics((items) => {
-          if (eventType === "DELETE") return items.filter((item) => item.id !== oldRow.id);
+          if (eventType === "DELETE") {
+            if (!items.some((item) => item.id === oldRow.id)) return items;
+            return items.filter((item) => item.id !== oldRow.id);
+          }
           if (eventType === "INSERT" && !items.some((item) => item.id === newRow.id)) {
             return [...items, {
               id: newRow.id,
@@ -781,11 +803,22 @@ export default function App() {
       },
       onMeasurementChange: ({ new: newRow }) => {
         if (!newRow) return;
-        setCharacteristics((items) => items.map((item) => (
-          item.id === newRow.characteristic_id
-            ? { ...item, samples: { ...item.samples, [newRow.sample_index]: newRow.value } }
-            : item
-        )));
+        // This subscription has no server-side filter (measurements has no
+        // drawing_id column), so it fires for every measurement write in the
+        // whole database -- including the echo of our own save. Bail out
+        // with the same array reference unless this row actually belongs to
+        // an item here AND its value actually changed, otherwise this keeps
+        // re-triggering the autosave effect (which depends on
+        // `characteristics`) in an endless save -> echo -> save loop.
+        setCharacteristics((items) => {
+          const index = items.findIndex((item) => item.id === newRow.characteristic_id);
+          if (index === -1) return items;
+          const item = items[index];
+          if ((item.samples || {})[newRow.sample_index] === newRow.value) return items;
+          const next = items.slice();
+          next[index] = { ...item, samples: { ...item.samples, [newRow.sample_index]: newRow.value } };
+          return next;
+        });
       },
     });
     return () => {
@@ -1581,9 +1614,17 @@ export default function App() {
   }, [activeProject?.id, refreshProjectList, resetDrawingState]);
 
   const loadDetailForProject = useCallback(async (projectId) => {
-    const summary = projectSummaries.find((project) => project.id === projectId);
-    const kind = summary?.kind === "cloud" ? "cloud" : "local";
-    const workspace = kind === "cloud" ? await supabaseStore.loadProject(projectId) : await loadProject(projectId);
+    const summary = projectSummariesRef.current.find((project) => project.id === projectId);
+    let kind = summary?.kind === "cloud" ? "cloud" : "local";
+    let workspace = kind === "cloud" ? await supabaseStore.loadProject(projectId) : await loadProject(projectId);
+    if (!workspace && supabaseEnabled && user) {
+      const fallbackKind = kind === "cloud" ? "local" : "cloud";
+      const fallbackWorkspace = fallbackKind === "cloud" ? await supabaseStore.loadProject(projectId) : await loadProject(projectId);
+      if (fallbackWorkspace) {
+        kind = fallbackKind;
+        workspace = fallbackWorkspace;
+      }
+    }
     if (!workspace) {
       setMessage(kind === "cloud" ? "Shared project could not be found." : "Project could not be found in local storage.");
       return;
@@ -1607,7 +1648,7 @@ export default function App() {
     } else {
       setProjectShares([]);
     }
-  }, [projectSummaries]);
+  }, [user]);
 
   const handleInviteVendor = useCallback(async (event) => {
     event.preventDefault();
