@@ -1748,9 +1748,16 @@ export default function App() {
         createdAt: now,
         updatedAt: now,
       };
-      await saveDrawing(detailProjectId, drawing);
-      const workspace = await loadProject(detailProjectId);
-      setDetailDrawings(workspace?.drawings || []);
+      const isCloud = detailProject?.kind === "cloud";
+      if (isCloud) {
+        await supabaseStore.saveDrawing(detailProjectId, drawing);
+        const workspace = await supabaseStore.loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      } else {
+        await saveDrawing(detailProjectId, drawing);
+        const workspace = await loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      }
       await refreshProjectList();
       setMessage(`Added ${file.name}.`);
     } catch (error) {
@@ -1758,7 +1765,7 @@ export default function App() {
     } finally {
       event.target.value = "";
     }
-  }, [detailDrawings.length, detailProjectId, refreshProjectList]);
+  }, [detailDrawings.length, detailProject?.kind, detailProjectId, refreshProjectList]);
 
   const handleDetailOpenDrawing = useCallback((drawingId) => {
     if (!detailProjectId) return;
@@ -1783,30 +1790,44 @@ export default function App() {
     if (!name || !detailProjectId) return;
 
     try {
-      const drawing = await loadDrawing(drawingDialog.drawingId);
+      const isCloud = detailProject?.kind === "cloud";
+      const drawing = isCloud ? await supabaseStore.loadDrawing(drawingDialog.drawingId) : await loadDrawing(drawingDialog.drawingId);
       if (!drawing) {
         setMessage("Drawing could not be found for rename.");
         return;
       }
       const updatedDrawing = { ...drawing, name, updatedAt: new Date().toISOString() };
-      await saveDrawing(detailProjectId, updatedDrawing);
+      if (isCloud) {
+        await supabaseStore.saveDrawing(detailProjectId, updatedDrawing);
+        const workspace = await supabaseStore.loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      } else {
+        await saveDrawing(detailProjectId, updatedDrawing);
+        const workspace = await loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      }
       setDrawingDialog({ open: false, drawingId: null, name: "" });
-      const workspace = await loadProject(detailProjectId);
-      setDetailDrawings(workspace?.drawings || []);
       if (activeDrawingId === drawing.id) setDrawings((items) => updateDrawingSummary(items, updatedDrawing));
     } catch (error) {
       setMessage(`Could not rename drawing: ${error.message}`);
     }
-  }, [activeDrawingId, detailProjectId, drawingDialog]);
+  }, [activeDrawingId, detailProject?.kind, detailProjectId, drawingDialog]);
 
   const handleDetailDeleteDrawing = useCallback(async (drawing) => {
     const confirmed = window.confirm(`Delete drawing "${drawing.name}" and its local PDF, balloons, table, and measurements?`);
     if (!confirmed || !detailProjectId) return;
 
     try {
-      await deleteDrawing(drawing.id);
-      const workspace = await loadProject(detailProjectId);
-      setDetailDrawings(workspace?.drawings || []);
+      const isCloud = detailProject?.kind === "cloud";
+      if (isCloud) {
+        await supabaseStore.deleteDrawing(drawing.id);
+        const workspace = await supabaseStore.loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      } else {
+        await deleteDrawing(drawing.id);
+        const workspace = await loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      }
       await refreshProjectList();
 
       if (activeProject?.id === detailProjectId && activeDrawingId === drawing.id) {
@@ -1815,7 +1836,7 @@ export default function App() {
         const nextDrawingId = remaining[0]?.id || null;
         rememberActiveProject(detailProjectId, nextDrawingId);
         if (nextDrawingId) {
-          await applyDrawing(nextDrawingId, { projectId: detailProjectId, message: "Deleted drawing. Opened the next drawing." });
+          await applyDrawing(nextDrawingId, { projectId: detailProjectId, kind: isCloud ? "cloud" : "local", message: "Deleted drawing. Opened the next drawing." });
         } else {
           setActiveDrawingId(null);
           resetDrawingState("Deleted drawing. Add another drawing PDF to this project.");
@@ -1824,7 +1845,7 @@ export default function App() {
     } catch (error) {
       setMessage(`Could not delete drawing: ${error.message}`);
     }
-  }, [activeDrawingId, activeProject?.id, applyDrawing, detailProjectId, drawings, refreshProjectList, rememberActiveProject, resetDrawingState]);
+  }, [activeDrawingId, activeProject?.id, applyDrawing, detailProject?.kind, detailProjectId, drawings, refreshProjectList, rememberActiveProject, resetDrawingState]);
 
   const deleteCharacteristic = useCallback((id) => {
     if (!id) return;

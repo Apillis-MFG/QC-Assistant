@@ -31,7 +31,9 @@
       "Bash(supabase --version)",
       "Bash(supabase secrets *)",
       "Bash(curl -s -o /dev/null -w \"OPTIONS status: %{http_code}\\\\n\" -X OPTIONS \"https://wzprdylbvaneahskrdsq.supabase.co/functions/v1/invite-vendor\" -H \"Origin: http://127.0.0.1:5173\" -H \"Access-Control-Request-Method: POST\" -H \"Access-Control-Request-Headers: authorization, content-type\")",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" -X OPTIONS https://wzprdylbvaneahskrdsq.supabase.co/functions/v1/invite-vendor -H \"Origin: http://127.0.0.1:5173\" -H \"Access-Control-Request-Method: POST\")"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" -X OPTIONS https://wzprdylbvaneahskrdsq.supabase.co/functions/v1/invite-vendor -H \"Origin: http://127.0.0.1:5173\" -H \"Access-Control-Request-Method: POST\")",
+      "Bash(xargs ls -la)",
+      "Bash(grep -n \"onSelectDrawing\\\\|onOpenDrawing\\\\|activeDrawingId\\(\\\\|setActiveDrawingId\\\\|navigate\\(\\\\`/projects\" src/App.jsx)"
     ],
     "additionalDirectories": [
       "/tmp"
