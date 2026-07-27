@@ -307,7 +307,12 @@ export default function App() {
         console.error("Could not load shared projects:", error);
       }
     }
-    const summaries = [...local, ...cloud];
+    // Cloud is authoritative for any id it also knows about -- a local entry
+    // can only exist under a cloud project's id via the stale-kind race in
+    // openProjectWorkspace (fixed, but a prior local write from before that
+    // fix may still be sitting in IndexedDB on some browsers).
+    const cloudIds = new Set(cloud.map((project) => project.id));
+    const summaries = [...local.filter((project) => !cloudIds.has(project.id)), ...cloud];
     setProjectSummaries(summaries);
     return summaries;
   }, [orgIds]);
@@ -381,8 +386,22 @@ export default function App() {
 
   const openProjectWorkspace = useCallback(async (projectId, preferredDrawingId = null) => {
     const summary = projectSummaries.find((project) => project.id === projectId);
-    const kind = summary?.kind === "cloud" ? "cloud" : "local";
-    const workspace = kind === "cloud" ? await supabaseStore.loadProject(projectId) : await loadProject(projectId);
+    // The summary lookup is only a hint -- projectSummaries can still be
+    // mid-load (e.g. on a direct/refreshed deep link, before the cloud list
+    // has merged in) so a miss here doesn't necessarily mean "local". Try the
+    // hinted source first, then fall back to the other so a stale/incomplete
+    // summary can never mis-tag a cloud project as local (which would corrupt
+    // IndexedDB with a phantom local copy under the cloud project's id).
+    let kind = summary?.kind === "cloud" ? "cloud" : "local";
+    let workspace = kind === "cloud" ? await supabaseStore.loadProject(projectId) : await loadProject(projectId);
+    if (!workspace && supabaseEnabled && user) {
+      const fallbackKind = kind === "cloud" ? "local" : "cloud";
+      const fallbackWorkspace = fallbackKind === "cloud" ? await supabaseStore.loadProject(projectId) : await loadProject(projectId);
+      if (fallbackWorkspace) {
+        kind = fallbackKind;
+        workspace = fallbackWorkspace;
+      }
+    }
     if (!workspace) {
       // Not found locally and no cloud summary matched either -- if the user
       // isn't signed in, this may simply be a shared-project link they can't

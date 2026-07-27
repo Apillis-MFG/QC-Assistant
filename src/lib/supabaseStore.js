@@ -198,7 +198,7 @@ export async function allocateBalloonNo(drawingId) {
 }
 
 export function subscribeToDrawing(drawingId, { onCharacteristicChange, onMeasurementChange, onDrawingChange } = {}) {
-  const channel = supabase
+  let channel = supabase
     .channel(`drawing:${drawingId}`)
     .on(
       "postgres_changes",
@@ -209,18 +209,17 @@ export function subscribeToDrawing(drawingId, { onCharacteristicChange, onMeasur
       "postgres_changes",
       { event: "*", schema: "public", table: "drawings", filter: `id=eq.${drawingId}` },
       (payload) => onDrawingChange?.(payload)
-    )
-    .subscribe();
+    );
 
   if (onMeasurementChange) {
-    channel.on(
+    channel = channel.on(
       "postgres_changes",
       { event: "*", schema: "public", table: "measurements" },
       (payload) => onMeasurementChange(payload)
     );
   }
 
-  return channel;
+  return channel.subscribe();
 }
 
 export async function shareProject(projectId, email, { canCreateBalloons = true, canEditMeasurements = true } = {}) {
