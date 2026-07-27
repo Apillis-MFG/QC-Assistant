@@ -21,7 +21,17 @@
       "Bash(cp /tmp/smoke.mjs /Users/dantong/Projects-InActive/Apillis/QC-Assisttant/QC-Assistant/scripts/_smoke_check.mjs)",
       "Bash(node scripts/_smoke_check.mjs)",
       "Bash(rm -f /Users/dantong/Projects-InActive/Apillis/QC-Assisttant/QC-Assistant/scripts/_smoke_check.mjs /tmp/smoke.mjs /tmp/qc-dev.log)",
-      "Bash(pkill -f \"vite --host 127.0.0.1\")"
+      "Bash(pkill -f \"vite --host 127.0.0.1\")",
+      "Bash(supabase link *)",
+      "Bash(supabase projects *)",
+      "Bash(supabase migration *)",
+      "Bash(supabase db *)",
+      "Bash(xargs -I{} echo {})",
+      "Bash(supabase functions *)",
+      "Bash(supabase --version)",
+      "Bash(supabase secrets *)",
+      "Bash(curl -s -o /dev/null -w \"OPTIONS status: %{http_code}\\\\n\" -X OPTIONS \"https://wzprdylbvaneahskrdsq.supabase.co/functions/v1/invite-vendor\" -H \"Origin: http://127.0.0.1:5173\" -H \"Access-Control-Request-Method: POST\" -H \"Access-Control-Request-Headers: authorization, content-type\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" -X OPTIONS https://wzprdylbvaneahskrdsq.supabase.co/functions/v1/invite-vendor -H \"Origin: http://127.0.0.1:5173\" -H \"Access-Control-Request-Method: POST\")"
     ],
     "additionalDirectories": [
       "/tmp"

@@ -43,6 +43,7 @@ import * as supabaseStore from "./lib/supabaseStore.js";
 import { supabaseEnabled } from "./lib/supabaseClient.js";
 import { useAuth } from "./context/AuthContext.jsx";
 import { LoginPage, InviteAcceptPage } from "./components/AuthScreens.jsx";
+import { OnboardingScreen } from "./components/OnboardingScreen.jsx";
 import {
   methods, types, TYPE_DEFAULT_METHOD, CHARACTERISTIC_FIELDS, APP_VERSION,
   PANEL_STORAGE_KEY, RESIZE_HANDLE_SIZE,
@@ -1628,7 +1629,7 @@ export default function App() {
       return;
     }
     if (!orgIds.length) {
-      setMessage("Your account has no organization yet. Contact support to set one up.");
+      navigate("/onboarding");
       return;
     }
 
@@ -2615,6 +2616,10 @@ export default function App() {
       <Route
         path="/accept-invite"
         element={supabaseEnabled ? <InviteAcceptPage /> : <Navigate to="/projects" replace />}
+      />
+      <Route
+        path="/onboarding"
+        element={supabaseEnabled && user ? <OnboardingScreen /> : <Navigate to="/projects" replace />}
       />
       <Route path="*" element={<Navigate to="/projects" replace />} />
     </Routes>

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { supabase, supabaseEnabled } from "../lib/supabaseClient.js";
 
 const AuthContext = createContext(null);
@@ -6,6 +6,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [orgMemberships, setOrgMemberships] = useState([]);
+  const [orgsLoaded, setOrgsLoaded] = useState(false);
   const [loading, setLoading] = useState(supabaseEnabled);
 
   useEffect(() => {
@@ -32,12 +33,29 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
+  const refetchMemberships = useCallback(async () => {
+    if (!supabaseEnabled || !session?.user) {
+      setOrgMemberships([]);
+      setOrgsLoaded(true);
+      return;
+    }
+    const { data, error } = await supabase
+      .from("organization_members")
+      .select("organization_id, role, organization:organizations(id, name, kind)")
+      .eq("user_id", session.user.id);
+    if (error) throw error;
+    setOrgMemberships(data || []);
+    setOrgsLoaded(true);
+  }, [session?.user?.id]);
+
   useEffect(() => {
     if (!supabaseEnabled || !session?.user) {
       setOrgMemberships([]);
+      setOrgsLoaded(false);
       return;
     }
     let active = true;
+    setOrgsLoaded(false);
     supabase
       .from("organization_members")
       .select("organization_id, role, organization:organizations(id, name, kind)")
@@ -45,6 +63,7 @@ export function AuthProvider({ children }) {
       .then(({ data, error }) => {
         if (!active || error) return;
         setOrgMemberships(data || []);
+        setOrgsLoaded(true);
       });
     return () => {
       active = false;
@@ -57,10 +76,12 @@ export function AuthProvider({ children }) {
       session,
       orgMemberships,
       orgIds: orgMemberships.map((m) => m.organization_id),
+      orgsLoaded,
       loading,
+      refetchMemberships,
       signOut: () => supabase?.auth.signOut(),
     }),
-    [session, orgMemberships, loading]
+    [session, orgMemberships, orgsLoaded, loading, refetchMemberships]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

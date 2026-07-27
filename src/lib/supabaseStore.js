@@ -3,6 +3,12 @@ import { ZOOM_DEFAULT } from "./constants.js";
 
 const DRAWINGS_BUCKET = "drawings";
 
+export async function createOrganization(name) {
+  const { data, error } = await supabase.rpc("create_company_organization", { org_name: name });
+  if (error) throw error;
+  return data;
+}
+
 export async function listProjects(orgIds) {
   if (!orgIds?.length) return [];
   const { data: owned, error: ownedError } = await supabase
