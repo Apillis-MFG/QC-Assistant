@@ -693,6 +693,8 @@ export default function App() {
   useEffect(() => {
     document.documentElement.style.setProperty("--balloon-size", `${balloonSettings.diameter}px`);
     document.documentElement.style.setProperty("--balloon-font-size", `${balloonSettings.fontSize}px`);
+    document.documentElement.style.setProperty("--balloon-font-color", balloonSettings.fontColor);
+    document.documentElement.style.setProperty("--balloon-font-family", `"${balloonSettings.fontFamily}"`);
     saveBalloonSettings(balloonSettings);
   }, [balloonSettings]);
 
@@ -1616,12 +1618,25 @@ export default function App() {
         characteristics,
         fileName: pdfName,
         showLeaderLine: balloonSettings.showLeaderLine,
+        fontColor: balloonSettings.fontColor,
+        fontFamily: balloonSettings.fontFamily,
+        fontSize: balloonSettings.fontSize,
+        diameter: balloonSettings.diameter,
       });
       setMessage("Exported ballooned PDF.");
     } catch (error) {
       setMessage(error.message);
     }
-  }, [characteristics, pdfBytes, pdfName, balloonSettings.showLeaderLine]);
+  }, [
+    characteristics,
+    pdfBytes,
+    pdfName,
+    balloonSettings.showLeaderLine,
+    balloonSettings.fontColor,
+    balloonSettings.fontFamily,
+    balloonSettings.fontSize,
+    balloonSettings.diameter,
+  ]);
 
   const exportExcel = useCallback(() => {
     try {
