@@ -1257,8 +1257,7 @@ export function CharacteristicTable({
   );
 }
 
-<<<<<<< HEAD
-export function SettingsPage({ settings, onBack, onChange }) {
+export function SettingsPage({ settings, onBack, onChange, orgMemberships = [], user, onSignOut }) {
   const defaults = {
     diameter: 24,
     fontSize: 11,
@@ -1268,10 +1267,6 @@ export function SettingsPage({ settings, onBack, onChange }) {
     fontColor: "#000000",
     fontFamily: "Times New Roman",
   };
-=======
-export function SettingsPage({ settings, onBack, onChange, orgMemberships = [], user, onSignOut }) {
-  const defaults = { diameter: 24, fontSize: 11, leaderScale: 1, toolButtonStyle: "icon-text", showLeaderLine: true };
->>>>>>> feature/dev_supabase_support
 
   function set(key, value) {
     onChange({ ...settings, [key]: value });
