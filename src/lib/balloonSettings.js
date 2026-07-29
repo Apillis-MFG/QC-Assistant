@@ -1,11 +1,15 @@
 export const BALLOON_SETTINGS_KEY = "qca_balloon_settings_v1";
 
+export const BALLOON_FONT_FAMILIES = ["Times New Roman", "Arial", "Courier"];
+
 export const defaultBalloonSettings = {
   diameter: 24,
   fontSize: 11,
   leaderScale: 1,
   toolButtonStyle: "icon-text",
   showLeaderLine: true,
+  fontColor: "#000000",
+  fontFamily: "Times New Roman",
 };
 
 export function loadBalloonSettings() {
@@ -19,6 +23,10 @@ export function loadBalloonSettings() {
       toolButtonStyle: saved?.toolButtonStyle === "icon-only" ? "icon-only" : defaultBalloonSettings.toolButtonStyle,
       showLeaderLine:
         typeof saved?.showLeaderLine === "boolean" ? saved.showLeaderLine : defaultBalloonSettings.showLeaderLine,
+      fontColor: /^#[0-9a-fA-F]{6}$/.test(saved?.fontColor || "") ? saved.fontColor : defaultBalloonSettings.fontColor,
+      fontFamily: BALLOON_FONT_FAMILIES.includes(saved?.fontFamily)
+        ? saved.fontFamily
+        : defaultBalloonSettings.fontFamily,
     };
   } catch {
     return { ...defaultBalloonSettings };

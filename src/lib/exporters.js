@@ -4,6 +4,19 @@ import * as XLSX from "xlsx";
 const red = rgb(1, 0, 0);
 const black = rgb(0.08, 0.09, 0.11);
 
+const BALLOON_STANDARD_FONTS = {
+  "Times New Roman": StandardFonts.TimesRomanBold,
+  Arial: StandardFonts.HelveticaBold,
+  Courier: StandardFonts.CourierBold,
+};
+
+function hexToRgbColor(hex) {
+  const match = /^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/.exec(hex || "");
+  if (!match) return black;
+  const [r, g, b] = match.slice(1).map((part) => parseInt(part, 16) / 255);
+  return rgb(r, g, b);
+}
+
 export function parseNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const match = String(value).replace(",", ".").match(/-?(?:\d+(?:\.\d+)?|\.\d+)/);
@@ -65,11 +78,22 @@ export function getStatus(characteristic, sampleCount) {
   return values.every((value) => value !== "") ? "OK" : "OPEN";
 }
 
-export async function exportBalloonedPdf({ pdfBytes, characteristics, fileName, showLeaderLine = true }) {
+export async function exportBalloonedPdf({
+  pdfBytes,
+  characteristics,
+  fileName,
+  showLeaderLine = true,
+  fontColor = "#000000",
+  fontFamily = "Times New Roman",
+  fontSize = 11,
+  diameter = 24,
+}) {
   if (!pdfBytes) throw new Error("Upload a PDF before exporting.");
 
   const pdfDoc = await PDFDocument.load(pdfBytes);
-  const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const font = await pdfDoc.embedFont(BALLOON_STANDARD_FONTS[fontFamily] || StandardFonts.TimesRomanBold);
+  const textColor = hexToRgbColor(fontColor);
+  const baseRadius = diameter / 2;
 
   characteristics.forEach((item) => {
     const pageIndex = Math.max(0, Math.min((item.page || 1) - 1, pdfDoc.getPageCount() - 1));
@@ -79,10 +103,10 @@ export async function exportBalloonedPdf({ pdfBytes, characteristics, fileName, 
     const y = height - item.y * height;
     const targetX = (item.targetX ?? item.x) * width;
     const targetY = height - (item.targetY ?? item.y) * height;
-    const radius = item.balloonNo > 99 ? 12 : 10;
+    const radius = item.balloonNo > 99 ? baseRadius * 1.2 : baseRadius;
     const label = String(item.balloonNo);
-    const fontSize = item.balloonNo > 99 ? 7.5 : 8.5;
-    const textWidth = font.widthOfTextAtSize(label, fontSize);
+    const itemFontSize = item.balloonNo > 99 ? fontSize * (7.5 / 8.5) : fontSize;
+    const textWidth = font.widthOfTextAtSize(label, itemFontSize);
     const leader = showLeaderLine ? getLeaderGeometry({ x, y, targetX, targetY, radius }) : null;
 
     if (leader) {
@@ -104,10 +128,10 @@ export async function exportBalloonedPdf({ pdfBytes, characteristics, fileName, 
     });
     page.drawText(label, {
       x: x - textWidth / 2,
-      y: y - fontSize / 2 + 1.5,
-      size: fontSize,
+      y: y - itemFontSize / 2 + 1.5,
+      size: itemFontSize,
       font,
-      color: red,
+      color: textColor,
     });
   });
 
