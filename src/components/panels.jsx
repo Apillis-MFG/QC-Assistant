@@ -4,6 +4,7 @@ import { getLimits, getStatus } from "../lib/exporters.js";
 import { methods, types, APP_VERSION } from "../lib/constants.js";
 import { formatBytes, formatDate } from "../lib/utils.js";
 import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer, Field, HelpMenu } from "./widgets.jsx";
+import { BALLOON_FONT_FAMILIES } from "../lib/balloonSettings.js";
 
 function GuideFigure({ src, alt, caption }) {
   return (
@@ -259,6 +260,11 @@ export function GuidePage({ onBack }) {
 }
 
 export function VersionHistoryPage({ onBack }) {
+  const releaseNotes081 = [
+    "Added Settings controls for the balloon number's font color (default Black) and font (Times New Roman, Arial, or Courier).",
+    "The font color and font settings apply everywhere balloon numbers are drawn: the editor and exported PDFs.",
+  ];
+
   const releaseNotes080 = [
     "Added a Settings toggle to show or hide the balloon leader line, for drawings where a marker sits directly on its feature.",
     "When the leader line is hidden, new balloons are placed exactly at the click point instead of offset, and the target marker is hidden to match.",
@@ -325,6 +331,14 @@ export function VersionHistoryPage({ onBack }) {
 
       <section className="help-dialog dashboard-main" aria-labelledby="version-history-title">
         <div className="help-content">
+          <div className="release-note">
+            <h3>v0.8.1</h3>
+            <ul>
+              {releaseNotes081.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
           <div className="release-note">
             <h3>v0.8.0</h3>
             <ul>
@@ -1186,7 +1200,15 @@ export function CharacteristicTable({
 }
 
 export function SettingsPage({ settings, onBack, onChange }) {
-  const defaults = { diameter: 24, fontSize: 11, leaderScale: 1, toolButtonStyle: "icon-text", showLeaderLine: true };
+  const defaults = {
+    diameter: 24,
+    fontSize: 11,
+    leaderScale: 1,
+    toolButtonStyle: "icon-text",
+    showLeaderLine: true,
+    fontColor: "#000000",
+    fontFamily: "Times New Roman",
+  };
 
   function set(key, value) {
     onChange({ ...settings, [key]: value });
@@ -1313,6 +1335,67 @@ export function SettingsPage({ settings, onBack, onChange }) {
             </div>
           </div>
 
+          {/* Font Color */}
+          <div className="settings-row">
+            <div className="settings-row-header">
+              <label htmlFor="setting-font-color">Number font color</label>
+              <button
+                type="button"
+                className="settings-reset-btn"
+                onClick={() => resetOne("fontColor")}
+                title="Reset to default"
+                aria-label="Reset font color"
+              >
+                <RotateCcw size={10} style={{ marginRight: 3, verticalAlign: "middle" }} />
+                Reset
+              </button>
+            </div>
+            <p className="settings-row-desc">Color of the balloon number, in the editor and exported PDF. Default: Black.</p>
+            <div className="settings-row-controls">
+              <input
+                id="setting-font-color"
+                type="color"
+                value={settings.fontColor}
+                onChange={(e) => set("fontColor", e.target.value)}
+              />
+              <span className="settings-value">{settings.fontColor}</span>
+            </div>
+          </div>
+
+          {/* Font Family */}
+          <div className="settings-row">
+            <div className="settings-row-header">
+              <label htmlFor="setting-font-family">Number font</label>
+              <button
+                type="button"
+                className="settings-reset-btn"
+                onClick={() => resetOne("fontFamily")}
+                title="Reset to default"
+                aria-label="Reset font"
+              >
+                <RotateCcw size={10} style={{ marginRight: 3, verticalAlign: "middle" }} />
+                Reset
+              </button>
+            </div>
+            <p className="settings-row-desc">
+              Font of the balloon number, in the editor and exported PDF. Default: Times New Roman.
+            </p>
+            <div className="settings-row-controls">
+              <select
+                id="setting-font-family"
+                className="settings-select"
+                value={settings.fontFamily}
+                onChange={(e) => set("fontFamily", e.target.value)}
+              >
+                {BALLOON_FONT_FAMILIES.map((family) => (
+                  <option key={family} value={family}>
+                    {family}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           {/* Leader Length */}
           <div className="settings-row">
             <div className="settings-row-header">
@@ -1397,6 +1480,8 @@ export function SettingsPage({ settings, onBack, onChange }) {
                   width: settings.diameter,
                   height: settings.diameter,
                   fontSize: settings.fontSize,
+                  color: settings.fontColor,
+                  fontFamily: settings.fontFamily,
                 }}
               >
                 1
