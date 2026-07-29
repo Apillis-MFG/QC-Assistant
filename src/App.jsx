@@ -39,6 +39,11 @@ import {
   saveDrawing,
   saveProject,
 } from "./lib/projectStore.js";
+import * as supabaseStore from "./lib/supabaseStore.js";
+import { supabaseEnabled } from "./lib/supabaseClient.js";
+import { useAuth } from "./context/AuthContext.jsx";
+import { LoginPage, InviteAcceptPage } from "./components/AuthScreens.jsx";
+import { OnboardingScreen } from "./components/OnboardingScreen.jsx";
 import {
   methods, types, TYPE_DEFAULT_METHOD, CHARACTERISTIC_FIELDS, APP_VERSION,
   PANEL_STORAGE_KEY, RESIZE_HANDLE_SIZE,
@@ -131,6 +136,7 @@ function formatLocalSaveLog(drawingCount) {
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, orgIds, orgMemberships, signOut } = useAuth();
   const [projectSummaries, setProjectSummaries] = useState([]);
   const [activeProject, setActiveProject] = useState(null);
   const [drawings, setDrawings] = useState([]);
@@ -142,6 +148,9 @@ export default function App() {
   const [detailProject, setDetailProject] = useState(null);
   const [detailDrawings, setDetailDrawings] = useState([]);
   const [detailFields, setDetailFields] = useState({ name: "", code: "", owner: "", estimatedDeliveryDate: "", notes: "" });
+  const [projectShares, setProjectShares] = useState([]);
+  const [shareEmail, setShareEmail] = useState("");
+  const [shareStatus, setShareStatus] = useState("idle");
   const [drawingDialog, setDrawingDialog] = useState({ open: false, drawingId: null, name: "" });
   const [saveState, setSaveState] = useState({ status: "idle", label: "local: not saved" });
   const [metadata, setMetadata] = useState(emptyMetadata);
@@ -188,6 +197,7 @@ export default function App() {
   const saveTimerRef = useRef(null);
   const applyingDrawingRef = useRef(false);
   const persistActiveDrawingRef = useRef(null);
+  const projectSummariesRef = useRef([]);
   const drawingsRef = useRef([]);
   const activeDrawingRef = useRef(null);
 
@@ -287,10 +297,27 @@ export default function App() {
   }, []);
 
   const refreshProjectList = useCallback(async () => {
-    const summaries = await listProjects();
+    const local = await listProjects();
+    let cloud = [];
+    if (supabaseEnabled && orgIds.length) {
+      try {
+        cloud = await supabaseStore.listProjects(orgIds);
+      } catch (error) {
+        // Cloud visibility is additive; a transient network/auth error should
+        // not block the local-only dashboard from loading.
+        console.error("Could not load shared projects:", error);
+      }
+    }
+    // Cloud is authoritative for any id it also knows about -- a local entry
+    // can only exist under a cloud project's id via the stale-kind race in
+    // openProjectWorkspace (fixed, but a prior local write from before that
+    // fix may still be sitting in IndexedDB on some browsers).
+    const cloudIds = new Set(cloud.map((project) => project.id));
+    const summaries = [...local.filter((project) => !cloudIds.has(project.id)), ...cloud];
+    projectSummariesRef.current = summaries;
     setProjectSummaries(summaries);
     return summaries;
-  }, []);
+  }, [orgIds]);
 
   const rememberActiveProject = useCallback((projectId, drawingId) => {
     try {
@@ -307,9 +334,9 @@ export default function App() {
       return;
     }
 
-    const drawing = await loadDrawing(drawingId);
+    const drawing = options.kind === "cloud" ? await supabaseStore.loadDrawing(drawingId) : await loadDrawing(drawingId);
     if (!drawing) {
-      setMessage("Drawing could not be found in local project storage.");
+      setMessage(`Drawing could not be found in ${options.kind === "cloud" ? "the shared project" : "local project storage"}.`);
       return;
     }
 
@@ -347,7 +374,7 @@ export default function App() {
       setAutoBalloonCandidates([]);
       setAutoBalloonReviewOpen(false);
       setCanvasSize({ width: 0, height: 0 });
-      setSaveState({ status: "saved", label: "Saved locally" });
+      setSaveState({ status: "saved", label: options.kind === "cloud" ? "Synced" : "Saved locally" });
       setMessage(options.message || `Opened ${drawing.name || drawing.pdfName || "drawing"}.`);
       if (options.projectId) rememberActiveProject(options.projectId, drawing.id);
     } catch (error) {
@@ -360,25 +387,49 @@ export default function App() {
   }, [rememberActiveProject, resetDrawingState]);
 
   const openProjectWorkspace = useCallback(async (projectId, preferredDrawingId = null) => {
-    const workspace = await loadProject(projectId);
+    const summary = projectSummariesRef.current.find((project) => project.id === projectId);
+    // The summary lookup is only a hint -- projectSummaries can still be
+    // mid-load (e.g. on a direct/refreshed deep link, before the cloud list
+    // has merged in) so a miss here doesn't necessarily mean "local". Try the
+    // hinted source first, then fall back to the other so a stale/incomplete
+    // summary can never mis-tag a cloud project as local (which would corrupt
+    // IndexedDB with a phantom local copy under the cloud project's id).
+    let kind = summary?.kind === "cloud" ? "cloud" : "local";
+    let workspace = kind === "cloud" ? await supabaseStore.loadProject(projectId) : await loadProject(projectId);
+    if (!workspace && supabaseEnabled && user) {
+      const fallbackKind = kind === "cloud" ? "local" : "cloud";
+      const fallbackWorkspace = fallbackKind === "cloud" ? await supabaseStore.loadProject(projectId) : await loadProject(projectId);
+      if (fallbackWorkspace) {
+        kind = fallbackKind;
+        workspace = fallbackWorkspace;
+      }
+    }
     if (!workspace) {
-      setMessage("Project could not be found in local storage.");
+      // Not found locally and no cloud summary matched either -- if the user
+      // isn't signed in, this may simply be a shared-project link they can't
+      // resolve yet, so send them to sign in rather than a dead end.
+      if (!summary && supabaseEnabled && !user) {
+        navigate("/login");
+        return;
+      }
+      setMessage(kind === "cloud" ? "Shared project could not be found." : "Project could not be found in local storage.");
       return;
     }
 
-    setActiveProject(workspace.project);
-    setDrawings(workspace.drawings);
+    setActiveProject({ ...workspace.project, kind });
+    setDrawings(workspace.drawings.map((drawing) => ({ ...drawing, kind })));
     const nextDrawingId = preferredDrawingId && workspace.drawings.some((drawing) => drawing.id === preferredDrawingId)
       ? preferredDrawingId
       : workspace.drawings[0]?.id || null;
     rememberActiveProject(workspace.project.id, nextDrawingId);
     await applyDrawing(nextDrawingId, {
       projectId: workspace.project.id,
+      kind,
       message: nextDrawingId
         ? `Opened ${workspace.project.name}.`
         : `Opened ${workspace.project.name}. Add a drawing PDF to begin.`,
     });
-  }, [applyDrawing, rememberActiveProject]);
+  }, [applyDrawing, navigate, rememberActiveProject, user]);
 
   const loadWorkspaceForRoute = useCallback(async (projectId, drawingId) => {
     if (!projectId) return;
@@ -399,6 +450,7 @@ export default function App() {
         await requestPersistentStorage();
         const summaries = await listProjects();
         if (cancelled) return;
+        projectSummariesRef.current = summaries;
         setProjectSummaries(summaries);
 
         if (landedAtRoot) {
@@ -428,6 +480,15 @@ export default function App() {
       cancelled = true;
     };
   }, [resetDrawingState, navigate]);
+
+  // Once auth/org membership resolves (after the initial local-only load
+  // above), refresh again so any shared/cloud projects appear on the
+  // dashboard without requiring a manual reload or re-triggering the
+  // root-redirect logic in the effect above.
+  useEffect(() => {
+    if (!supabaseEnabled || !orgIds.length) return;
+    refreshProjectList();
+  }, [orgIds, refreshProjectList]);
 
   useEffect(() => {
     let cancelled = false;
@@ -587,8 +648,10 @@ export default function App() {
     if (!projectsReady || !activeProject?.id || !activeDrawingId) return;
 
     const now = new Date().toISOString();
+    const isCloud = activeProject.kind === "cloud";
     const projectRecord = {
       id: activeProject.id,
+      ownerOrgId: activeProject.ownerOrgId,
       name: activeProject.name || "Untitled Project",
       createdAt: activeProject.createdAt,
       updatedAt: now,
@@ -609,6 +672,45 @@ export default function App() {
       status: projectStatus,
       now,
     });
+
+    if (isCloud) {
+      try {
+        setSaveState({ status: "saving", label: reason === "manual" ? "Saving..." : "Syncing..." });
+        await supabaseStore.saveProject(projectRecord);
+        const savedDrawing = await supabaseStore.saveDrawing(activeProject.id, snapshot);
+        // Balloon numbers for any newly-created balloons are only known
+        // authoritatively after the server allocates them on save; reconcile
+        // local characteristic state (balloonNo) against the result. Keep the
+        // same array/item references when nothing actually changed -- always
+        // replacing them with fresh objects from the round-trip would change
+        // `characteristics` identity on every save, re-triggering the
+        // autosave effect (which depends on it) and looping forever.
+        if (Array.isArray(savedDrawing.characteristics)) {
+          const balloonNoById = new Map(savedDrawing.characteristics.map((item) => [item.id, item.balloonNo]));
+          setCharacteristics((current) => {
+            let changed = false;
+            const next = current.map((item) => {
+              const balloonNo = balloonNoById.get(item.id);
+              if (balloonNo != null && balloonNo !== item.balloonNo) {
+                changed = true;
+                return { ...item, balloonNo };
+              }
+              return item;
+            });
+            return changed ? next : current;
+          });
+        }
+        const nextDrawings = updateDrawingSummary(drawingsRef.current, savedDrawing);
+        setActiveProject((current) => ({ ...current, ...projectRecord }));
+        setDrawings(nextDrawings);
+        rememberActiveProject(activeProject.id, activeDrawingId);
+        setSaveState({ status: "saved", label: "Synced" });
+      } catch (error) {
+        setSaveState({ status: "error", label: error.message || "Sync failed" });
+        setMessage(error.message || "Could not sync to the shared project.");
+      }
+      return;
+    }
 
     try {
       setSaveState({ status: "saving", label: reason === "manual" ? "local: saving..." : "local: autosaving..." });
@@ -640,7 +742,9 @@ export default function App() {
     activeDrawingId,
     activeProject?.createdAt,
     activeProject?.id,
+    activeProject?.kind,
     activeProject?.name,
+    activeProject?.ownerOrgId,
     characteristics,
     metadata,
     toleranceOverrides,
@@ -659,6 +763,68 @@ export default function App() {
   useEffect(() => {
     persistActiveDrawingRef.current = persistActiveDrawing;
   }, [persistActiveDrawing]);
+
+  // Live collaboration: while viewing a shared drawing, reflect balloons and
+  // measurements another collaborator adds/edits without waiting for a
+  // manual reload. Kept intentionally conservative -- inserts/deletes and
+  // measurement values merge in directly, but a remote edit to a
+  // characteristic's own fields (nominal/tolerance/etc.) is left for the next
+  // load/save round-trip rather than merged live, so it can never clobber
+  // whatever the local user is mid-typing into that same row.
+  useEffect(() => {
+    if (activeProject?.kind !== "cloud" || !activeDrawingId) return;
+    const channel = supabaseStore.subscribeToDrawing(activeDrawingId, {
+      onCharacteristicChange: ({ eventType, new: newRow, old: oldRow }) => {
+        setCharacteristics((items) => {
+          if (eventType === "DELETE") {
+            if (!items.some((item) => item.id === oldRow.id)) return items;
+            return items.filter((item) => item.id !== oldRow.id);
+          }
+          if (eventType === "INSERT" && !items.some((item) => item.id === newRow.id)) {
+            return [...items, {
+              id: newRow.id,
+              balloonNo: newRow.balloon_no,
+              page: newRow.page,
+              x: Number(newRow.x),
+              y: Number(newRow.y),
+              targetX: newRow.target_x == null ? null : Number(newRow.target_x),
+              targetY: newRow.target_y == null ? null : Number(newRow.target_y),
+              type: newRow.type,
+              unit: newRow.unit,
+              nominal: newRow.nominal,
+              tolerance: newRow.tolerance,
+              method: newRow.method,
+              notes: newRow.notes || "",
+              samples: {},
+            }];
+          }
+          return items;
+        });
+      },
+      onMeasurementChange: ({ new: newRow }) => {
+        if (!newRow) return;
+        // This subscription has no server-side filter (measurements has no
+        // drawing_id column), so it fires for every measurement write in the
+        // whole database -- including the echo of our own save. Bail out
+        // with the same array reference unless this row actually belongs to
+        // an item here AND its value actually changed, otherwise this keeps
+        // re-triggering the autosave effect (which depends on
+        // `characteristics`) in an endless save -> echo -> save loop.
+        setCharacteristics((items) => {
+          const index = items.findIndex((item) => item.id === newRow.characteristic_id);
+          if (index === -1) return items;
+          const item = items[index];
+          if ((item.samples || {})[newRow.sample_index] === newRow.value) return items;
+          const next = items.slice();
+          next[index] = { ...item, samples: { ...item.samples, [newRow.sample_index]: newRow.value } };
+          return next;
+        });
+      },
+    });
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [activeProject?.kind, activeDrawingId]);
 
   useEffect(() => {
     if (!projectsReady || applyingDrawingRef.current || !activeProject?.id || !activeDrawingId) return;
@@ -774,13 +940,18 @@ export default function App() {
 
       const updatedProject = {
         id: currentProject.id,
+        ownerOrgId: currentProject.ownerOrgId,
         name,
         code: currentProject.code,
         createdAt: currentProject.createdAt,
         updatedAt: new Date().toISOString(),
       };
-      await saveProject(updatedProject);
-      if (activeProject?.id === updatedProject.id) setActiveProject(updatedProject);
+      if (currentProject.kind === "cloud") {
+        await supabaseStore.saveProject(updatedProject);
+      } else {
+        await saveProject(updatedProject);
+      }
+      if (activeProject?.id === updatedProject.id) setActiveProject((current) => ({ ...current, ...updatedProject }));
       if (detailProjectId === updatedProject.id) {
         setDetailProject(updatedProject);
         setDetailFields({ name: updatedProject.name, code: updatedProject.code || "" });
@@ -1416,11 +1587,20 @@ export default function App() {
   }, []);
 
   const handleDeleteProjectFromDashboard = useCallback(async (project) => {
-    const confirmed = window.confirm(`Delete project "${project.name}" and all local drawings?`);
+    const isCloud = project.kind === "cloud";
+    const confirmed = window.confirm(
+      isCloud
+        ? `Remove shared project "${project.name}"? This deletes it for every collaborator.`
+        : `Delete project "${project.name}" and all local drawings?`
+    );
     if (!confirmed) return;
 
     try {
-      await deleteProject(project.id);
+      if (isCloud) {
+        await supabaseStore.deleteProject(project.id);
+      } else {
+        await deleteProject(project.id);
+      }
       if (activeProject?.id === project.id) {
         setActiveProject(null);
         setDrawings([]);
@@ -1436,13 +1616,23 @@ export default function App() {
   }, [activeProject?.id, refreshProjectList, resetDrawingState]);
 
   const loadDetailForProject = useCallback(async (projectId) => {
-    const workspace = await loadProject(projectId);
+    const summary = projectSummariesRef.current.find((project) => project.id === projectId);
+    let kind = summary?.kind === "cloud" ? "cloud" : "local";
+    let workspace = kind === "cloud" ? await supabaseStore.loadProject(projectId) : await loadProject(projectId);
+    if (!workspace && supabaseEnabled && user) {
+      const fallbackKind = kind === "cloud" ? "local" : "cloud";
+      const fallbackWorkspace = fallbackKind === "cloud" ? await supabaseStore.loadProject(projectId) : await loadProject(projectId);
+      if (fallbackWorkspace) {
+        kind = fallbackKind;
+        workspace = fallbackWorkspace;
+      }
+    }
     if (!workspace) {
-      setMessage("Project could not be found in local storage.");
+      setMessage(kind === "cloud" ? "Shared project could not be found." : "Project could not be found in local storage.");
       return;
     }
     setDetailProjectId(projectId);
-    setDetailProject(workspace.project);
+    setDetailProject({ ...workspace.project, kind });
     setDetailDrawings(workspace.drawings);
     setDetailFields({
       name: workspace.project.name,
@@ -1451,7 +1641,82 @@ export default function App() {
       estimatedDeliveryDate: workspace.project.estimatedDeliveryDate || "",
       notes: workspace.project.notes || "",
     });
-  }, []);
+    if (kind === "cloud") {
+      try {
+        setProjectShares(await supabaseStore.listShares(projectId));
+      } catch (error) {
+        console.error("Could not load project shares:", error);
+      }
+    } else {
+      setProjectShares([]);
+    }
+  }, [user]);
+
+  const handleInviteVendor = useCallback(async (event) => {
+    event.preventDefault();
+    if (!detailProjectId || !shareEmail.trim()) return;
+    setShareStatus("sending");
+    try {
+      await supabaseStore.shareProject(detailProjectId, shareEmail.trim());
+      setShareEmail("");
+      setProjectShares(await supabaseStore.listShares(detailProjectId));
+      setMessage(`Invited ${shareEmail.trim()} to this project.`);
+    } catch (error) {
+      setMessage(`Could not send invite: ${error.message}`);
+    } finally {
+      setShareStatus("idle");
+    }
+  }, [detailProjectId, shareEmail]);
+
+  const handleRevokeShare = useCallback(async (shareId) => {
+    if (!detailProjectId) return;
+    try {
+      await supabaseStore.revokeShare(shareId);
+      setProjectShares(await supabaseStore.listShares(detailProjectId));
+    } catch (error) {
+      setMessage(`Could not revoke access: ${error.message}`);
+    }
+  }, [detailProjectId]);
+
+  // Converts an existing local (IndexedDB) project into a cloud-backed one so
+  // it can be shared. The local copy is retained untouched -- nothing is
+  // deleted here -- so a failed/partial upload can't lose data.
+  const convertProjectToCloud = useCallback(async (projectId) => {
+    if (!supabaseEnabled) {
+      setMessage("Cloud sharing is not configured for this deployment.");
+      return;
+    }
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    if (!orgIds.length) {
+      navigate("/onboarding");
+      return;
+    }
+
+    try {
+      setMessage("Sharing project...");
+      const localWorkspace = await loadProject(projectId);
+      if (!localWorkspace) {
+        setMessage("Project could not be found in local storage.");
+        return;
+      }
+      const localDrawings = await Promise.all(
+        localWorkspace.drawings.map((drawing) => loadDrawing(drawing.id))
+      );
+      const cloudProject = await supabaseStore.migrateLocalProjectToCloud(
+        orgIds[0],
+        localWorkspace.project,
+        localDrawings.filter(Boolean)
+      );
+      await refreshProjectList();
+      setMessage(`"${localWorkspace.project.name}" is now shared. Your local copy is untouched.`);
+      navigate(`/projects/${cloudProject.id}`);
+    } catch (error) {
+      setMessage(`Could not share project: ${error.message}`);
+    }
+  }, [navigate, orgIds, refreshProjectList, user]);
 
   const handleManageProject = useCallback((projectId) => {
     navigate(`/projects/${projectId}`);
@@ -1462,6 +1727,7 @@ export default function App() {
     setDetailProjectId(null);
     setDetailProject(null);
     setDetailDrawings([]);
+    setProjectShares([]);
     await refreshProjectList();
   }, [navigate, refreshProjectList]);
 
@@ -1482,9 +1748,13 @@ export default function App() {
       notes: detailFields.notes,
       updatedAt: new Date().toISOString(),
     };
-    await saveProject(updatedProject);
+    if (detailProject.kind === "cloud") {
+      await supabaseStore.saveProject(updatedProject);
+    } else {
+      await saveProject(updatedProject);
+    }
     setDetailProject(updatedProject);
-    if (activeProject?.id === updatedProject.id) setActiveProject(updatedProject);
+    if (activeProject?.id === updatedProject.id) setActiveProject((current) => ({ ...current, ...updatedProject }));
     await refreshProjectList();
     setMessage(`Saved ${updatedProject.name}.`);
   }, [activeProject?.id, detailFields, detailProject, refreshProjectList]);
@@ -1521,9 +1791,16 @@ export default function App() {
         createdAt: now,
         updatedAt: now,
       };
-      await saveDrawing(detailProjectId, drawing);
-      const workspace = await loadProject(detailProjectId);
-      setDetailDrawings(workspace?.drawings || []);
+      const isCloud = detailProject?.kind === "cloud";
+      if (isCloud) {
+        await supabaseStore.saveDrawing(detailProjectId, drawing);
+        const workspace = await supabaseStore.loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      } else {
+        await saveDrawing(detailProjectId, drawing);
+        const workspace = await loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      }
       await refreshProjectList();
       setMessage(`Added ${file.name}.`);
     } catch (error) {
@@ -1531,7 +1808,7 @@ export default function App() {
     } finally {
       event.target.value = "";
     }
-  }, [detailDrawings.length, detailProjectId, refreshProjectList]);
+  }, [detailDrawings.length, detailProject?.kind, detailProjectId, refreshProjectList]);
 
   const handleDetailOpenDrawing = useCallback((drawingId) => {
     if (!detailProjectId) return;
@@ -1556,30 +1833,44 @@ export default function App() {
     if (!name || !detailProjectId) return;
 
     try {
-      const drawing = await loadDrawing(drawingDialog.drawingId);
+      const isCloud = detailProject?.kind === "cloud";
+      const drawing = isCloud ? await supabaseStore.loadDrawing(drawingDialog.drawingId) : await loadDrawing(drawingDialog.drawingId);
       if (!drawing) {
         setMessage("Drawing could not be found for rename.");
         return;
       }
       const updatedDrawing = { ...drawing, name, updatedAt: new Date().toISOString() };
-      await saveDrawing(detailProjectId, updatedDrawing);
+      if (isCloud) {
+        await supabaseStore.saveDrawing(detailProjectId, updatedDrawing);
+        const workspace = await supabaseStore.loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      } else {
+        await saveDrawing(detailProjectId, updatedDrawing);
+        const workspace = await loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      }
       setDrawingDialog({ open: false, drawingId: null, name: "" });
-      const workspace = await loadProject(detailProjectId);
-      setDetailDrawings(workspace?.drawings || []);
       if (activeDrawingId === drawing.id) setDrawings((items) => updateDrawingSummary(items, updatedDrawing));
     } catch (error) {
       setMessage(`Could not rename drawing: ${error.message}`);
     }
-  }, [activeDrawingId, detailProjectId, drawingDialog]);
+  }, [activeDrawingId, detailProject?.kind, detailProjectId, drawingDialog]);
 
   const handleDetailDeleteDrawing = useCallback(async (drawing) => {
     const confirmed = window.confirm(`Delete drawing "${drawing.name}" and its local PDF, balloons, table, and measurements?`);
     if (!confirmed || !detailProjectId) return;
 
     try {
-      await deleteDrawing(drawing.id);
-      const workspace = await loadProject(detailProjectId);
-      setDetailDrawings(workspace?.drawings || []);
+      const isCloud = detailProject?.kind === "cloud";
+      if (isCloud) {
+        await supabaseStore.deleteDrawing(drawing.id);
+        const workspace = await supabaseStore.loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      } else {
+        await deleteDrawing(drawing.id);
+        const workspace = await loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      }
       await refreshProjectList();
 
       if (activeProject?.id === detailProjectId && activeDrawingId === drawing.id) {
@@ -1588,7 +1879,7 @@ export default function App() {
         const nextDrawingId = remaining[0]?.id || null;
         rememberActiveProject(detailProjectId, nextDrawingId);
         if (nextDrawingId) {
-          await applyDrawing(nextDrawingId, { projectId: detailProjectId, message: "Deleted drawing. Opened the next drawing." });
+          await applyDrawing(nextDrawingId, { projectId: detailProjectId, kind: isCloud ? "cloud" : "local", message: "Deleted drawing. Opened the next drawing." });
         } else {
           setActiveDrawingId(null);
           resetDrawingState("Deleted drawing. Add another drawing PDF to this project.");
@@ -1597,15 +1888,23 @@ export default function App() {
     } catch (error) {
       setMessage(`Could not delete drawing: ${error.message}`);
     }
-  }, [activeDrawingId, activeProject?.id, applyDrawing, detailProjectId, drawings, refreshProjectList, rememberActiveProject, resetDrawingState]);
+  }, [activeDrawingId, activeProject?.id, applyDrawing, detailProject?.kind, detailProjectId, drawings, refreshProjectList, rememberActiveProject, resetDrawingState]);
 
   const deleteCharacteristic = useCallback((id) => {
     if (!id) return;
-    setCharacteristics((items) => renumber(items.filter((item) => item.id !== id)));
+    // Cloud/shared drawings never renumber densely on delete -- balloon
+    // numbers are server-authoritative (see supabaseStore.saveCharacteristics)
+    // and reused numbering across concurrent collaborators is unsafe. Local
+    // drawings keep today's dense resequencing.
+    const isCloud = activeProject?.kind === "cloud";
+    setCharacteristics((items) => {
+      const remaining = items.filter((item) => item.id !== id);
+      return isCloud ? remaining : renumber(remaining);
+    });
     setSelectedId((current) => (current === id ? null : current));
     setEditingBalloonId((current) => (current === id ? null : current));
-    setMessage("Deleted selected balloon and renumbered the table.");
-  }, []);
+    setMessage(isCloud ? "Deleted selected balloon." : "Deleted selected balloon and renumbered the table.");
+  }, [activeProject?.kind]);
 
   const deleteSelected = useCallback(() => {
     deleteCharacteristic(selectedId);
@@ -1778,6 +2077,7 @@ export default function App() {
       onManageProject={handleManageProject}
       onRenameProject={handleOpenProjectDialog}
       onDeleteProject={handleDeleteProjectFromDashboard}
+      onShareProject={supabaseEnabled ? (project) => convertProjectToCloud(project.id) : undefined}
       onDialogChange={(name) => setProjectDialog((current) => ({ ...current, name }))}
       onDialogSubmit={handleProjectDialogSubmit}
       onDialogClose={handleCloseProjectDialog}
@@ -1824,6 +2124,12 @@ export default function App() {
       onOpenGuide={() => navigate("/guide", { state: { from: location.pathname } })}
       onOpenUserGuide={() => navigate("/guide/user-guide", { state: { from: location.pathname } })}
       onOpenVersionHistory={() => navigate("/guide/version-history", { state: { from: location.pathname } })}
+      shares={projectShares}
+      shareEmail={shareEmail}
+      shareStatus={shareStatus}
+      onShareEmailChange={setShareEmail}
+      onInviteVendor={handleInviteVendor}
+      onRevokeShare={handleRevokeShare}
     />
   );
 
@@ -1832,6 +2138,9 @@ export default function App() {
       settings={balloonSettings}
       onBack={() => navigate(location.state?.from || "/projects")}
       onChange={setBalloonSettings}
+      orgMemberships={orgMemberships}
+      user={user}
+      onSignOut={signOut}
     />
   );
 
@@ -2396,6 +2705,18 @@ export default function App() {
       <Route path="/guide" element={guideElement} />
       <Route path="/guide/user-guide" element={userGuideElement} />
       <Route path="/guide/version-history" element={versionHistoryElement} />
+      <Route
+        path="/login"
+        element={supabaseEnabled ? <LoginPage onBack={() => navigate("/projects")} /> : <Navigate to="/projects" replace />}
+      />
+      <Route
+        path="/accept-invite"
+        element={supabaseEnabled ? <InviteAcceptPage /> : <Navigate to="/projects" replace />}
+      />
+      <Route
+        path="/onboarding"
+        element={supabaseEnabled && user ? <OnboardingScreen /> : <Navigate to="/projects" replace />}
+      />
       <Route path="*" element={<Navigate to="/projects" replace />} />
     </Routes>
   );

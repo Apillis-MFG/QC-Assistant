@@ -452,6 +452,7 @@ export function ProjectDashboard({
   onOpenGuide,
   onOpenUserGuide,
   onOpenVersionHistory,
+  onShareProject,
 }) {
   return (
     <div className="dashboard-shell">
@@ -468,7 +469,7 @@ export function ProjectDashboard({
                 onOpenVersionHistory={onOpenVersionHistory}
               />
             </div>
-            <p>Local inspection projects</p>
+            <p>Local and shared inspection projects</p>
           </div>
         </div>
         <button className="button primary" onClick={onNewProject}>
@@ -482,7 +483,7 @@ export function ProjectDashboard({
           <div className="dashboard-title">
             <div>
               <h2>Projects</h2>
-              <p>{projects.length} local projects</p>
+              <p>{projects.length} projects</p>
             </div>
           </div>
 
@@ -500,6 +501,9 @@ export function ProjectDashboard({
                       <h3>
                         {project.name}
                         {project.code ? <span className="project-card-code">{project.code}</span> : null}
+                        <span className={`status mini ${project.kind === "cloud" ? "ok" : ""}`}>
+                          {project.kind === "cloud" ? "Shared" : "Local"}
+                        </span>
                       </h3>
                       <p>
                         {project.drawingCount} drawings · {formatBytes(project.totalBytes)} · Updated {formatDate(project.updatedAt)}
@@ -510,6 +514,9 @@ export function ProjectDashboard({
                     <button className="button primary" onClick={() => onOpenProject(project.id)}>Open</button>
                     <button className="small-button project-action add" onClick={() => onManageProject(project.id)}>Manage</button>
                     <button className="small-button project-action add" onClick={() => onRenameProject(project)}>Edit Name</button>
+                    {project.kind !== "cloud" && onShareProject ? (
+                      <button className="small-button project-action add" onClick={() => onShareProject(project)}>Share...</button>
+                    ) : null}
                     <button className="small-button project-action delete-project" onClick={() => onDeleteProject(project)}>Delete Project</button>
                   </div>
                 </article>
@@ -617,6 +624,12 @@ export function ProjectDetail({
   onOpenGuide,
   onOpenUserGuide,
   onOpenVersionHistory,
+  shares = [],
+  shareEmail = "",
+  shareStatus = "idle",
+  onShareEmailChange,
+  onInviteVendor,
+  onRevokeShare,
 }) {
   return (
     <div className="dashboard-shell">
@@ -679,6 +692,51 @@ export function ProjectDetail({
             </div>
           )}
         </section>
+
+        {ready && project?.kind === "cloud" ? (
+          <section className="dashboard-panel">
+            <div className="dashboard-title">
+              <div>
+                <h2>Sharing</h2>
+                <p>Invite a vendor to view and fill in this project.</p>
+              </div>
+            </div>
+
+            <form className="project-detail-form" onSubmit={onInviteVendor}>
+              <div className="project-detail-fields">
+                <Field label="Vendor Email" type="email" value={shareEmail} onChange={onShareEmailChange} wide />
+              </div>
+              <div className="dialog-actions">
+                <button type="submit" className="button primary" disabled={!shareEmail.trim() || shareStatus === "sending"}>
+                  {shareStatus === "sending" ? "Inviting..." : "Invite Vendor"}
+                </button>
+              </div>
+            </form>
+
+            {shares.length ? (
+              <div className="project-list">
+                {shares.map((share) => (
+                  <article key={share.id} className="project-card">
+                    <div className="project-card-main">
+                      <div>
+                        <h3>{share.partner_org?.name || "Vendor"}</h3>
+                        <p>
+                          {share.can_create_balloons ? "Can add balloons" : "Read-only balloons"} ·{" "}
+                          {share.can_edit_measurements ? "Can enter measurements" : "Read-only measurements"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="project-card-actions">
+                      <button className="small-button project-action delete-project" onClick={() => onRevokeShare(share.id)}>Revoke</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p>Not shared with any vendor yet.</p>
+            )}
+          </section>
+        ) : null}
 
         <section className="dashboard-panel">
           <div className="dashboard-title">
@@ -1199,6 +1257,7 @@ export function CharacteristicTable({
   );
 }
 
+<<<<<<< HEAD
 export function SettingsPage({ settings, onBack, onChange }) {
   const defaults = {
     diameter: 24,
@@ -1209,6 +1268,10 @@ export function SettingsPage({ settings, onBack, onChange }) {
     fontColor: "#000000",
     fontFamily: "Times New Roman",
   };
+=======
+export function SettingsPage({ settings, onBack, onChange, orgMemberships = [], user, onSignOut }) {
+  const defaults = { diameter: 24, fontSize: 11, leaderScale: 1, toolButtonStyle: "icon-text", showLeaderLine: true };
+>>>>>>> feature/dev_supabase_support
 
   function set(key, value) {
     onChange({ ...settings, [key]: value });
@@ -1247,6 +1310,20 @@ export function SettingsPage({ settings, onBack, onChange }) {
         aria-labelledby="settings-title"
       >
         <div className="settings-body">
+          {user ? (
+            <div className="settings-row">
+              <p className="settings-section-title">Organization</p>
+              <p className="settings-row-desc">Signed in as {user.email}.</p>
+              {orgMemberships.map((membership) => (
+                <p key={membership.organization_id} className="settings-row-desc">
+                  {membership.organization?.name} ({membership.organization?.kind}) — {membership.role}
+                </p>
+              ))}
+              <div className="dialog-actions">
+                <button type="button" className="button secondary" onClick={onSignOut}>Sign out</button>
+              </div>
+            </div>
+          ) : null}
           {/* Toolbar Buttons */}
           <div className="settings-row">
             <p className="settings-section-title">Toolbar</p>
