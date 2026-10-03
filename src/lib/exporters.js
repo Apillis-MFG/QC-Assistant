@@ -142,11 +142,11 @@ export async function exportBalloonedPdf({
 
 export function exportInspectionWorkbook({ metadata, characteristics, sampleCount }) {
   const rows = [];
-  rows.push(["", "", "", "", "FINAL INSPECTION REPORT"]);
+  rows.push(["", "", "", "", "FIRST ARTICLE INSPECTION REPORT"]);
   rows.push([]);
-  rows.push(["Drawing Name:", metadata.drawingNo, "", "", "", "Description:", metadata.description]);
-  rows.push(["Rev", metadata.revision, "", "", "", "Supplier", metadata.supplier]);
-  rows.push(["Number of Sample:", sampleCount, "", "", "", "Pass/Fail", overallStatus(characteristics, sampleCount)]);
+  rows.push(["Part / Drawing No.:", metadata.drawingNo, "", "", "", "Part Description:", metadata.description]);
+  rows.push(["Revision:", metadata.revision, "", "", "", "Supplier:", metadata.supplier]);
+  rows.push(["Sample Size:", sampleCount, "", "", "", "Overall Result:", overallStatus(characteristics, sampleCount)]);
   rows.push([]);
 
   const sampleHeaders = Array.from({ length: sampleCount }, (_, index) => `#${index + 1}`);
@@ -214,8 +214,8 @@ export function exportInspectionWorkbook({ metadata, characteristics, sampleCoun
   ];
 
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "QC FAI");
-  XLSX.writeFile(workbook, `${metadata.drawingNo || "inspection"}_QC_FAI.xlsx`);
+  XLSX.utils.book_append_sheet(workbook, worksheet, "FAI Report");
+  XLSX.writeFile(workbook, `${metadata.drawingNo || "inspection"}_FAI_Report.xlsx`);
 }
 
 function overallStatus(characteristics, sampleCount) {
