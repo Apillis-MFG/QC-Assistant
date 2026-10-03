@@ -541,7 +541,7 @@ export function ProjectDashboard({
                 autoFocus
                 value={projectDialog.name}
                 onChange={(event) => onDialogChange(event.target.value)}
-                placeholder="Example: BS-Extrusion"
+                placeholder="Project A"
               />
             </label>
             <div className="dialog-actions">
@@ -583,7 +583,7 @@ export function NewProjectPage({ name, onNameChange, onSubmit, onCancel }) {
                 autoFocus
                 value={name}
                 onChange={(event) => onNameChange(event.target.value)}
-                placeholder="Example: BS-Extrusion"
+                placeholder="Project A"
               />
             </label>
             <div className="dialog-actions">
