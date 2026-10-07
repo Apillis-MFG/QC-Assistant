@@ -725,6 +725,10 @@ kbd {
   width: 190px;
 }
 
+.unit-default-hint {
+  white-space: normal;
+}
+
 .file-button {
   display: inline-flex;
   align-items: center;

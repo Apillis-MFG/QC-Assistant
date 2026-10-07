@@ -1,4 +1,4 @@
-import { ZOOM_DEFAULT } from "./constants.js";
+import { ZOOM_DEFAULT, normalizeUnitSystem } from "./constants.js";
 
 const DB_NAME = "qca_projects_v1";
 const DB_VERSION = 1;
@@ -77,6 +77,7 @@ export async function loadDrawing(drawingId) {
   if (!drawing) return null;
   return {
     ...drawing,
+    unitSystem: normalizeUnitSystem(drawing.unitSystem),
     pdfBytes: pdf?.pdfBytes || null,
   };
 }
@@ -212,9 +213,11 @@ function normalizeDrawing(projectId, drawing) {
     pdfByteLength: drawing.pdfByteLength || drawing.pdfBytes?.byteLength || 0,
     pageCount: drawing.pageCount || 0,
     metadata: drawing.metadata || {},
+    unitSystem: normalizeUnitSystem(drawing.unitSystem),
     toleranceOverrides: {
       linear: drawing.toleranceOverrides?.linear || {},
       angle: drawing.toleranceOverrides?.angle || {},
+      linearUnitSystem: normalizeUnitSystem(drawing.toleranceOverrides?.linearUnitSystem),
     },
     sampleCount: drawing.sampleCount || 5,
     characteristics: Array.isArray(drawing.characteristics) ? drawing.characteristics : [],

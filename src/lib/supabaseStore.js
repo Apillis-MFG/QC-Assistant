@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient.js";
-import { ZOOM_DEFAULT } from "./constants.js";
+import { ZOOM_DEFAULT, normalizeUnitSystem } from "./constants.js";
 
 const DRAWINGS_BUCKET = "drawings";
 
@@ -274,6 +274,7 @@ export async function migrateLocalProjectToCloud(orgId, localProject, localDrawi
         pdf_name: drawing.pdfName,
         page_count: drawing.pageCount,
         metadata: drawing.metadata,
+        unit_system: normalizeUnitSystem(drawing.unitSystem),
         tolerance_overrides: drawing.toleranceOverrides,
         sample_count: drawing.sampleCount,
         page_number: drawing.pageNumber,
@@ -362,6 +363,7 @@ function fromDrawingRow(row) {
     pdfStoragePath: row.pdf_storage_path,
     pageCount: row.page_count,
     metadata: row.metadata || {},
+    unitSystem: normalizeUnitSystem(row.unit_system),
     toleranceOverrides: row.tolerance_overrides || { linear: {}, angle: {} },
     sampleCount: row.sample_count || 5,
     characteristics: [],
@@ -381,6 +383,7 @@ function toDrawingRow(projectId, drawing) {
     pdf_name: drawing.pdfName || "",
     page_count: drawing.pageCount || 0,
     metadata: drawing.metadata || {},
+    unit_system: normalizeUnitSystem(drawing.unitSystem),
     tolerance_overrides: drawing.toleranceOverrides || { linear: {}, angle: {} },
     sample_count: drawing.sampleCount || 5,
     page_number: drawing.pageNumber || 1,

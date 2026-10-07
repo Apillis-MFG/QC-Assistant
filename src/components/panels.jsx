@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import { X, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
-import { methods, types, APP_VERSION } from "../lib/constants.js";
+import { methods, types, APP_VERSION, getDefaultUnit, normalizeUnitSystem } from "../lib/constants.js";
 import { formatBytes, formatDate } from "../lib/utils.js";
 import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer, Field, HelpMenu } from "./widgets.jsx";
 import { BALLOON_FONT_FAMILIES } from "../lib/balloonSettings.js";
@@ -34,6 +34,7 @@ export function FullUserGuide() {
         <GuideFigure src="/guide/04-workspace-upload-prompt.png" alt="Upload a drawing PDF prompt" />
         <GuideFigure src="/guide/07-workspace-drawing-layout.png" alt="Drawing-only layout with the PDF loaded, no balloons yet" caption="Drawing-only layout: canvas plus inspector, no table." />
         <p><strong>Edit</strong> mode has the full toolset. <strong>Measurement</strong> mode locks balloon positions and requirement definitions — only sample values and notes stay editable, so nobody can move a balloon mid-inspection.</p>
+        <p><strong>Drawing units</strong> selects Metric (mm) or Inch (in) for new rows. Each drawing remembers its choice. Changing it preserves existing row units, values, tolerances, and samples.</p>
         <p><strong>Layout</strong> (Edit mode) arranges the canvas, table, and inspector: Drawing only, Table only, Side by Side, or Stacked (default). Panel sizes are resizable and remembered.</p>
       </div>
 
@@ -90,6 +91,7 @@ export function FullUserGuide() {
       <div className="guide-topic">
         <h4>Tolerance Table</h4>
         <p>Open <strong>Tolerance</strong> in the toolbar. QC Assistant reads the drawing's title-block note (e.g. <code>X.XX = ±0.05</code>, <code>X° = ±0.5°</code>) and offers to apply it in bulk, keyed by decimal-place count (angles only match dimensions whose unit contains ° or "deg").</p>
+        <p>After switching drawing units, confirm the linear table applies to the new unit before automatic fill resumes. Bulk fill only affects blank tolerances on matching-unit rows. Confirmation does not convert numbers or update existing tolerances.</p>
         <GuideFigure src="/guide/12-tolerance-table.png" alt="Tolerance table with auto-detected linear and angular tolerances" />
         <p><strong>Fill N blank dimensions</strong> / <strong>Apply all rows</strong> only ever fill blanks — an existing tolerance is never overwritten. Override any row, or <strong>Reset</strong> back to auto-detected.</p>
       </div>
@@ -1636,6 +1638,8 @@ export function ToleranceTableDialog({
   onClose,
   autoTolerances,
   toleranceOverrides,
+  unitSystem,
+  onConfirmLinearUnit,
   onOverrideChange,
   onResetOverride,
   onApply,
@@ -1644,6 +1648,8 @@ export function ToleranceTableDialog({
   if (!open) return null;
 
   const linearBuckets = getToleranceBuckets(TOLERANCE_LINEAR_BASELINE, autoTolerances.linear, toleranceOverrides.linear);
+  const linearUnitSystem = normalizeUnitSystem(toleranceOverrides.linearUnitSystem);
+  const linearConfirmed = normalizeUnitSystem(unitSystem) === linearUnitSystem;
   const angleBuckets = getToleranceBuckets(TOLERANCE_ANGLE_BASELINE, autoTolerances.angle, toleranceOverrides.angle);
 
   const allBuckets = [
@@ -1684,7 +1690,16 @@ export function ToleranceTableDialog({
 
         <div className="settings-body">
           <div className="tolerance-section">
-            <h3>Linear Dimensions</h3>
+            <h3>Linear Dimensions ({getDefaultUnit(linearUnitSystem)})</h3>
+            <p className="settings-row-desc">Blank linear tolerances apply only to {getDefaultUnit(unitSystem)} rows in this drawing.</p>
+            {!linearConfirmed ? (
+              <div className="message">
+                <p>Automatic linear tolerance fill is paused. Verify this table applies to {getDefaultUnit(unitSystem)} before confirming. Numbers will not be converted.</p>
+                <button type="button" className="button secondary" onClick={onConfirmLinearUnit}>
+                  Confirm linear table for {getDefaultUnit(unitSystem)}
+                </button>
+              </div>
+            ) : null}
             {linearBuckets.map((places) => (
               <ToleranceRow
                 key={`linear-${places}`}
