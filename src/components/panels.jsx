@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import { X, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
-import { methods, types, APP_VERSION, getDefaultUnit, normalizeUnitSystem } from "../lib/constants.js";
+import { methods, types, APP_VERSION, getDefaultUnit, normalizeUnitSystem, CHARACTERISTIC_UNITS, hasCharacteristicUnit } from "../lib/constants.js";
 import { formatBytes, formatDate } from "../lib/utils.js";
 import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer, Field, HelpMenu } from "./widgets.jsx";
 import { BALLOON_FONT_FAMILIES } from "../lib/balloonSettings.js";
@@ -1019,6 +1019,25 @@ function ToleranceInput({ value, onChange }) {
   );
 }
 
+function UnitSelect({ item, readOnly = false, onChange }) {
+  const hasUnit = hasCharacteristicUnit(item.type);
+  const unit = hasUnit ? (item.unit ?? "") : "";
+  const units = unit && !CHARACTERISTIC_UNITS.includes(unit)
+    ? [unit, ...CHARACTERISTIC_UNITS]
+    : CHARACTERISTIC_UNITS;
+  return (
+    <select
+      value={unit}
+      disabled={readOnly || !hasUnit}
+      aria-label={`Unit for balloon ${item.balloonNo}`}
+      onChange={readOnly || !hasUnit ? undefined : (event) => onChange(event.target.value)}
+    >
+      <option value="">—</option>
+      {hasUnit ? units.map((value) => <option key={value} value={value}>{value}</option>) : null}
+    </select>
+  );
+}
+
 export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampleChange }) {
   const { usl, lsl } = getLimits(item);
   return (
@@ -1046,7 +1065,7 @@ export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampl
       </label>
       <label>
         Unit
-        <input value={item.unit} onChange={(event) => onChange({ unit: event.target.value })} />
+        <UnitSelect item={item} onChange={(unit) => onChange({ unit })} />
       </label>
       <label>
         Method
@@ -1127,7 +1146,7 @@ const CharacteristicRow = memo(function CharacteristicRow({
           {types.map((type) => <option key={type} value={type}>{type}</option>)}
         </select>
       </td>
-      <td><input value={item.unit} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { unit: event.target.value })} /></td>
+      <td><UnitSelect item={item} readOnly={readOnly} onChange={(unit) => onChange(item.id, { unit })} /></td>
       <td><input value={item.nominal} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { nominal: event.target.value })} /></td>
       <td>
         <ToleranceHalfInput

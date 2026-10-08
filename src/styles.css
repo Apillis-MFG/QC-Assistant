@@ -653,6 +653,10 @@ kbd {
   border-color: var(--blue-line);
 }
 
+.project-cluster .toolbar-cluster-controls {
+  flex-wrap: wrap;
+}
+
 .view-mode-cluster {
   background: var(--cluster-mode-bg);
   border-color: var(--fail-line);
@@ -703,9 +707,11 @@ kbd {
 
 .project-field {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  max-width: 100%;
   color: var(--muted);
   font-size: 11px;
   font-weight: 800;
@@ -715,6 +721,7 @@ kbd {
 
 .project-field select {
   width: 170px;
+  min-width: 0;
   min-height: 30px;
   padding: 5px 8px;
   font-size: 12px;
@@ -723,10 +730,6 @@ kbd {
 
 .drawing-field select {
   width: 190px;
-}
-
-.unit-default-hint {
-  white-space: normal;
 }
 
 .file-button {

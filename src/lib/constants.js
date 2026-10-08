@@ -1,6 +1,11 @@
 export const methods = ["DC", "CMM", "VS", "VMS", "HG", "MIC", "CG", "PP", "TG", "PG"];
 export const types = ["dimension", "gdt", "note", "visual"];
 export const TYPE_DEFAULT_METHOD = { dimension: "DC", gdt: "CMM", note: "VS", visual: "VS" };
+export const CHARACTERISTIC_UNITS = ["MM", "IN", "°"];
+
+export function hasCharacteristicUnit(type) {
+  return type !== "note" && type !== "visual";
+}
 export const CHARACTERISTIC_FIELDS = ["nominal", "tolerance", "notes"];
 export const APP_VERSION = "v0.8.1";
 

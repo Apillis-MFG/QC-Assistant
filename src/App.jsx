@@ -53,7 +53,7 @@ import {
   AUTO_BALLOON_MIN_SPACING, AUTO_BALLOON_MIN_CONFIDENCE,
   AUTO_BALLOON_MAX_LABEL_LENGTH, DRAWING_NUMBER_PATTERN,
   defaultPanelSizes, emptyMetadata, emptyToleranceOverrides,
-  normalizeUnitSystem, getDefaultUnit,
+  normalizeUnitSystem, getDefaultUnit, hasCharacteristicUnit,
 } from "./lib/constants.js";
 import {
   buildDrawingSnapshot, updateDrawingSummary, getStorageWarning, getStorageErrorMessage,
@@ -120,7 +120,7 @@ function createCharacteristic({ balloonNo, x = 0.5, y = 0.5, targetX = x, target
     targetX: seed.targetX ?? targetX,
     targetY: seed.targetY ?? targetY,
     type: seed.type ?? "dimension",
-    unit: seed.unit ?? getDefaultUnit(unitSystem),
+    unit: hasCharacteristicUnit(seed.type ?? "dimension") ? (seed.unit ?? getDefaultUnit(unitSystem)) : "",
     nominal: seed.nominal ?? "",
     tolerance: seed.tolerance ?? "",
     method: seed.method ?? TYPE_DEFAULT_METHOD[seed.type ?? "dimension"] ?? "DC",
@@ -376,7 +376,7 @@ export default function App() {
       setZoom(drawing.zoom || ZOOM_DEFAULT);
       setCharacteristics(
         (Array.isArray(drawing.characteristics) ? drawing.characteristics : [])
-          .map((item) => ({ samples: {}, notes: "", ...item })),
+          .map((item) => ({ samples: {}, notes: "", ...item, unit: hasCharacteristicUnit(item.type) ? (item.unit ?? "") : "" })),
       );
       setSelectedId(null);
       setEditingBalloonId(null);
@@ -822,7 +822,7 @@ export default function App() {
               targetX: newRow.target_x == null ? null : Number(newRow.target_x),
               targetY: newRow.target_y == null ? null : Number(newRow.target_y),
               type: newRow.type,
-              unit: newRow.unit,
+              unit: hasCharacteristicUnit(newRow.type) ? (newRow.unit ?? "") : "",
               nominal: newRow.nominal,
               tolerance: newRow.tolerance,
               method: newRow.method,
@@ -1173,10 +1173,13 @@ export default function App() {
         const nextPatch = patch.type && !("method" in patch)
           ? { ...patch, method: TYPE_DEFAULT_METHOD[nextType] ?? item.method }
           : patch;
-        return { ...item, ...nextPatch };
+        const next = { ...item, ...nextPatch };
+        if (!hasCharacteristicUnit(nextType)) next.unit = "";
+        else if (patch.type && !hasCharacteristicUnit(item.type) && !next.unit) next.unit = getDefaultUnit(unitSystem);
+        return next;
       }),
     );
-  }, []);
+  }, [unitSystem]);
 
   const isAngleUnit = useCallback((unit) => /°|deg/i.test(String(unit || "").trim()), []);
 
@@ -2273,20 +2276,24 @@ export default function App() {
                   ))}
                 </select>
               </label>
-              <label className="project-field unit-system-field">
-                Drawing units
+              <label className="project-field unit-system-field" title="Applies to new rows. Existing row units and values stay unchanged; no conversion.">
+                Unit
                 <select
                   value={unitSystem}
-                  onChange={(event) => setUnitSystem(normalizeUnitSystem(event.target.value))}
+                  onChange={(event) => {
+                    const nextUnitSystem = normalizeUnitSystem(event.target.value);
+                    setUnitSystem(nextUnitSystem);
+                    setMessage(`New rows will use ${getDefaultUnit(nextUnitSystem)}. Existing row units and values stay unchanged; no conversion.`);
+                  }}
                   disabled={!activeDrawingId || drawingLoading || workspaceMode === "measurement"}
                   aria-label="Drawing unit system"
-                  title="Applies to new rows. Existing rows stay unchanged."
+                  title="Applies to new rows. Existing row units and values stay unchanged; no conversion."
+                  aria-description="Applies to new rows. Existing row units and values stay unchanged; no conversion."
                 >
                   <option value="metric">Metric (mm)</option>
                   <option value="inch">Inch (in)</option>
                 </select>
               </label>
-              <span className="muted compact-note unit-default-hint">Applies to new rows. Existing rows stay unchanged.</span>
               <button
                 type="button"
                 className="icon-button icon-button-labeled"
