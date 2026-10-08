@@ -101,6 +101,10 @@ What could break inspection correctness, export fidelity, or drawing integrity?
 
 ## Current Execution Backlog
 
+### Planned: uploaded Excel FAI templates
+
+Implementation deferred. See [the implementation plan](docs/fai-template-implementation-plan.md) for the optional `.xlsx` template flow, manual mapping contract, default-export fallback, local persistence, fidelity gate, and development slices. Documentation tracking: [issue #27](https://github.com/Apillis-MFG/QC-Assistant/issues/27). Create separate implementation issues when development begins.
+
 ### P0-1: Verify all `getLimits` branches against known manufacturing values
 
 Epic:
