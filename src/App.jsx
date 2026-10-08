@@ -110,6 +110,21 @@ function loadPanelSizes() {
   }
 }
 
+const TOLERANCE_DEFAULTS_KEY = "qca_tolerance_defaults_v1";
+
+function loadToleranceDefaults() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TOLERANCE_DEFAULTS_KEY) || "{}");
+    const table = (value) => Object.fromEntries(Object.entries(value || {}).filter(([places, tolerance]) =>
+      /^\d+$/.test(places) && Number(places) <= 10 && typeof tolerance === "string" &&
+      /^(?:|±\d+(?:\.\d+)?|[+-]\d+(?:\.\d+)?(?:\/-\d+(?:\.\d+)?)?)$/.test(tolerance),
+    ));
+    return { metric: table(saved?.metric), inch: table(saved?.inch), angle: table(saved?.angle) };
+  } catch {
+    return { metric: {}, inch: {}, angle: {} };
+  }
+}
+
 function createCharacteristic({ balloonNo, x = 0.5, y = 0.5, targetX = x, targetY = y, page = 1, unitSystem = "metric", seed = {} }) {
   return {
     id: crypto.randomUUID(),
@@ -158,6 +173,7 @@ export default function App() {
   const [metadata, setMetadata] = useState(emptyMetadata);
   const [unitSystem, setUnitSystem] = useState("metric");
   const [toleranceOverrides, setToleranceOverrides] = useState(emptyToleranceOverrides);
+  const [toleranceDefaults, setToleranceDefaults] = useState(loadToleranceDefaults);
   const [sampleCount, setSampleCount] = useState(5);
   const [pdfBytes, setPdfBytes] = useState(null);
   const [pdfName, setPdfName] = useState("");
@@ -233,15 +249,31 @@ export default function App() {
   // Derived from whatever text the current page exposes (title block, notes, etc.)
   const generalTolerances = useMemo(() => parseGeneralTolerances(textItems), [textItems]);
   const autoAngleTolerances = useMemo(() => parseAngleTolerances(textItems), [textItems]);
+  const savedTolerances = useMemo(() => ({
+    linear: toleranceDefaults[normalizeUnitSystem(toleranceOverrides.linearUnitSystem)],
+    angle: toleranceDefaults.angle,
+  }), [toleranceDefaults, toleranceOverrides.linearUnitSystem]);
+  const detectedAndSavedTolerances = useMemo(() => ({
+    linear: { ...savedTolerances.linear, ...generalTolerances },
+    angle: { ...savedTolerances.angle, ...autoAngleTolerances },
+  }), [savedTolerances, generalTolerances, autoAngleTolerances]);
 
   // Auto-detected tables above, with any per-drawing manual overrides layered on top.
   // This is the table the rest of the app should consult (auto-fill + bulk-apply UI).
   const resolvedTolerances = useMemo(() => ({
     linear: unitSystem === normalizeUnitSystem(toleranceOverrides.linearUnitSystem)
-      ? { ...generalTolerances, ...toleranceOverrides.linear }
+      ? { ...detectedAndSavedTolerances.linear, ...toleranceOverrides.linear }
       : {},
-    angle: { ...autoAngleTolerances, ...toleranceOverrides.angle },
-  }), [generalTolerances, autoAngleTolerances, toleranceOverrides, unitSystem]);
+    angle: { ...detectedAndSavedTolerances.angle, ...toleranceOverrides.angle },
+  }), [detectedAndSavedTolerances, toleranceOverrides, unitSystem]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TOLERANCE_DEFAULTS_KEY, JSON.stringify(toleranceDefaults));
+    } catch {
+      setMessage("Could not save default tolerances in this browser. Free up browser storage and try again.");
+    }
+  }, [toleranceDefaults]);
 
   // All text items on the current page that parse as dimensions, with tolerance resolved.
   // Used to render highlight boxes in balloon mode and for accurate click-to-value snapping.
@@ -251,12 +283,12 @@ export default function App() {
       .map((item) => {
         const parsed = parseDimension(item.text);
         if (!parsed?.nominal) return null;
-        const tolerance = applyGeneralTolerance(parsed.nominal, parsed.tolerance, resolvedTolerances.linear);
+        const tolerance = applyGeneralTolerance(parsed.nominal, parsed.tolerance, parsed.unit === "°" ? resolvedTolerances.angle : resolvedTolerances.linear);
         // Keep only items that look like real dimensions: decimal point or resolvable tolerance.
         // Pure integers with no tolerance are likely drawing numbers or quantities.
         if (!tolerance && !/\./.test(parsed.nominal)) return null;
         const bounds = getTextItemBounds(item);
-        return { ...item, ...bounds, nominal: parsed.nominal, tolerance };
+        return { ...item, ...bounds, ...parsed, tolerance };
       })
       .filter(Boolean);
   }, [textItems, canvasSize, resolvedTolerances]);
@@ -1122,11 +1154,11 @@ export default function App() {
           : point;
 
         const resolvedSeed = hit
-          ? { nominal: hit.nominal, tolerance: hit.tolerance }
+          ? { nominal: hit.nominal, tolerance: hit.tolerance, ...(hit.unit ? { unit: hit.unit } : {}) }
           : (() => {
               const dim = findNearestTextDimension(point, textItems, canvasSize);
               return dim
-                ? { ...dim, tolerance: applyGeneralTolerance(dim.nominal, dim.tolerance, resolvedTolerances.linear) }
+                ? { ...dim, tolerance: applyGeneralTolerance(dim.nominal, dim.tolerance, dim.unit === "°" ? resolvedTolerances.angle : resolvedTolerances.linear) }
                 : {};
             })();
 
@@ -1166,20 +1198,30 @@ export default function App() {
   const nextPage = useCallback(() => setPageNumber((v) => v + 1), []);
 
   const updateCharacteristic = useCallback((id, patch) => {
+    const { applyDefaultTolerance = true, ...fields } = patch;
     setCharacteristics((items) =>
       items.map((item) => {
         if (item.id !== id) return item;
-        const nextType = patch.type ?? item.type;
-        const nextPatch = patch.type && !("method" in patch)
-          ? { ...patch, method: TYPE_DEFAULT_METHOD[nextType] ?? item.method }
-          : patch;
+        const nextType = fields.type ?? item.type;
+        const nextPatch = fields.type && !("method" in fields)
+          ? { ...fields, method: TYPE_DEFAULT_METHOD[nextType] ?? item.method }
+          : fields;
         const next = { ...item, ...nextPatch };
         if (!hasCharacteristicUnit(nextType)) next.unit = "";
-        else if (patch.type && !hasCharacteristicUnit(item.type) && !next.unit) next.unit = getDefaultUnit(unitSystem);
+        else if (fields.type && !hasCharacteristicUnit(item.type) && !next.unit) next.unit = getDefaultUnit(unitSystem);
+        if (applyDefaultTolerance && "nominal" in fields && !("tolerance" in fields) && nextType === "dimension" && !next.tolerance) {
+          const parsed = parseDimension(next.nominal);
+          if (parsed?.unit && !("unit" in fields)) next.unit = parsed.unit;
+          const angle = /°|deg/i.test(String(next.unit || "").trim());
+          const table = angle ? resolvedTolerances.angle
+            : String(next.unit || "").trim().toUpperCase() === getDefaultUnit(unitSystem) ? resolvedTolerances.linear : {};
+          // Captured requirements may include an explicit tolerance; it wins over defaults.
+          next.tolerance = parsed?.tolerance || applyGeneralTolerance(next.nominal, next.tolerance, table);
+        }
         return next;
       }),
     );
-  }, [unitSystem]);
+  }, [unitSystem, resolvedTolerances]);
 
   const isAngleUnit = useCallback((unit) => /°|deg/i.test(String(unit || "").trim()), []);
 
@@ -1215,16 +1257,23 @@ export default function App() {
   }, [matchesToleranceUnit]);
 
   const confirmLinearToleranceUnit = useCallback(() => {
-    setToleranceOverrides((current) => ({ ...current, linearUnitSystem: unitSystem }));
+    const previousBank = normalizeUnitSystem(toleranceOverrides.linearUnitSystem);
+    setToleranceDefaults((current) => ({
+      ...current,
+      [previousBank]: { ...toleranceOverrides.linear, ...current[previousBank] },
+    }));
+    setToleranceOverrides((current) => ({ ...current, linear: {}, linearUnitSystem: unitSystem }));
     setMessage(`Confirmed linear tolerance table for ${getDefaultUnit(unitSystem)}. Existing rows stay unchanged.`);
-  }, [unitSystem]);
+  }, [unitSystem, toleranceOverrides]);
 
   const applyToleranceOverride = useCallback((kind, places, value) => {
     setToleranceOverrides((current) => ({
       ...current,
       [kind]: { ...current[kind], [places]: value },
     }));
-  }, []);
+    const bank = kind === "linear" ? normalizeUnitSystem(toleranceOverrides.linearUnitSystem) : "angle";
+    setToleranceDefaults((current) => ({ ...current, [bank]: { ...current[bank], [places]: value } }));
+  }, [toleranceOverrides.linearUnitSystem]);
 
   const resetToleranceOverride = useCallback((kind, places) => {
     setToleranceOverrides((current) => {
@@ -1232,7 +1281,13 @@ export default function App() {
       delete next[places];
       return { ...current, [kind]: next };
     });
-  }, []);
+    const bank = kind === "linear" ? normalizeUnitSystem(toleranceOverrides.linearUnitSystem) : "angle";
+    setToleranceDefaults((current) => {
+      const next = { ...current[bank] };
+      delete next[places];
+      return { ...current, [bank]: next };
+    });
+  }, [toleranceOverrides.linearUnitSystem]);
 
   const reassignBalloonNo = useCallback((id, rawValue) => {
     const nextNo = Number.parseInt(rawValue, 10);
@@ -1309,12 +1364,17 @@ export default function App() {
     if (drag.point === "target") {
       const detected = findNearestTextDimension({ x, y }, textItems, canvasSize);
       if (detected?.nominal) {
-        const resolvedTol = applyGeneralTolerance(detected.nominal, detected.tolerance, resolvedTolerances.linear);
+        const row = characteristics.find((item) => item.id === drag.id);
+        const unit = detected.unit ?? row?.unit;
+        const table = /°|deg/i.test(String(unit || "")) ? resolvedTolerances.angle
+          : String(unit || "").trim().toUpperCase() === getDefaultUnit(unitSystem) ? resolvedTolerances.linear : {};
+        const resolvedTol = applyGeneralTolerance(detected.nominal, detected.tolerance || row?.tolerance, table);
         updateCharacteristic(drag.id, {
           targetX: x,
           targetY: y,
           nominal: detected.nominal,
           ...(resolvedTol ? { tolerance: resolvedTol } : {}),
+          ...(detected.unit ? { unit: detected.unit } : {}),
         });
       } else {
         updateCharacteristic(drag.id, { targetX: x, targetY: y });
@@ -1322,7 +1382,7 @@ export default function App() {
     } else {
       updateCharacteristic(drag.id, { x, y });
     }
-  }, [canvasSize, resolvedTolerances, textItems, updateCharacteristic]);
+  }, [canvasSize, characteristics, resolvedTolerances, textItems, unitSystem, updateCharacteristic]);
 
   const beginPan = useCallback((event) => {
     if (mode !== "pan" || !scrollRef.current) return;
@@ -1566,7 +1626,7 @@ export default function App() {
           if (!parsed) return {};
           return {
             ...parsed,
-            tolerance: applyGeneralTolerance(parsed.nominal, parsed.tolerance, resolvedTolerances.linear),
+            tolerance: applyGeneralTolerance(parsed.nominal, parsed.tolerance, parsed.unit === "°" ? resolvedTolerances.angle : resolvedTolerances.linear),
           };
         })(),
       }),
@@ -2755,6 +2815,7 @@ export default function App() {
         open={toleranceTableOpen}
         onClose={() => setToleranceTableOpen(false)}
         autoTolerances={{ linear: generalTolerances, angle: autoAngleTolerances }}
+        savedTolerances={savedTolerances}
         toleranceOverrides={toleranceOverrides}
         unitSystem={unitSystem}
         onConfirmLinearUnit={confirmLinearToleranceUnit}

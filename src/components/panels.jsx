@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useRef } from "react";
 import { X, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
 import { methods, types, APP_VERSION, getDefaultUnit, normalizeUnitSystem, CHARACTERISTIC_UNITS, hasCharacteristicUnit } from "../lib/constants.js";
@@ -1038,6 +1038,21 @@ function UnitSelect({ item, readOnly = false, onChange }) {
   );
 }
 
+function NominalInput({ value, disabled, onChange }) {
+  const initialValue = useRef(value);
+  return (
+    <input
+      value={value}
+      disabled={disabled}
+      onFocus={() => { initialValue.current = value; }}
+      onChange={disabled ? undefined : (event) => onChange({ nominal: event.target.value, applyDefaultTolerance: false })}
+      onBlur={disabled ? undefined : (event) => {
+        if (event.target.value !== String(initialValue.current ?? "")) onChange({ nominal: event.target.value });
+      }}
+    />
+  );
+}
+
 export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampleChange }) {
   const { usl, lsl } = getLimits(item);
   return (
@@ -1075,7 +1090,7 @@ export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampl
       </label>
       <label className="span-2">
         Nominal / Requirement
-        <input value={item.nominal} onChange={(event) => onChange({ nominal: event.target.value })} />
+        <NominalInput value={item.nominal} onChange={onChange} />
       </label>
       <label className="span-2">
         Tolerance
@@ -1147,7 +1162,7 @@ const CharacteristicRow = memo(function CharacteristicRow({
         </select>
       </td>
       <td><UnitSelect item={item} readOnly={readOnly} onChange={(unit) => onChange(item.id, { unit })} /></td>
-      <td><input value={item.nominal} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { nominal: event.target.value })} /></td>
+      <td><NominalInput value={item.nominal} disabled={readOnly} onChange={(patch) => onChange(item.id, patch)} /></td>
       <td>
         <ToleranceHalfInput
           value={toleranceParts.upper}
@@ -1611,11 +1626,12 @@ function toleranceBucketLabel(kind, places) {
   return kind === "angle" ? `${placeholder}°` : placeholder;
 }
 
-function ToleranceRow({ kind, places, autoValue, overrideValue, matchCount, onChange, onReset, onApply }) {
+function ToleranceRow({ kind, places, autoValue, savedValue, overrideValue, matchCount, onChange, onReset, onApply }) {
   const isManual = overrideValue !== undefined;
-  const value = isManual ? overrideValue : (autoValue || "");
-  const badgeText = isManual ? "Manual" : autoValue ? "Auto" : "Not detected";
-  const badgeClass = isManual ? "manual" : autoValue ? "auto" : "none";
+  const hasSaved = savedValue !== undefined;
+  const value = isManual ? overrideValue : (autoValue ?? savedValue ?? "");
+  const badgeText = isManual ? "Manual" : autoValue ? "Auto" : hasSaved ? "Saved locally" : "Not detected";
+  const badgeClass = isManual ? "manual" : autoValue ? "auto" : hasSaved ? "manual" : "none";
 
   return (
     <div className="settings-row">
@@ -1628,7 +1644,7 @@ function ToleranceRow({ kind, places, autoValue, overrideValue, matchCount, onCh
       ) : null}
       <div className="settings-row-controls tolerance-row-actions">
         <ToleranceInput value={value} onChange={onChange} />
-        {isManual ? (
+        {isManual || hasSaved ? (
           <button
             type="button"
             className="settings-reset-btn"
@@ -1656,6 +1672,7 @@ export function ToleranceTableDialog({
   open,
   onClose,
   autoTolerances,
+  savedTolerances,
   toleranceOverrides,
   unitSystem,
   onConfirmLinearUnit,
@@ -1666,10 +1683,10 @@ export function ToleranceTableDialog({
 }) {
   if (!open) return null;
 
-  const linearBuckets = getToleranceBuckets(TOLERANCE_LINEAR_BASELINE, autoTolerances.linear, toleranceOverrides.linear);
+  const linearBuckets = getToleranceBuckets(TOLERANCE_LINEAR_BASELINE, { ...savedTolerances.linear, ...autoTolerances.linear }, toleranceOverrides.linear);
   const linearUnitSystem = normalizeUnitSystem(toleranceOverrides.linearUnitSystem);
   const linearConfirmed = normalizeUnitSystem(unitSystem) === linearUnitSystem;
-  const angleBuckets = getToleranceBuckets(TOLERANCE_ANGLE_BASELINE, autoTolerances.angle, toleranceOverrides.angle);
+  const angleBuckets = getToleranceBuckets(TOLERANCE_ANGLE_BASELINE, { ...savedTolerances.angle, ...autoTolerances.angle }, toleranceOverrides.angle);
 
   const allBuckets = [
     ...linearBuckets.map((places) => ({ kind: "linear", places })),
@@ -1677,7 +1694,7 @@ export function ToleranceTableDialog({
   ].map(({ kind, places }) => {
     const autoValue = autoTolerances[kind][places];
     const overrideValue = toleranceOverrides[kind][places];
-    const value = overrideValue !== undefined ? overrideValue : (autoValue || "");
+    const value = overrideValue !== undefined ? overrideValue : (autoValue ?? savedTolerances[kind][places] ?? "");
     return { kind, places, value, matchCount: value ? countMatches(kind, places) : 0 };
   });
   const totalApplyCount = allBuckets.reduce((sum, bucket) => sum + bucket.matchCount, 0);
@@ -1700,7 +1717,7 @@ export function ToleranceTableDialog({
         <div className="dialog-title help-title">
           <div>
             <h2 id="tolerance-title">Tolerance Table</h2>
-            <p>Auto-detected from the drawing's title block. Override a row, or fill it into every blank dimension that matches.</p>
+            <p>Defaults save in this browser for new drawings, separately for MM and IN. The drawing's title block takes priority over saved defaults. Adding a nominal fills a matching blank tolerance; you can edit it afterward.</p>
           </div>
           <button type="button" className="icon-button" onClick={onClose} aria-label="Close tolerance table">
             <X size={17} />
@@ -1713,7 +1730,7 @@ export function ToleranceTableDialog({
             <p className="settings-row-desc">Blank linear tolerances apply only to {getDefaultUnit(unitSystem)} rows in this drawing.</p>
             {!linearConfirmed ? (
               <div className="message">
-                <p>Automatic linear tolerance fill is paused. Verify this table applies to {getDefaultUnit(unitSystem)} before confirming. Numbers will not be converted.</p>
+                <p>Automatic linear tolerance fill is paused. Confirm to use saved {getDefaultUnit(unitSystem)} defaults and this drawing's detected table. Saved {getDefaultUnit(linearUnitSystem)} defaults remain available. Numbers will not be converted.</p>
                 <button type="button" className="button secondary" onClick={onConfirmLinearUnit}>
                   Confirm linear table for {getDefaultUnit(unitSystem)}
                 </button>
@@ -1725,6 +1742,7 @@ export function ToleranceTableDialog({
                 kind="linear"
                 places={places}
                 autoValue={autoTolerances.linear[places]}
+                savedValue={savedTolerances.linear[places]}
                 overrideValue={toleranceOverrides.linear[places]}
                 matchCount={countMatches("linear", places)}
                 onChange={(value) => onOverrideChange("linear", places, value)}
@@ -1742,6 +1760,7 @@ export function ToleranceTableDialog({
                 kind="angle"
                 places={places}
                 autoValue={autoTolerances.angle[places]}
+                savedValue={savedTolerances.angle[places]}
                 overrideValue={toleranceOverrides.angle[places]}
                 matchCount={countMatches("angle", places)}
                 onChange={(value) => onOverrideChange("angle", places, value)}

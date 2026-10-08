@@ -14,9 +14,9 @@
  * Count decimal places in a nominal string. "13.20" → 2, "25" → 0.
  */
 export function getDecimalPlaces(nominalStr) {
-  const s = String(nominalStr || "");
-  const dot = s.indexOf(".");
-  return dot < 0 ? 0 : s.length - dot - 1;
+  const match = String(nominalStr ?? "").trim().match(/^(?:[øØ∅R]\s*)?[+-]?(\d+(?:\.(\d+))?|\.(\d+))\s*°?$/i);
+  if (!match || !Number.isFinite(Number(match[1]))) return null;
+  return (match[2] ?? match[3] ?? "").length;
 }
 
 /**
@@ -116,8 +116,9 @@ export function parseAngleTolerances(textItems) {
  */
 export function applyGeneralTolerance(nominal, tolerance, generalTolerances) {
   if (tolerance) return tolerance;
-  if (!nominal || !generalTolerances || !Object.keys(generalTolerances).length) return tolerance;
+  if (!generalTolerances || !Object.keys(generalTolerances).length) return tolerance;
   const places = getDecimalPlaces(nominal);
+  if (places === null) return tolerance;
   return generalTolerances[places] ?? "";
 }
 

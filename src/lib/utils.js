@@ -277,25 +277,27 @@ export function parseDimension(text) {
 
   const normalizeDecimal = (value) => value.replace(/\s+/g, "").replace(",", ".").replace(/^([+-]?)\./, "$10.");
   const nominal = normalizeDecimal(nominalMatch[1]);
-  const after = core.slice(nominalMatch[0].length).trim();
+  const suffix = core.slice(nominalMatch[0].length).trim();
+  const dimension = { nominal, ...(suffix.startsWith("°") ? { unit: "°" } : {}) };
+  const after = suffix.replace(/^°\s*/, "");
 
   // MAX / MIN suffix
-  if (/^max\b/i.test(after)) return { nominal, tolerance: "MAX" };
-  if (/^min\b/i.test(after)) return { nominal, tolerance: "MIN" };
+  if (/^max\b/i.test(after)) return { ...dimension, tolerance: "MAX" };
+  if (/^min\b/i.test(after)) return { ...dimension, tolerance: "MIN" };
 
   // Symmetric: ±0.5  or  +/-0.5  or  +/- 0.5  or  +-0.5
   const symMatch = after.match(/^(?:[±]|\+\s*[/\\]\s*-\s*|\+\s*-\s*)((?:\d+(?:[.,]\d+)?|[.,]\d+))/);
-  if (symMatch) return { nominal, tolerance: `±${normalizeDecimal(symMatch[1])}` };
+  if (symMatch) return { ...dimension, tolerance: `±${normalizeDecimal(symMatch[1])}` };
 
   // Asymmetric: +0.5/-0.2  or  +0.5 / -0.2  or  +0.5-0.2
   const asymMatch = after.match(/^(\+\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))\s*[/]?\s*(-\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))/);
   if (asymMatch) {
     const pos = normalizeDecimal(asymMatch[1]);
     const neg = normalizeDecimal(asymMatch[2]);
-    return { nominal, tolerance: `${pos}/${neg}` };
+    return { ...dimension, tolerance: `${pos}/${neg}` };
   }
 
-  return { nominal, tolerance: "" };
+  return { ...dimension, tolerance: "" };
 }
 
 export function findNearestTextDimension(point, textItems, canvasSize, radius = 0.075) {
