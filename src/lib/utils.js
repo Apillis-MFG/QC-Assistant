@@ -1,4 +1,4 @@
-import { BALLOON_OFFSET, BALLOON_MARGIN } from "./constants.js";
+import { BALLOON_OFFSET, BALLOON_MARGIN, normalizeUnitSystem } from "./constants.js";
 import { PROJECT_LIMITS } from "./projectStore.js";
 
 export function clamp(value, min, max) {
@@ -10,6 +10,7 @@ export function buildDrawingSnapshot({
   activeDrawingId,
   activeProjectId,
   metadata,
+  unitSystem,
   toleranceOverrides,
   sampleCount,
   pdfBytes,
@@ -31,6 +32,7 @@ export function buildDrawingSnapshot({
     pdfByteLength: pdfBytes?.byteLength || drawing?.pdfByteLength || 0,
     pageCount,
     metadata,
+    unitSystem: normalizeUnitSystem(unitSystem),
     toleranceOverrides,
     sampleCount,
     characteristics,
@@ -261,38 +263,41 @@ export function parseDimension(text) {
 
   // Strip "Nx" quantity prefix before a value: "2x10.0" → "10.0", "4xR25" → "R25"
   // Matches an integer followed by x/X/× and then a digit or type prefix.
-  const withoutRepeat = s.replace(/^\d+\s*[xX×]\s*(?=[øØ∅RrMm\d])/i, "");
+  const withoutRepeat = s.replace(/^\d+\s*[xX×]\s*(?=[øØ∅RrMm\d]|\.\d)/i, "");
 
   // Strip common dimension prefixes: ø/Ø/∅ (diameter), R/r (radius), M/m (metric thread)
   const core = withoutRepeat
     .replace(/^[øØ∅]\s*/, "")
-    .replace(/^[Rr](?=\d)/, "")
+    .replace(/^[Rr](?=\d|\.\d)/, "")
     .replace(/^[Mm](?=\d)/, "");
 
   // Must start with a number (possibly signed)
-  const nominalMatch = core.match(/^([+-]?\d+(?:[.,]\d+)?)/);
+  const nominalMatch = core.match(/^([+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+))/);
   if (!nominalMatch) return null;
 
-  const nominal = nominalMatch[1].replace(",", ".");
-  const after = core.slice(nominalMatch[0].length).trim();
+  const normalizeDecimal = (value) => value.replace(/\s+/g, "").replace(",", ".").replace(/^([+-]?)\./, "$10.");
+  const nominal = normalizeDecimal(nominalMatch[1]);
+  const suffix = core.slice(nominalMatch[0].length).trim();
+  const dimension = { nominal, ...(suffix.startsWith("°") ? { unit: "°" } : {}) };
+  const after = suffix.replace(/^°\s*/, "");
 
   // MAX / MIN suffix
-  if (/^max\b/i.test(after)) return { nominal, tolerance: "MAX" };
-  if (/^min\b/i.test(after)) return { nominal, tolerance: "MIN" };
+  if (/^max\b/i.test(after)) return { ...dimension, tolerance: "MAX" };
+  if (/^min\b/i.test(after)) return { ...dimension, tolerance: "MIN" };
 
   // Symmetric: ±0.5  or  +/-0.5  or  +/- 0.5  or  +-0.5
-  const symMatch = after.match(/^(?:[±]|\+\s*[/\\]\s*-\s*|\+\s*-\s*)(\d+(?:[.,]\d+)?)/);
-  if (symMatch) return { nominal, tolerance: `±${symMatch[1].replace(",", ".")}` };
+  const symMatch = after.match(/^(?:[±]|\+\s*[/\\]\s*-\s*|\+\s*-\s*)((?:\d+(?:[.,]\d+)?|[.,]\d+))/);
+  if (symMatch) return { ...dimension, tolerance: `±${normalizeDecimal(symMatch[1])}` };
 
   // Asymmetric: +0.5/-0.2  or  +0.5 / -0.2  or  +0.5-0.2
-  const asymMatch = after.match(/^(\+\s*\d+(?:[.,]\d+)?)\s*[/]?\s*(-\s*\d+(?:[.,]\d+)?)/);
+  const asymMatch = after.match(/^(\+\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))\s*[/]?\s*(-\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))/);
   if (asymMatch) {
-    const pos = asymMatch[1].replace(/\s+/g, "").replace(",", ".");
-    const neg = asymMatch[2].replace(/\s+/g, "").replace(",", ".");
-    return { nominal, tolerance: `${pos}/${neg}` };
+    const pos = normalizeDecimal(asymMatch[1]);
+    const neg = normalizeDecimal(asymMatch[2]);
+    return { ...dimension, tolerance: `${pos}/${neg}` };
   }
 
-  return { nominal, tolerance: "" };
+  return { ...dimension, tolerance: "" };
 }
 
 export function findNearestTextDimension(point, textItems, canvasSize, radius = 0.075) {

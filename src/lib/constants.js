@@ -1,6 +1,11 @@
 export const methods = ["DC", "CMM", "VS", "VMS", "HG", "MIC", "CG", "PP", "TG", "PG"];
 export const types = ["dimension", "gdt", "note", "visual"];
 export const TYPE_DEFAULT_METHOD = { dimension: "DC", gdt: "CMM", note: "VS", visual: "VS" };
+export const CHARACTERISTIC_UNITS = ["MM", "IN", "°"];
+
+export function hasCharacteristicUnit(type) {
+  return type !== "note" && type !== "visual";
+}
 export const CHARACTERISTIC_FIELDS = ["nominal", "tolerance", "notes"];
 export const APP_VERSION = "v0.8.1";
 
@@ -17,7 +22,15 @@ export const AUTO_BALLOON_LEADER_RATIO = 0.5;
 export const AUTO_BALLOON_MIN_SPACING = 0.04;
 export const AUTO_BALLOON_MIN_CONFIDENCE = 45;
 export const AUTO_BALLOON_MAX_LABEL_LENGTH = 28;
-export const DRAWING_NUMBER_PATTERN = /(?:^|[\s(])(?:[+-]?\d+(?:\.\d+)?x?|[rm]\s*\d+(?:\.\d+)?|[øØ]\s*\d+(?:\.\d+)?|\+\/-\s*\d+(?:\.\d+)?)(?:$|[\s),;:]|max|min)/i;
+export const DRAWING_NUMBER_PATTERN = /(?:^|[\s(])(?:[+-]?(?:\d+(?:\.\d+)?|\.\d+)x?|[rm]\s*(?:\d+(?:\.\d+)?|\.\d+)|[øØ∅]\s*(?:\d+(?:\.\d+)?|\.\d+)|\+\/-\s*(?:\d+(?:\.\d+)?|\.\d+))(?:$|[\s),;:]|max|min)/i;
+
+export function normalizeUnitSystem(value) {
+  return value === "inch" ? "inch" : "metric";
+}
+
+export function getDefaultUnit(unitSystem) {
+  return normalizeUnitSystem(unitSystem) === "inch" ? "IN" : "MM";
+}
 
 export const defaultPanelSizes = {
   splitV: {
@@ -37,4 +50,4 @@ export const emptyMetadata = {
   description: "",
 };
 
-export const emptyToleranceOverrides = { linear: {}, angle: {} };
+export const emptyToleranceOverrides = { linear: {}, angle: {}, linearUnitSystem: "metric" };
