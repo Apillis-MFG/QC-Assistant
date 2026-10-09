@@ -15,6 +15,8 @@ for (let index = 0; index < 2; index++) {
   const sheet = pdf.addPage([600, 800]);
   sheet.drawText(`Repeated features, page ${index + 1}`, { x: 40, y: 740, size: 18, font });
   sheet.drawText("3X Ø10 +/-0.1", { x: 80, y: 500, size: 12, font });
+  sheet.drawText("3X Ø10 mm", { x: 80, y: 650, size: 12, font });
+  sheet.drawText("1000001X Ø10", { x: 80, y: 620, size: 12, font });
   for (const x of [120, 300, 480]) sheet.drawCircle({ x, y: 360, size: 30, borderWidth: 1, borderColor: rgb(0, 0, 0), color: rgb(1, 1, 1) });
 }
 const browser = await chromium.launch();
@@ -196,8 +198,51 @@ try {
     return getEmbeddedAutoBalloonCandidates({ textItems: [{ text: "3X Ø10 ±0.1", left: 80, top: 290, width: 120, height: 12 }], canvasSize: { width: 600, height: 800 }, selectionRect: { x: 0, y: 0, width: 1, height: 1 } });
   });
   assert.equal(captures[0].label, "3X Ø10 ±0.1");
+  // Invalid drawing text must not create a balloon with the count as nominal.
+  const countBeforeRejectedCapture = (await rows()).length;
+  await place(0.2, 0.1875);
+  await expect(page.locator(".message").last()).toContainText("Unsupported repeated dimension");
+  assert.equal((await rows()).length, countBeforeRejectedCapture);
+  await place(0.2, 0.225);
+  await expect(page.locator(".message").last()).toContainText("1 to 1000");
+  assert.equal((await rows()).length, countBeforeRejectedCapture);
+  await page.keyboard.press("Escape");
+  await select("6");
+  const nominalInput = page.getByLabel("Nominal / Requirement", { exact: true });
+  for (const text of ["3X Ø10 mm", "2X M10", "3X Ø10 H7", "3X 10 ±0.1 mm", "1000001X Ø10"]) {
+    await nominalInput.fill(text);
+    await qty.click();
+    await expect(nominalInput).toHaveValue("");
+    await expect(page.locator(".message").last()).toContainText("Enter the requirement and quantity manually");
+    await expect.poll(async () => (await rows()).find((r) => r.balloonNo === 6)?.nominal).toBe("");
+    const rejected = (await rows()).find((r) => r.balloonNo === 6);
+    assert.equal(rejected.tolerance, "");
+    assert.equal(rejected.quantity, 3);
+    assert.equal((await read()).status, "OPEN");
+  }
+  await nominalInput.fill("3X Ø10 ±0.1");
+  await qty.click();
+  await expect.poll(async () => (await rows()).find((r) => r.balloonNo === 6)?.nominal).toBe("10");
+  // Previously stored oversized counts must show an export error and remain
+  // recoverable through the quantity control, without allocating export rows.
+  await page.evaluate(async (drawingId) => {
+    const store = await import("/src/lib/projectStore.js");
+    const drawing = await store.loadDrawing(drawingId);
+    drawing.characteristics = drawing.characteristics.map((r) => r.balloonNo === 6 ? { ...r, quantity: 1000001 } : r);
+    await store.saveDrawing(drawing.projectId, drawing);
+  }, ids.drawingId);
+  await page.reload();
+  await select("6");
+  await expect(qty).toHaveValue("1000001");
+  for (const name of ["Excel", "PDF"]) {
+    await page.getByRole("button", { name, exact: true }).click();
+    await expect(page.locator(".message").last()).toContainText("Correct the requirement quantity before exporting");
+  }
+  await qty.fill("3");
+  await page.getByRole("button", { name: "Create instances", exact: true }).click();
+  await expect.poll(async () => (await rows()).filter((r) => r.balloonNo === 6).length).toBe(3);
   assert.deepEqual(errors, []);
-  console.log(`PASS: browser expansion, shared/independent edits, interrupted placement/reload, group swaps/deletion, count safety, Excel and multi-page PDF. Artifacts: ${artifacts}`);
+  console.log(`PASS: browser expansion, shared/independent edits, interrupted placement/reload, group swaps/deletion, count safety, rejected repeat capture, oversized export guards/recovery, Excel and multi-page PDF. Artifacts: ${artifacts}`);
 } finally {
   await browser.close();
 }

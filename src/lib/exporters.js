@@ -1,4 +1,4 @@
-import { balloonLabel, compareOccurrences, missingOccurrences, resizeOccurrences } from "./occurrences.js";
+import { balloonLabel, compareOccurrences, missingOccurrences, resizeOccurrences, assertOccurrenceQuantity } from "./occurrences.js";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import * as XLSX from "xlsx";
 
@@ -92,6 +92,7 @@ export async function exportBalloonedPdf({
   diameter = 24,
 }) {
   if (!pdfBytes) throw new Error("Upload a PDF before exporting.");
+  characteristics.forEach((item) => assertOccurrenceQuantity(item.quantity ?? 1));
 
   if (missingOccurrences(characteristics) || characteristics.some((item) => item.isPlaced === false)) {
     throw new Error("Place every required instance before exporting PDF. Create instances or resume placement in the inspector.");
@@ -148,6 +149,7 @@ export async function exportBalloonedPdf({
 }
 
 export function exportInspectionWorkbook({ metadata, characteristics, sampleCount }) {
+  characteristics.forEach((item) => assertOccurrenceQuantity(item.quantity ?? 1));
   const rows = [];
   rows.push(["", "", "", "", "FIRST ARTICLE INSPECTION REPORT"]);
   rows.push([]);

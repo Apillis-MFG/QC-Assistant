@@ -1,4 +1,4 @@
-import { normalizeOccurrence, balloonLabel, sameRequirement, SHARED_REQUIREMENT_FIELDS, resizeOccurrences, reassignOccurrenceBase, hasInspectionData, assertCloudCompatible } from "./lib/occurrences.js";
+import { normalizeOccurrence, balloonLabel, sameRequirement, SHARED_REQUIREMENT_FIELDS, resizeOccurrences, reassignOccurrenceBase, hasInspectionData, assertCloudCompatible, isValidOccurrenceQuantity, MAX_OCCURRENCE_QUANTITY } from "./lib/occurrences.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from "react-router-dom";
 import {
@@ -60,7 +60,7 @@ import {
   buildDrawingSnapshot, updateDrawingSummary, getStorageWarning, getStorageErrorMessage,
   formatDate, setMetadataValue, mapTextItem, metadataLabel, fieldLabel,
   getNormalizedPoint, normalizeRect, getDefaultBalloonPosition, cropCanvasArea, clamp,
-  parseDimension, findNearestTextDimension, findDimensionAtPoint, getTextItemBounds,
+  parseDimension, getDimensionCaptureError, findNearestTextDimension, findDimensionAtPoint, getTextItemBounds,
 } from "./lib/utils.js";
 import {
   getEmbeddedAutoBalloonCandidates, getOcrAutoBalloonCandidates, buildAutoBalloonCandidates,
@@ -1191,6 +1191,11 @@ export default function App() {
                 : {};
             })();
 
+        if (resolvedSeed.captureError) {
+          setMessage(resolvedSeed.captureError);
+          return;
+        }
+
         const position = balloonSettings.showLeaderLine
           ? getDefaultBalloonPosition(target, balloonSettings.leaderScale)
           : target;
@@ -1228,6 +1233,17 @@ export default function App() {
 
   const updateCharacteristic = useCallback((id, patch) => {
     const { applyDefaultTolerance = true, ...fields } = patch;
+    const selected = characteristics.find((item) => item.id === id);
+    if (applyDefaultTolerance && "nominal" in fields && (fields.type ?? selected?.type) === "dimension") {
+      const captureError = getDimensionCaptureError(fields.nominal);
+      if (captureError) {
+        // Live typing has already updated this field; clear it on commit so the
+        // rejected count cannot become an inspection limit.
+        fields.nominal = "";
+        fields.tolerance = "";
+        setMessage(captureError);
+      }
+    }
     setCharacteristics((items) => {
       const selected = items.find((item) => item.id === id);
       if (!selected) return items;
@@ -1254,15 +1270,15 @@ export default function App() {
       const shared = Object.fromEntries(SHARED_REQUIREMENT_FIELDS.map((key) => [key, next[key]]));
       return items.map((item) => item.id === id ? next : sameRequirement(item, selected) ? { ...item, ...shared } : item);
     });
-  }, [unitSystem, resolvedTolerances, activeProject?.kind]);
+  }, [characteristics, unitSystem, resolvedTolerances, activeProject?.kind]);
 
   const applyQuantity = useCallback((id, quantity) => {
     if (activeProject?.kind === "cloud") {
       setMessage("Repeated dimensions are local-only until cloud occurrence support is available.");
       return;
     }
-    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1000) {
-      setMessage("Quantity must be a whole number from 1 to 1000.");
+    if (!isValidOccurrenceQuantity(quantity)) {
+      setMessage(`Quantity must be a whole number from 1 to ${MAX_OCCURRENCE_QUANTITY}.`);
       return;
     }
     const selected = characteristics.find((item) => item.id === id);
@@ -1421,6 +1437,11 @@ export default function App() {
     if (drag.point === "target") {
       const row = characteristics.find((item) => item.id === drag.id);
       const detected = row?.instancesExpanded ? null : findNearestTextDimension({ x, y }, textItems, canvasSize);
+      if (detected?.captureError) {
+        updateCharacteristic(drag.id, { targetX: x, targetY: y });
+        setMessage(detected.captureError);
+        return;
+      }
       if (detected?.nominal) {
         const unit = detected.unit ?? row?.unit;
         const table = /°|deg/i.test(String(unit || "")) ? resolvedTolerances.angle
@@ -1638,9 +1659,13 @@ export default function App() {
     }
 
     if (!CHARACTERISTIC_FIELDS.includes(destination)) return;
+    if (destination === "nominal" && characteristics.find((item) => item.id === selectedId)?.type === "dimension") {
+      const captureError = getDimensionCaptureError(text);
+      if (captureError) { setMessage(captureError); return; }
+    }
     updateCharacteristic(selectedId, { [destination]: text });
     setMessage(`Filled selected row ${fieldLabel(destination)} from PDF text.`);
-  }, [selectedId, selectedText, updateCharacteristic]);
+  }, [characteristics, selectedId, selectedText, updateCharacteristic]);
 
   const addManualRow = useCallback(() => {
     const next = createCharacteristic({ balloonNo: nextBalloonNo(characteristics), page: pageNumber, unitSystem, seed: { isPlaced: activeProject?.kind === "cloud" } });
@@ -1672,6 +1697,8 @@ export default function App() {
 
   const commitAutoBalloonCandidates = useCallback(() => {
     if (!autoBalloonCandidates.length) return;
+    const captureError = autoBalloonCandidates.map((candidate) => getDimensionCaptureError(candidate.label)).find(Boolean);
+    if (captureError) { setMessage(captureError); return; }
 
     const startNo = nextBalloonNo(characteristics);
     const rows = autoBalloonCandidates.map((candidate, index) =>

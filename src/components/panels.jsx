@@ -1,4 +1,4 @@
-import { balloonLabel, compareOccurrences } from "../lib/occurrences.js";
+import { balloonLabel, compareOccurrences, MAX_OCCURRENCE_QUANTITY } from "../lib/occurrences.js";
 import { memo, useMemo, useRef } from "react";
 import { X, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
@@ -1063,7 +1063,7 @@ export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampl
         onQuantity(item.id, Number(new FormData(event.currentTarget).get("quantity")));
       }}>
         <label>Quantity (feature locations per part)
-          <input name="quantity" type="number" min="1" max="1000" step="1" defaultValue={item.quantity || 1} disabled={cloud} />
+          <input name="quantity" type="number" min="1" max={MAX_OCCURRENCE_QUANTITY} step="1" defaultValue={item.quantity || 1} disabled={cloud} />
         </label>
         <button type="submit" className="button secondary" disabled={cloud}>
           {item.instancesExpanded ? "Update instance count" : "Create instances"}

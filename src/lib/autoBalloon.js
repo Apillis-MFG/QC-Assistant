@@ -8,7 +8,7 @@ import {
   DRAWING_NUMBER_PATTERN,
   BALLOON_MARGIN,
 } from "./constants.js";
-import { clamp, getTextItemBounds, parseDimension } from "./utils.js";
+import { clamp, getTextItemBounds, parseDimension, getDimensionCaptureError } from "./utils.js";
 
 export function getEmbeddedAutoBalloonCandidates({ textItems, canvasSize, selectionRect }) {
   return textItems
@@ -79,6 +79,7 @@ export function getAutoBalloonLabel(value) {
     .trim();
 
   if (!label || label.length > AUTO_BALLOON_MAX_LABEL_LENGTH) return "";
+  if (getDimensionCaptureError(label)) return "";
   if (!DRAWING_NUMBER_PATTERN.test(label) && !(parseDimension(label)?.quantity > 1)) return "";
   return label;
 }

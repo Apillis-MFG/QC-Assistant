@@ -193,3 +193,11 @@ Verification passed:
 - Visually inspected screen labels, rendered multi-page PDF labels/leaders including `105.12`, and exported workbook rows. The browser script writes fixtures to `/tmp/qca-repeated-dimensions/`.
 
 Existing verification limitation: `scripts/verify-drawing-units.mjs` fails at line 86, expecting “Apply all rows (3)” but receiving “Apply all rows (1)”. The identical failure was reproduced against an isolated unmodified `develop` baseline at commit `bcb8efa6e714`; no unrelated tolerance changes were made. Cloud schema/realtime/concurrency behavior was not exercised because grouped cloud support is explicitly disabled.
+
+## Audit fixes — 2026-10-09
+
+Unsupported leading repeat expressions now return no parsed dimension instead of treating the count as nominal. Callouts such as `3X Ø10 mm`, `2X M10`, `3X Ø10 H7`, and `3X 10 ±0.1 mm` require manual nominal and quantity entry. Direct drawing capture, committed nominal edits, selected-text capture, and reviewed candidate commits report the rejection; committed invalid numeric requirements clear their nominal and tolerance so status remains OPEN.
+
+The supported quantity range is defined once as 1–1000 and enforced by parsing, occurrence resizing, quantity controls, and both exports. Existing oversized stored counts remain intact for correction. Completeness checks return incomplete without allocating arrays for invalid quantities, and exports validate every count before generating rows or loading the PDF.
+
+Verification passed: focused repeated-dimension and unit/math scripts, production build, whitespace check, and the full browser/export script. New cases cover the four audited callouts, multiplication/thread ambiguity, quantity boundaries through `Number.MAX_SAFE_INTEGER`, rejected drawing/manual capture, export error messages for an oversized saved count, and recovery through the quantity control. Multi-page PDF labels/leaders and Excel rows/limits/MIN/MAX/status were visually inspected. No dependencies or cloud behavior changed; the existing drawing-unit verification limitation above remains.

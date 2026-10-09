@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { normalizeOccurrence, balloonLabel, compareOccurrences, resizeOccurrences, reassignOccurrenceBase, missingOccurrences, assertCloudCompatible } from "../src/lib/occurrences.js";
-import { parseDimension } from "../src/lib/utils.js";
+import { normalizeOccurrence, balloonLabel, compareOccurrences, resizeOccurrences, reassignOccurrenceBase, missingOccurrences, assertCloudCompatible, MAX_OCCURRENCE_QUANTITY } from "../src/lib/occurrences.js";
+import { parseDimension, getDimensionCaptureError, findNearestTextDimension } from "../src/lib/utils.js";
 import { nextBalloonNo, renumber, getAutoBalloonLabel } from "../src/lib/autoBalloon.js";
-import { getStatus, overallStatus, exportBalloonedPdf } from "../src/lib/exporters.js";
+import { getLimits, getStatus, overallStatus, exportBalloonedPdf, exportInspectionWorkbook } from "../src/lib/exporters.js";
 
 const original = { id: "old-id", balloonNo: 5, page: 1, x: 0.6, y: 0.4, targetX: 0.5, targetY: 0.4,
   type: "dimension", unit: "MM", nominal: "10", tolerance: "±0.1", method: "DC", samples: { 0: "10" }, notes: "original" };
@@ -65,6 +65,35 @@ for (const [text, quantity, nominal] of [["2x10.0", 2, "10.0"], ["3X Ø10 ±0.1"
 for (const text of ["M10x1.5", "2x10x20", "2.5X Ø10", "0X Ø10", "2X M10x1.5", "3X 10 + 2x5"]) {
   assert.equal(parseDimension(text)?.quantity || 1, 1, text);
 }
+for (const text of ["3X Ø10 mm", "2X M10", "3X Ø10 H7", "3X 10 ±0.1 mm", "2x10x20", "2X M10x1.5"]) {
+  assert.equal(parseDimension(text), null, text);
+  assert.match(getDimensionCaptureError(text), /Enter the requirement and quantity manually/, text);
+  assert.equal(getAutoBalloonLabel(text), "", text);
+  const detected = findNearestTextDimension({ x: 0.5, y: 0.5 },
+    [{ text, left: 45, top: 45, width: 10, height: 10 }], { width: 100, height: 100 });
+  assert.match(detected.captureError, /Enter the requirement and quantity manually/, text);
+}
+assert.deepEqual(getLimits({ ...legacy, nominal: "", tolerance: "" }), { usl: "", lsl: "" });
+assert.equal(getStatus({ ...legacy, nominal: "", tolerance: "" }, 1), "OPEN");
+assert.equal(parseDimension(`${MAX_OCCURRENCE_QUANTITY}X Ø10`).quantity, MAX_OCCURRENCE_QUANTITY);
+assert.equal(resizeOccurrences([legacy], legacy.id, MAX_OCCURRENCE_QUANTITY).length, MAX_OCCURRENCE_QUANTITY);
+for (const quantity of [0, 1.5, MAX_OCCURRENCE_QUANTITY + 1, 1000001, Number.MAX_SAFE_INTEGER]) {
+  const text = `${quantity}X Ø10`;
+  assert.equal(parseDimension(text), null, text);
+  assert.match(getDimensionCaptureError(text), /1 to 1000/, text);
+  assert.equal(getAutoBalloonLabel(text), "", text);
+  assert.throws(() => resizeOccurrences([legacy], legacy.id, quantity), /1 to 1000/);
+  for (const instancesExpanded of [false, true]) {
+    const invalid = { ...legacy, quantity, instancesExpanded };
+    assert.equal(missingOccurrences([invalid]), true);
+    assert.equal(overallStatus([invalid], 1), "OPEN");
+    assert.throws(() => exportInspectionWorkbook({ metadata: {}, characteristics: [invalid], sampleCount: 1 }), /1 to 1000/);
+    await assert.rejects(exportBalloonedPdf({ pdfBytes: new Uint8Array(), characteristics: [invalid] }), /1 to 1000/);
+  }
+}
+const oversized = normalizeOccurrence({ ...legacy, quantity: 1000001 });
+assert.equal(oversized.quantity, 1000001, "stored quantities remain available to correct");
+assert.equal(resizeOccurrences([oversized], oversized.id, 3).length, 3);
 await assert.rejects(exportBalloonedPdf({ pdfBytes: new Uint8Array(), characteristics: rows }), /Place every required instance/);
 await assert.rejects(exportBalloonedPdf({ pdfBytes: new Uint8Array(), characteristics: [{ ...legacy, quantity: 3 }] }), /Place every required instance/);
 console.log("PASS: repeated quantity parsing, legacy normalization, instance mutations, identifiers, status and PDF/cloud guards");

@@ -1,4 +1,16 @@
 // Occurrences share a requirement, but retain independent inspection and placement data.
+export const MAX_OCCURRENCE_QUANTITY = 1000;
+
+export function isValidOccurrenceQuantity(quantity) {
+  return Number.isSafeInteger(quantity) && quantity >= 1 && quantity <= MAX_OCCURRENCE_QUANTITY;
+}
+
+export function assertOccurrenceQuantity(quantity) {
+  if (!isValidOccurrenceQuantity(quantity)) {
+    throw new Error(`Quantity must be a whole number from 1 to ${MAX_OCCURRENCE_QUANTITY}. Correct the requirement quantity before exporting.`);
+  }
+}
+
 export const SHARED_REQUIREMENT_FIELDS = [
   "balloonNo", "quantity", "instancesExpanded", "type", "unit", "nominal", "tolerance", "method",
 ];
@@ -33,7 +45,7 @@ export function hasInspectionData(item) {
 }
 
 export function resizeOccurrences(items, id, quantity) {
-  if (!Number.isSafeInteger(quantity) || quantity < 1) throw new Error("Quantity must be a positive whole number.");
+  assertOccurrenceQuantity(quantity);
   const selected = items.find((item) => item.id === id);
   if (!selected) return items;
   const group = items.filter((item) => sameRequirement(item, selected)).sort(compareOccurrences);
@@ -59,7 +71,8 @@ export function reassignOccurrenceBase(items, id, nextNo) {
 
 export function missingOccurrences(items) {
   return items.some((item) => {
-    const quantity = item.quantity || 1;
+    const quantity = item.quantity ?? 1;
+    if (!isValidOccurrenceQuantity(quantity)) return true;
     if (quantity === 1) return false;
     if (!item.instancesExpanded) return true;
     const group = items.filter((other) => sameRequirement(item, other));
