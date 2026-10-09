@@ -1,3 +1,4 @@
+import { normalizeOccurrence, balloonLabel, sameRequirement, SHARED_REQUIREMENT_FIELDS, resizeOccurrences, reassignOccurrenceBase, hasInspectionData, assertCloudCompatible, isValidOccurrenceQuantity, MAX_OCCURRENCE_QUANTITY } from "./lib/occurrences.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from "react-router-dom";
 import {
@@ -24,7 +25,7 @@ import { demoCharacteristics } from "./lib/sampleData.js";
 import {
   exportBalloonedPdf,
   exportInspectionWorkbook,
-  getStatus,
+  overallStatus,
 } from "./lib/exporters.js";
 import {
   ACTIVE_PROJECT_KEY,
@@ -59,11 +60,11 @@ import {
   buildDrawingSnapshot, updateDrawingSummary, getStorageWarning, getStorageErrorMessage,
   formatDate, setMetadataValue, mapTextItem, metadataLabel, fieldLabel,
   getNormalizedPoint, normalizeRect, getDefaultBalloonPosition, cropCanvasArea, clamp,
-  parseDimension, findNearestTextDimension, findDimensionAtPoint, getTextItemBounds,
+  parseDimension, getDimensionCaptureError, findNearestTextDimension, findDimensionAtPoint, getTextItemBounds,
 } from "./lib/utils.js";
 import {
   getEmbeddedAutoBalloonCandidates, getOcrAutoBalloonCandidates, buildAutoBalloonCandidates,
-  renumberAutoBalloonCandidates, nextBalloonNo, renumber,
+  renumberAutoBalloonCandidates, nextBalloonNo,
 } from "./lib/autoBalloon.js";
 import {
   Field, ToolButton, ResizeHandle, TextLayer, LeaderLayer,
@@ -129,6 +130,11 @@ function createCharacteristic({ balloonNo, x = 0.5, y = 0.5, targetX = x, target
   return {
     id: crypto.randomUUID(),
     balloonNo,
+    groupId: crypto.randomUUID(),
+    quantity: seed.quantity ?? 1,
+    occurrenceIndex: 1,
+    instancesExpanded: false,
+    isPlaced: seed.isPlaced !== false,
     page,
     x,
     y,
@@ -187,6 +193,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null);
   const [editingBalloonId, setEditingBalloonId] = useState(null);
   const [pendingTarget, setPendingTarget] = useState(null);
+  const [placementGroupId, setPlacementGroupId] = useState(null);
   const [textItems, setTextItems] = useState([]);
   const [selectedText, setSelectedText] = useState("");
   const [ocrRect, setOcrRect] = useState(null);
@@ -228,17 +235,16 @@ export default function App() {
   );
 
   const currentPageBalloons = useMemo(
-    () => characteristics.filter((item) => item.page === pageNumber),
+    () => characteristics.filter((item) => item.page === pageNumber && item.isPlaced !== false),
     [characteristics, pageNumber],
   );
 
-  const projectStatus = useMemo(() => {
-    if (!characteristics.length) return "OPEN";
-    const statuses = characteristics.map((item) => getStatus(item, sampleCount));
-    if (statuses.includes("NG")) return "FAIL";
-    if (statuses.includes("OPEN")) return "OPEN";
-    return "PASS";
-  }, [characteristics, sampleCount]);
+  const placementNext = useMemo(() => placementGroupId
+    ? characteristics.filter((item) => (item.groupId || item.id) === placementGroupId && item.isPlaced === false)
+      .sort((a, b) => a.occurrenceIndex - b.occurrenceIndex)[0] || null : null,
+  [characteristics, placementGroupId]);
+
+  const projectStatus = useMemo(() => overallStatus(characteristics, sampleCount), [characteristics, sampleCount]);
 
   const activeDrawing = useMemo(
     () => drawings.find((drawing) => drawing.id === activeDrawingId) || null,
@@ -311,6 +317,7 @@ export default function App() {
   }), [panelSizes]);
 
   const resetDrawingState = useCallback((nextMessage = "Upload a drawing PDF to begin.") => {
+    setPlacementGroupId(null);
     setMetadata(emptyMetadata);
     setUnitSystem("metric");
     setToleranceOverrides(emptyToleranceOverrides);
@@ -391,6 +398,7 @@ export default function App() {
         : null;
       if (requestId !== drawingLoadRequestRef.current) return;
 
+      setPlacementGroupId(null);
       setActiveDrawingId(drawing.id);
       setMetadata({ ...emptyMetadata, ...drawing.metadata });
       setUnitSystem(normalizeUnitSystem(drawing.unitSystem));
@@ -408,7 +416,10 @@ export default function App() {
       setZoom(drawing.zoom || ZOOM_DEFAULT);
       setCharacteristics(
         (Array.isArray(drawing.characteristics) ? drawing.characteristics : [])
-          .map((item) => ({ samples: {}, notes: "", ...item, unit: hasCharacteristicUnit(item.type) ? (item.unit ?? "") : "" })),
+          .map((raw) => {
+            const item = normalizeOccurrence(raw);
+            return { ...item, unit: hasCharacteristicUnit(item.type) ? (item.unit ?? "") : "" };
+          }),
       );
       setSelectedId(null);
       setEditingBalloonId(null);
@@ -599,6 +610,7 @@ export default function App() {
   }, [mode]);
 
   const switchMode = useCallback((nextMode) => {
+    setPlacementGroupId(null);
     setMode(nextMode);
     setEditingBalloonId(null);
     const messages = {
@@ -612,6 +624,7 @@ export default function App() {
   }, []);
 
   const switchWorkspaceMode = useCallback((nextMode) => {
+    setPlacementGroupId(null);
     setWorkspaceMode(nextMode);
     setEditingBalloonId(null);
     setPendingTarget(null);
@@ -654,6 +667,11 @@ export default function App() {
 
       const key = event.key.toLowerCase();
       if (key === "escape") {
+        if (placementGroupId) {
+          setMode("select");
+          setMessage("Placement paused. Select a requirement and resume placement to continue.");
+        }
+        setPlacementGroupId(null);
         if (toleranceTableOpen) {
           event.preventDefault();
           setToleranceTableOpen(false);
@@ -689,13 +707,13 @@ export default function App() {
       if (key === "e" && selected?.page === pageNumber) {
         event.preventDefault();
         setEditingBalloonId(selected.id);
-        setMessage(`Editing balloon ${selected.balloonNo}.`);
+        setMessage(`Editing balloon ${balloonLabel(selected)}.`);
       }
     };
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [autoBalloonRect, autoBalloonReviewOpen, editingBalloonId, isWorkspaceRoute, toleranceTableOpen, ocrRect, pageNumber, pendingTarget, selected, switchMode, workspaceMode]);
+  }, [placementGroupId, autoBalloonRect, autoBalloonReviewOpen, editingBalloonId, isWorkspaceRoute, toleranceTableOpen, ocrRect, pageNumber, pendingTarget, selected, switchMode, workspaceMode]);
 
   const persistActiveDrawing = useCallback((reason = "auto") => {
     const save = async () => {
@@ -731,6 +749,7 @@ export default function App() {
       if (isCloud) {
         try {
           setSaveState({ status: "saving", label: reason === "manual" ? "Saving..." : "Syncing..." });
+          assertCloudCompatible(snapshot.characteristics);
           await supabaseStore.saveProject(projectRecord);
           const savedDrawing = await supabaseStore.saveDrawing(activeProject.id, snapshot);
           // Balloon numbers for any newly-created balloons are only known
@@ -1140,6 +1159,16 @@ export default function App() {
     (event) => {
       if (!overlayRef.current || !pdfDoc) return;
       const point = getNormalizedPoint(event, overlayRef.current);
+      if (placementNext && mode === "balloon") {
+        const position = balloonSettings.showLeaderLine ? getDefaultBalloonPosition(point, balloonSettings.leaderScale) : point;
+        setCharacteristics((items) => items.map((item) => item.id === placementNext.id
+          ? { ...item, isPlaced: true, page: pageNumber, x: position.x, y: position.y, targetX: point.x, targetY: point.y } : item));
+        setSelectedId(placementNext.id);
+        const remaining = characteristics.filter((item) => sameRequirement(item, placementNext) && item.isPlaced === false && item.id !== placementNext.id);
+        setMessage(remaining.length ? `Placed ${balloonLabel(placementNext)}. ${remaining.length} instances remain.` : "All instances placed.");
+        if (!remaining.length) { setPlacementGroupId(null); setMode("select"); }
+        return;
+      }
 
       if (mode === "balloon") {
         // Prefer a highlighted dimension rect over fuzzy nearest-text search.
@@ -1154,13 +1183,18 @@ export default function App() {
           : point;
 
         const resolvedSeed = hit
-          ? { nominal: hit.nominal, tolerance: hit.tolerance, ...(hit.unit ? { unit: hit.unit } : {}) }
+          ? { nominal: hit.nominal, quantity: hit.quantity, tolerance: hit.tolerance, ...(hit.unit ? { unit: hit.unit } : {}) }
           : (() => {
               const dim = findNearestTextDimension(point, textItems, canvasSize);
               return dim
                 ? { ...dim, tolerance: applyGeneralTolerance(dim.nominal, dim.tolerance, dim.unit === "°" ? resolvedTolerances.angle : resolvedTolerances.linear) }
                 : {};
             })();
+
+        if (resolvedSeed.captureError) {
+          setMessage(resolvedSeed.captureError);
+          return;
+        }
 
         const position = balloonSettings.showLeaderLine
           ? getDefaultBalloonPosition(target, balloonSettings.leaderScale)
@@ -1173,7 +1207,7 @@ export default function App() {
           targetY: target.y,
           page: pageNumber,
           unitSystem,
-          seed: resolvedSeed,
+          seed: activeProject?.kind === "cloud" ? { ...resolvedSeed, quantity: 1 } : resolvedSeed,
         });
         setCharacteristics((items) => [...items, next]);
         setSelectedId(next.id);
@@ -1184,7 +1218,7 @@ export default function App() {
         setEditingBalloonId(null);
       }
     },
-    [characteristics, mode, pageNumber, pdfDoc, balloonSettings.leaderScale, balloonSettings.showLeaderLine, unitSystem, dimensionCandidates, canvasSize, textItems, resolvedTolerances],
+    [activeProject?.kind, placementNext, characteristics, mode, pageNumber, pdfDoc, balloonSettings.leaderScale, balloonSettings.showLeaderLine, unitSystem, dimensionCandidates, canvasSize, textItems, resolvedTolerances],
   );
 
   const selectCharacteristic = useCallback((id) => {
@@ -1199,29 +1233,78 @@ export default function App() {
 
   const updateCharacteristic = useCallback((id, patch) => {
     const { applyDefaultTolerance = true, ...fields } = patch;
-    setCharacteristics((items) =>
-      items.map((item) => {
-        if (item.id !== id) return item;
-        const nextType = fields.type ?? item.type;
-        const nextPatch = fields.type && !("method" in fields)
-          ? { ...fields, method: TYPE_DEFAULT_METHOD[nextType] ?? item.method }
-          : fields;
-        const next = { ...item, ...nextPatch };
-        if (!hasCharacteristicUnit(nextType)) next.unit = "";
-        else if (fields.type && !hasCharacteristicUnit(item.type) && !next.unit) next.unit = getDefaultUnit(unitSystem);
-        if (applyDefaultTolerance && "nominal" in fields && !("tolerance" in fields) && nextType === "dimension" && !next.tolerance) {
-          const parsed = parseDimension(next.nominal);
-          if (parsed?.unit && !("unit" in fields)) next.unit = parsed.unit;
+    const selected = characteristics.find((item) => item.id === id);
+    if (applyDefaultTolerance && "nominal" in fields && (fields.type ?? selected?.type) === "dimension") {
+      const captureError = getDimensionCaptureError(fields.nominal);
+      if (captureError) {
+        // Live typing has already updated this field; clear it on commit so the
+        // rejected count cannot become an inspection limit.
+        fields.nominal = "";
+        fields.tolerance = "";
+        setMessage(captureError);
+      }
+    }
+    setCharacteristics((items) => {
+      const selected = items.find((item) => item.id === id);
+      if (!selected) return items;
+      const nextType = fields.type ?? selected.type;
+      const next = { ...selected, ...fields };
+      if (fields.type && !("method" in fields)) next.method = TYPE_DEFAULT_METHOD[nextType] ?? selected.method;
+      if (!hasCharacteristicUnit(nextType)) next.unit = "";
+      else if (fields.type && !hasCharacteristicUnit(selected.type) && !next.unit) next.unit = getDefaultUnit(unitSystem);
+      if (applyDefaultTolerance && "nominal" in fields && nextType === "dimension") {
+        const parsed = parseDimension(next.nominal);
+        if (parsed?.quantity > 1 && !next.instancesExpanded && activeProject?.kind !== "cloud") next.quantity = parsed.quantity;
+        if (parsed?.unit && !("unit" in fields)) next.unit = parsed.unit;
+        if (!("tolerance" in fields) && !next.tolerance) {
           const angle = /°|deg/i.test(String(next.unit || "").trim());
           const table = angle ? resolvedTolerances.angle
             : String(next.unit || "").trim().toUpperCase() === getDefaultUnit(unitSystem) ? resolvedTolerances.linear : {};
-          // Captured requirements may include an explicit tolerance; it wins over defaults.
           next.tolerance = parsed?.tolerance || applyGeneralTolerance(next.nominal, next.tolerance, table);
         }
-        return next;
-      }),
-    );
-  }, [unitSystem, resolvedTolerances]);
+        if (parsed?.quantity > 1) {
+          next.nominal = parsed.nominal;
+          if (parsed.tolerance && !("tolerance" in fields)) next.tolerance = parsed.tolerance;
+        }
+      }
+      const shared = Object.fromEntries(SHARED_REQUIREMENT_FIELDS.map((key) => [key, next[key]]));
+      return items.map((item) => item.id === id ? next : sameRequirement(item, selected) ? { ...item, ...shared } : item);
+    });
+  }, [characteristics, unitSystem, resolvedTolerances, activeProject?.kind]);
+
+  const applyQuantity = useCallback((id, quantity) => {
+    if (activeProject?.kind === "cloud") {
+      setMessage("Repeated dimensions are local-only until cloud occurrence support is available.");
+      return;
+    }
+    if (!isValidOccurrenceQuantity(quantity)) {
+      setMessage(`Quantity must be a whole number from 1 to ${MAX_OCCURRENCE_QUANTITY}.`);
+      return;
+    }
+    const selected = characteristics.find((item) => item.id === id);
+    if (!selected) return;
+    const removed = characteristics.filter((item) => sameRequirement(item, selected) && (item.occurrenceIndex || 1) > quantity);
+    if (removed.some(hasInspectionData) && !window.confirm("Reducing quantity removes trailing instances and their measurements or notes. Continue?")) return;
+    const next = resizeOccurrences(characteristics, id, quantity);
+    setCharacteristics(next);
+    const retained = next.find((item) => sameRequirement(item, selected));
+    if (removed.some((item) => item.id === selectedId)) setSelectedId(retained?.id || null);
+    setEditingBalloonId(null);
+    const unplaced = next.filter((item) => sameRequirement(item, selected) && item.isPlaced === false);
+    setPlacementGroupId(unplaced.length ? (selected.groupId || selected.id) : null);
+    setMode(unplaced.length ? "balloon" : "select");
+    setMessage(unplaced.length ? `Click the target for ${balloonLabel(unplaced[0])}. ${unplaced.length} instances remain; Escape pauses placement.` : "Quantity updated.");
+  }, [activeProject?.kind, characteristics, selectedId]);
+
+  const resumePlacement = useCallback((item) => {
+    if (!characteristics.some((other) => sameRequirement(other, item) && other.isPlaced === false)) {
+      setMessage("All instances are already placed.");
+      return;
+    }
+    setPlacementGroupId(item.groupId || item.id);
+    setMode("balloon");
+    setMessage("Click each instance target. Escape pauses placement; rows remain saved.");
+  }, [characteristics]);
 
   const isAngleUnit = useCallback((unit) => /°|deg/i.test(String(unit || "").trim()), []);
 
@@ -1290,23 +1373,13 @@ export default function App() {
   }, [toleranceOverrides.linearUnitSystem]);
 
   const reassignBalloonNo = useCallback((id, rawValue) => {
-    const nextNo = Number.parseInt(rawValue, 10);
-    if (!Number.isFinite(nextNo) || nextNo < 1) {
+    const nextNo = Number(rawValue);
+    if (!Number.isSafeInteger(nextNo) || nextNo < 1) {
       setMessage("Balloon number must be a positive whole number.");
       return;
     }
 
-    setCharacteristics((items) => {
-      const current = items.find((item) => item.id === id);
-      if (!current || current.balloonNo === nextNo) return items;
-
-      const currentNo = current.balloonNo;
-      return items.map((item) => {
-        if (item.id === id) return { ...item, balloonNo: nextNo };
-        if (item.balloonNo === nextNo) return { ...item, balloonNo: currentNo };
-        return item;
-      });
-    });
+    setCharacteristics((items) => reassignOccurrenceBase(items, id, nextNo));
     setMessage(`Reassigned balloon to ${nextNo}.`);
   }, []);
 
@@ -1362,9 +1435,14 @@ export default function App() {
     const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
 
     if (drag.point === "target") {
-      const detected = findNearestTextDimension({ x, y }, textItems, canvasSize);
+      const row = characteristics.find((item) => item.id === drag.id);
+      const detected = row?.instancesExpanded ? null : findNearestTextDimension({ x, y }, textItems, canvasSize);
+      if (detected?.captureError) {
+        updateCharacteristic(drag.id, { targetX: x, targetY: y });
+        setMessage(detected.captureError);
+        return;
+      }
       if (detected?.nominal) {
-        const row = characteristics.find((item) => item.id === drag.id);
         const unit = detected.unit ?? row?.unit;
         const table = /°|deg/i.test(String(unit || "")) ? resolvedTolerances.angle
           : String(unit || "").trim().toUpperCase() === getDefaultUnit(unitSystem) ? resolvedTolerances.linear : {};
@@ -1373,6 +1451,7 @@ export default function App() {
           targetX: x,
           targetY: y,
           nominal: detected.nominal,
+          ...(activeProject?.kind !== "cloud" && detected.quantity > 1 ? { quantity: detected.quantity } : {}),
           ...(resolvedTol ? { tolerance: resolvedTol } : {}),
           ...(detected.unit ? { unit: detected.unit } : {}),
         });
@@ -1382,7 +1461,7 @@ export default function App() {
     } else {
       updateCharacteristic(drag.id, { x, y });
     }
-  }, [canvasSize, characteristics, resolvedTolerances, textItems, unitSystem, updateCharacteristic]);
+  }, [activeProject?.kind, canvasSize, characteristics, resolvedTolerances, textItems, unitSystem, updateCharacteristic]);
 
   const beginPan = useCallback((event) => {
     if (mode !== "pan" || !scrollRef.current) return;
@@ -1580,17 +1659,25 @@ export default function App() {
     }
 
     if (!CHARACTERISTIC_FIELDS.includes(destination)) return;
+    if (destination === "nominal" && characteristics.find((item) => item.id === selectedId)?.type === "dimension") {
+      const captureError = getDimensionCaptureError(text);
+      if (captureError) { setMessage(captureError); return; }
+    }
     updateCharacteristic(selectedId, { [destination]: text });
     setMessage(`Filled selected row ${fieldLabel(destination)} from PDF text.`);
-  }, [selectedId, selectedText, updateCharacteristic]);
+  }, [characteristics, selectedId, selectedText, updateCharacteristic]);
 
   const addManualRow = useCallback(() => {
-    const next = createCharacteristic({ balloonNo: nextBalloonNo(characteristics), page: pageNumber, unitSystem });
+    const next = createCharacteristic({ balloonNo: nextBalloonNo(characteristics), page: pageNumber, unitSystem, seed: { isPlaced: activeProject?.kind === "cloud" } });
     setCharacteristics((items) => [...items, next]);
     setSelectedId(next.id);
     setEditingBalloonId(null);
+    if (activeProject?.kind !== "cloud") {
+      setPlacementGroupId(next.groupId);
+      setMode("balloon");
+    }
     setMessage(`Added row ${next.balloonNo}. Click the drawing to place its balloon later.`);
-  }, [characteristics, pageNumber, unitSystem]);
+  }, [activeProject?.kind, characteristics, pageNumber, unitSystem]);
 
   const cancelAutoBalloonReview = useCallback(() => {
     setAutoBalloonRect(null);
@@ -1610,6 +1697,8 @@ export default function App() {
 
   const commitAutoBalloonCandidates = useCallback(() => {
     if (!autoBalloonCandidates.length) return;
+    const captureError = autoBalloonCandidates.map((candidate) => getDimensionCaptureError(candidate.label)).find(Boolean);
+    if (captureError) { setMessage(captureError); return; }
 
     const startNo = nextBalloonNo(characteristics);
     const rows = autoBalloonCandidates.map((candidate, index) =>
@@ -1626,6 +1715,7 @@ export default function App() {
           if (!parsed) return {};
           return {
             ...parsed,
+            quantity: activeProject?.kind === "cloud" ? 1 : parsed.quantity,
             tolerance: applyGeneralTolerance(parsed.nominal, parsed.tolerance, parsed.unit === "°" ? resolvedTolerances.angle : resolvedTolerances.linear),
           };
         })(),
@@ -1639,7 +1729,7 @@ export default function App() {
     setAutoBalloonCandidates([]);
     setAutoBalloonReviewOpen(false);
     setMessage(`Added ${rows.length} reviewed balloon${rows.length === 1 ? "" : "s"}. Drag any balloon or target to refine placement.`);
-  }, [autoBalloonCandidates, characteristics, resolvedTolerances, pageNumber, unitSystem]);
+  }, [activeProject?.kind, autoBalloonCandidates, characteristics, resolvedTolerances, pageNumber, unitSystem]);
 
   const loadDemoRows = useCallback(() => {
     const positions = [
@@ -1816,6 +1906,10 @@ export default function App() {
     }
 
     try {
+      if (projectId === activeProject?.id) {
+        assertCloudCompatible(characteristics);
+        if (!await persistActiveDrawing("manual")) return;
+      }
       setMessage("Sharing project...");
       const localWorkspace = await loadProject(projectId);
       if (!localWorkspace) {
@@ -1825,6 +1919,7 @@ export default function App() {
       const localDrawings = await Promise.all(
         localWorkspace.drawings.map((drawing) => loadDrawing(drawing.id))
       );
+      localDrawings.filter(Boolean).forEach((drawing) => assertCloudCompatible(drawing.characteristics || []));
       const cloudProject = await supabaseStore.migrateLocalProjectToCloud(
         orgIds[0],
         localWorkspace.project,
@@ -1836,7 +1931,7 @@ export default function App() {
     } catch (error) {
       setMessage(`Could not share project: ${error.message}`);
     }
-  }, [navigate, orgIds, refreshProjectList, user]);
+  }, [activeProject?.id, characteristics, persistActiveDrawing, navigate, orgIds, refreshProjectList, user]);
 
   const handleManageProject = useCallback((projectId) => {
     navigate(`/projects/${projectId}`);
@@ -2014,19 +2109,16 @@ export default function App() {
 
   const deleteCharacteristic = useCallback((id) => {
     if (!id) return;
-    // Cloud/shared drawings never renumber densely on delete -- balloon
-    // numbers are server-authoritative (see supabaseStore.saveCharacteristics)
-    // and reused numbering across concurrent collaborators is unsafe. Local
-    // drawings keep today's dense resequencing.
-    const isCloud = activeProject?.kind === "cloud";
-    setCharacteristics((items) => {
-      const remaining = items.filter((item) => item.id !== id);
-      return isCloud ? remaining : renumber(remaining);
-    });
-    setSelectedId((current) => (current === id ? null : current));
-    setEditingBalloonId((current) => (current === id ? null : current));
-    setMessage(isCloud ? "Deleted selected balloon." : "Deleted selected balloon and renumbered the table.");
-  }, [activeProject?.kind]);
+    const selected = characteristics.find((item) => item.id === id);
+    if (!selected) return;
+    const group = characteristics.filter((item) => sameRequirement(item, selected));
+    if (group.length > 1 && !window.confirm(`Delete requirement ${balloonLabel(selected)} and all ${group.length} instances?`)) return;
+    setCharacteristics((items) => items.filter((item) => !sameRequirement(item, selected)));
+    if (group.some((item) => item.id === selectedId)) setSelectedId(null);
+    setEditingBalloonId(null);
+    setPlacementGroupId(null);
+    setMessage("Deleted requirement. Other balloon numbers are preserved.");
+  }, [characteristics, selectedId]);
 
   const deleteSelected = useCallback(() => {
     deleteCharacteristic(selectedId);
@@ -2570,7 +2662,7 @@ export default function App() {
                   height={canvasSize.height}
                   showLeaderLine={balloonSettings.showLeaderLine}
                 />
-                {selected?.page === pageNumber && balloonSettings.showLeaderLine ? (
+                {selected?.isPlaced !== false && selected?.page === pageNumber && balloonSettings.showLeaderLine ? (
                   <button
                     className="target-handle"
                     style={{
@@ -2582,14 +2674,14 @@ export default function App() {
                     onPointerUp={endBalloonDrag}
                     onPointerCancel={endBalloonDrag}
                     onClick={(event) => event.stopPropagation()}
-                    title={`Move target for balloon ${selected.balloonNo}`}
+                    title={`Move target for balloon ${balloonLabel(selected)}`}
                   />
                 ) : null}
                 {currentPageBalloons.map((item) => (
                   <button
                     key={item.id}
-                    className={`balloon ${selectedId === item.id ? "selected" : ""}`}
-                    style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%` }}
+                    className={`balloon ${balloonLabel(item).length > 3 ? "long-label" : ""} ${selectedId === item.id ? "selected" : ""}`}
+                    style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, "--balloon-label-length": balloonLabel(item).length }}
                     onPointerDown={(event) => beginBalloonDrag(event, item)}
                     onPointerMove={moveBalloonDrag}
                     onPointerUp={endBalloonDrag}
@@ -2603,14 +2695,14 @@ export default function App() {
                       event.stopPropagation();
                       setSelectedId(item.id);
                       setEditingBalloonId(item.id);
-                      setMessage(`Editing balloon ${item.balloonNo}.`);
+                      setMessage(`Editing balloon ${balloonLabel(item)}.`);
                     }}
-                    title={`Balloon ${item.balloonNo}`}
+                    title={`Balloon ${balloonLabel(item)}`}
                   >
-                    {item.balloonNo}
+                    {balloonLabel(item)}
                   </button>
                 ))}
-                {selected?.page === pageNumber && editingBalloonId === selected.id ? (
+                {selected?.isPlaced !== false && selected?.page === pageNumber && editingBalloonId === selected.id ? (
                   <div
                     className="balloon-actions"
                     style={{
@@ -2703,6 +2795,7 @@ export default function App() {
           </div>
 
           <div className="inspector-section">
+            {placementNext ? <p className="muted" role="status">Place {balloonLabel(placementNext)}: click its target. {characteristics.filter((item) => sameRequirement(item, placementNext) && item.isPlaced === false).length} remain. Escape pauses.</p> : null}
             <div className="section-title">
               <h2>Selected Balloon</h2>
               <button className="icon-button danger" disabled={!selectedId} onClick={deleteSelected} title="Delete selected">
@@ -2713,6 +2806,10 @@ export default function App() {
               <BalloonEditor
                 item={selected}
                 sampleCount={sampleCount}
+                cloud={activeProject?.kind === "cloud"}
+                hasUnplaced={characteristics.some((item) => sameRequirement(item, selected) && item.isPlaced === false)}
+                onQuantity={applyQuantity}
+                onResume={resumePlacement}
                 onChange={(patch) => updateCharacteristic(selected.id, patch)}
                 onReassign={(value) => reassignBalloonNo(selected.id, value)}
                 onSampleChange={(index, value) => updateSample(selected.id, index, value)}

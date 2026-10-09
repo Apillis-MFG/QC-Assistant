@@ -1,3 +1,4 @@
+import { balloonLabel, compareOccurrences, missingOccurrences, resizeOccurrences, assertOccurrenceQuantity } from "./occurrences.js";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import * as XLSX from "xlsx";
 
@@ -57,6 +58,7 @@ export function getStatus(characteristic, sampleCount) {
   if (values.every((value) => value === "")) return "OPEN";
   if (characteristic.type === "note" || characteristic.type === "visual") {
     if (values.some((v) => v !== "" && String(v).toUpperCase() !== "OK")) return "NG";
+    if ((characteristic.quantity || 1) > 1 && !characteristic.instancesExpanded) return "OPEN";
     if (values.every((v) => String(v).toUpperCase() === "OK")) return "OK";
     return "OPEN";
   }
@@ -75,6 +77,7 @@ export function getStatus(characteristic, sampleCount) {
   });
 
   if (failed) return "NG";
+  if ((characteristic.quantity || 1) > 1 && !characteristic.instancesExpanded) return "OPEN";
   return values.every((value) => value !== "") ? "OK" : "OPEN";
 }
 
@@ -89,6 +92,11 @@ export async function exportBalloonedPdf({
   diameter = 24,
 }) {
   if (!pdfBytes) throw new Error("Upload a PDF before exporting.");
+  characteristics.forEach((item) => assertOccurrenceQuantity(item.quantity ?? 1));
+
+  if (missingOccurrences(characteristics) || characteristics.some((item) => item.isPlaced === false)) {
+    throw new Error("Place every required instance before exporting PDF. Create instances or resume placement in the inspector.");
+  }
 
   const pdfDoc = await PDFDocument.load(pdfBytes);
   const font = await pdfDoc.embedFont(BALLOON_STANDARD_FONTS[fontFamily] || StandardFonts.TimesRomanBold);
@@ -103,9 +111,9 @@ export async function exportBalloonedPdf({
     const y = height - item.y * height;
     const targetX = (item.targetX ?? item.x) * width;
     const targetY = height - (item.targetY ?? item.y) * height;
-    const radius = item.balloonNo > 99 ? baseRadius * 1.2 : baseRadius;
-    const label = String(item.balloonNo);
-    const itemFontSize = item.balloonNo > 99 ? fontSize * (7.5 / 8.5) : fontSize;
+    const label = balloonLabel(item);
+    const radius = label.length > 3 ? baseRadius * 1.5 : baseRadius;
+    const itemFontSize = Math.min(fontSize, (radius * 1.6) / font.widthOfTextAtSize(label, 1));
     const textWidth = font.widthOfTextAtSize(label, itemFontSize);
     const leader = showLeaderLine ? getLeaderGeometry({ x, y, targetX, targetY, radius }) : null;
 
@@ -141,6 +149,7 @@ export async function exportBalloonedPdf({
 }
 
 export function exportInspectionWorkbook({ metadata, characteristics, sampleCount }) {
+  characteristics.forEach((item) => assertOccurrenceQuantity(item.quantity ?? 1));
   const rows = [];
   rows.push(["", "", "", "", "FIRST ARTICLE INSPECTION REPORT"]);
   rows.push([]);
@@ -166,15 +175,18 @@ export function exportInspectionWorkbook({ metadata, characteristics, sampleCoun
     "Notes",
   ]);
 
-  characteristics
+  // An unconfirmed repeat count still needs every required measurement row.
+  const exportRows = characteristics.reduce((items, item) => (item.quantity || 1) > 1 && !item.instancesExpanded
+    ? resizeOccurrences(items, item.id, item.quantity) : items, characteristics);
+  exportRows
     .slice()
-    .sort((a, b) => a.balloonNo - b.balloonNo)
+    .sort(compareOccurrences)
     .forEach((item) => {
       const { usl, lsl } = getLimits(item);
       const values = Array.from({ length: sampleCount }, (_, index) => item.samples[index] ?? "");
       const numericValues = values.map(parseNumber).filter((value) => value !== null);
       rows.push([
-        item.balloonNo,
+        balloonLabel(item),
         item.type,
         item.unit,
         item.nominal,
@@ -218,11 +230,11 @@ export function exportInspectionWorkbook({ metadata, characteristics, sampleCoun
   XLSX.writeFile(workbook, `${metadata.drawingNo || "inspection"}_FAI_Report.xlsx`);
 }
 
-function overallStatus(characteristics, sampleCount) {
+export function overallStatus(characteristics, sampleCount) {
   if (!characteristics.length) return "OPEN";
   const statuses = characteristics.map((item) => getStatus(item, sampleCount));
   if (statuses.includes("NG")) return "FAIL";
-  if (statuses.includes("OPEN")) return "OPEN";
+  if (statuses.includes("OPEN") || missingOccurrences(characteristics)) return "OPEN";
   return "PASS";
 }
 

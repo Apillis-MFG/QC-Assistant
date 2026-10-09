@@ -1,3 +1,4 @@
+import { normalizeOccurrence } from "./occurrences.js";
 import { ZOOM_DEFAULT, normalizeUnitSystem } from "./constants.js";
 
 const DB_NAME = "qca_projects_v1";
@@ -77,6 +78,7 @@ export async function loadDrawing(drawingId) {
   if (!drawing) return null;
   return {
     ...drawing,
+    characteristics: (drawing.characteristics || []).map(normalizeOccurrence),
     unitSystem: normalizeUnitSystem(drawing.unitSystem),
     pdfBytes: pdf?.pdfBytes || null,
   };
@@ -220,7 +222,7 @@ function normalizeDrawing(projectId, drawing) {
       linearUnitSystem: normalizeUnitSystem(drawing.toleranceOverrides?.linearUnitSystem),
     },
     sampleCount: drawing.sampleCount || 5,
-    characteristics: Array.isArray(drawing.characteristics) ? drawing.characteristics : [],
+    characteristics: Array.isArray(drawing.characteristics) ? drawing.characteristics.map(normalizeOccurrence) : [],
     pageNumber: drawing.pageNumber || 1,
     zoom: drawing.zoom || ZOOM_DEFAULT,
     status: drawing.status || "OPEN",

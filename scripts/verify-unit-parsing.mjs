@@ -15,7 +15,10 @@ for (const [text, nominal, tolerance] of [
   ["-.125 ±.005", "-0.125", "±0.005"],
   ["25.00 ±0.13", "25.00", "±0.13"],
   ["Ø12.00 +0.05/-0.02", "12.00", "+0.05/-0.02"],
-]) assert.deepEqual(parseDimension(text), { nominal, tolerance }, text);
+]) {
+  const parsed = parseDimension(text);
+  assert.deepEqual({ nominal: parsed.nominal, tolerance: parsed.tolerance }, { nominal, tolerance }, text);
+}
 
 for (const text of [".125", "R.125", "Ø.125", "∅.125", ".125 ±.005", "-.125"])
   assert.equal(getAutoBalloonLabel(text), text);

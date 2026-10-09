@@ -1,3 +1,4 @@
+import { balloonLabel, compareOccurrences, MAX_OCCURRENCE_QUANTITY } from "../lib/occurrences.js";
 import { memo, useMemo, useRef } from "react";
 import { X, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
@@ -884,15 +885,15 @@ export function MeasurementWorkspace({
               {currentPageBalloons.map((item) => (
                 <button
                   key={item.id}
-                  className={`balloon measurement-balloon ${selectedId === item.id ? "selected" : ""}`}
-                  style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%` }}
+                  className={`balloon ${balloonLabel(item).length > 3 ? "long-label" : ""} measurement-balloon ${selectedId === item.id ? "selected" : ""}`}
+                  style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, "--balloon-label-length": balloonLabel(item).length }}
                   onClick={(event) => {
                     event.stopPropagation();
                     onSelect(item.id);
                   }}
-                  title={`Select balloon ${item.balloonNo}`}
+                  title={`Select balloon ${balloonLabel(item)}`}
                 >
-                  {item.balloonNo}
+                  {balloonLabel(item)}
                 </button>
               ))}
             </div>
@@ -1029,7 +1030,7 @@ function UnitSelect({ item, readOnly = false, onChange }) {
     <select
       value={unit}
       disabled={readOnly || !hasUnit}
-      aria-label={`Unit for balloon ${item.balloonNo}`}
+      aria-label={`Unit for balloon ${balloonLabel(item)}`}
       onChange={readOnly || !hasUnit ? undefined : (event) => onChange(event.target.value)}
     >
       <option value="">—</option>
@@ -1053,10 +1054,25 @@ function NominalInput({ value, disabled, onChange }) {
   );
 }
 
-export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampleChange }) {
+export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampleChange, onQuantity, onResume, cloud, hasUnplaced }) {
   const { usl, lsl } = getLimits(item);
   return (
     <div className="editor-grid">
+      <form className="span-2" key={`${item.groupId || item.id}-${item.quantity || 1}`} onSubmit={(event) => {
+        event.preventDefault();
+        onQuantity(item.id, Number(new FormData(event.currentTarget).get("quantity")));
+      }}>
+        <label>Quantity (feature locations per part)
+          <input name="quantity" type="number" min="1" max={MAX_OCCURRENCE_QUANTITY} step="1" defaultValue={item.quantity || 1} disabled={cloud} />
+        </label>
+        <button type="submit" className="button secondary" disabled={cloud}>
+          {item.instancesExpanded ? "Update instance count" : "Create instances"}
+        </button>
+        {cloud ? <p className="muted">Repeated dimensions are local-only until cloud occurrence support is available.</p> : null}
+        {(item.quantity || 1) > 1 && !item.instancesExpanded ? <p className="muted">Create {item.quantity} instances to inspect every location. Quantity does not change sample count.</p> : null}
+        {item.isPlaced === false ? <p className="muted">{balloonLabel(item)} is unplaced.</p> : null}
+        {!cloud && hasUnplaced ? <button type="button" className="button secondary" onClick={() => onResume(item)}>Resume placement</button> : null}
+      </form>
       <label>
         Balloon #
         <input
@@ -1135,15 +1151,16 @@ const CharacteristicRow = memo(function CharacteristicRow({
       className={selectedId === item.id ? "row-selected" : ""}
       onClick={() => onSelect(item.id)}
     >
-      {readOnly ? (
-        <td className="id-cell locked-id">{item.balloonNo}</td>
+      {readOnly || item.instancesExpanded ? (
+        <td className="id-cell locked-id">{balloonLabel(item)}{item.isPlaced === false ? <span className="muted"> Unplaced</span> : null}</td>
       ) : (
         <td className="id-cell">
+          {item.isPlaced === false ? <span className="muted"> Unplaced</span> : null}
           <input
             type="number"
             min="1"
             value={item.balloonNo}
-            aria-label={`Reassign balloon ${item.balloonNo}`}
+            aria-label={`Reassign balloon ${balloonLabel(item)}`}
             onClick={(event) => event.stopPropagation()}
             onChange={(event) => onReassign(item.id, event.target.value)}
           />
@@ -1167,7 +1184,7 @@ const CharacteristicRow = memo(function CharacteristicRow({
         <ToleranceHalfInput
           value={toleranceParts.upper}
           disabled={readOnly}
-          label={`Upper tolerance for balloon ${item.balloonNo}`}
+          label={`Upper tolerance for balloon ${balloonLabel(item)}`}
           onChange={(upper) => onChange(item.id, { tolerance: formatTolerance(upper, toleranceParts.lower) })}
         />
       </td>
@@ -1175,7 +1192,7 @@ const CharacteristicRow = memo(function CharacteristicRow({
         <ToleranceHalfInput
           value={toleranceParts.lower}
           disabled={readOnly}
-          label={`Lower tolerance for balloon ${item.balloonNo}`}
+          label={`Lower tolerance for balloon ${balloonLabel(item)}`}
           onChange={(lower) => onChange(item.id, { tolerance: formatTolerance(toleranceParts.upper, lower) })}
         />
       </td>
@@ -1207,7 +1224,7 @@ const CharacteristicRow = memo(function CharacteristicRow({
               event.stopPropagation();
               onDelete(item.id);
             }}
-            title={`Delete balloon ${item.balloonNo}`}
+            title={`Delete balloon ${balloonLabel(item)}`}
           >
             <Trash2 size={14} />
           </button>
@@ -1230,7 +1247,7 @@ export function CharacteristicTable({
   onDelete,
 }) {
   const sorted = useMemo(
-    () => characteristics.slice().sort((a, b) => a.balloonNo - b.balloonNo),
+    () => characteristics.slice().sort(compareOccurrences),
     [characteristics],
   );
 

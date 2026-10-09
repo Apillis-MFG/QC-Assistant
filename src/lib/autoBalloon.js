@@ -1,3 +1,4 @@
+import { compareOccurrences } from "./occurrences.js";
 import {
   AUTO_BALLOON_EDGE_OFFSET,
   AUTO_BALLOON_LEADER_RATIO,
@@ -7,7 +8,7 @@ import {
   DRAWING_NUMBER_PATTERN,
   BALLOON_MARGIN,
 } from "./constants.js";
-import { clamp, getTextItemBounds } from "./utils.js";
+import { clamp, getTextItemBounds, parseDimension, getDimensionCaptureError } from "./utils.js";
 
 export function getEmbeddedAutoBalloonCandidates({ textItems, canvasSize, selectionRect }) {
   return textItems
@@ -78,7 +79,8 @@ export function getAutoBalloonLabel(value) {
     .trim();
 
   if (!label || label.length > AUTO_BALLOON_MAX_LABEL_LENGTH) return "";
-  if (!DRAWING_NUMBER_PATTERN.test(label)) return "";
+  if (getDimensionCaptureError(label)) return "";
+  if (!DRAWING_NUMBER_PATTERN.test(label) && !(parseDimension(label)?.quantity > 1)) return "";
   return label;
 }
 
@@ -251,8 +253,10 @@ export function nextBalloonNo(items) {
 }
 
 export function renumber(items) {
-  return items
-    .slice()
-    .sort((a, b) => a.balloonNo - b.balloonNo)
-    .map((item, index) => ({ ...item, balloonNo: index + 1 }));
+  const numbers = new Map();
+  return items.slice().sort(compareOccurrences).map((item) => {
+    const groupId = item.groupId || item.id;
+    if (!numbers.has(groupId)) numbers.set(groupId, numbers.size + 1);
+    return { ...item, balloonNo: numbers.get(groupId) };
+  });
 }

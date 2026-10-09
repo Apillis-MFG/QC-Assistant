@@ -1,5 +1,6 @@
 import { BALLOON_OFFSET, BALLOON_MARGIN, normalizeUnitSystem } from "./constants.js";
 import { PROJECT_LIMITS } from "./projectStore.js";
+import { isValidOccurrenceQuantity, MAX_OCCURRENCE_QUANTITY } from "./occurrences.js";
 
 export function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -257,13 +258,29 @@ export function getDefaultBalloonPosition(target, leaderScale = 1) {
   };
 }
 
+const REPEAT_PREFIX = /^(\d+(?:[.,]\d+)?|[.,]\d+)\s*[xX×]/;
+
+export function getDimensionCaptureError(text) {
+  const value = String(text || "").replace(/\s+/g, " ").trim();
+  const prefix = value.match(REPEAT_PREFIX);
+  if (!prefix) return "";
+  if (!isValidOccurrenceQuantity(Number(prefix[1].replace(",", ".")))) {
+    return `Quantity must be a whole number from 1 to ${MAX_OCCURRENCE_QUANTITY}. Enter the requirement and quantity manually.`;
+  }
+  return parseDimension(value) ? "" : "Unsupported repeated dimension. Enter the requirement and quantity manually; the repeat count was not captured as nominal.";
+}
+
 export function parseDimension(text) {
   const s = String(text || "").replace(/\s+/g, " ").trim();
   if (!s) return null;
 
-  // Strip "Nx" quantity prefix before a value: "2x10.0" → "10.0", "4xR25" → "R25"
-  // Matches an integer followed by x/X/× and then a digit or type prefix.
-  const withoutRepeat = s.replace(/^\d+\s*[xX×]\s*(?=[øØ∅RrMm\d]|\.\d)/i, "");
+  // Only an entire leading quantity + dimension is a suggestion. Products and
+  // thread-pitch expressions remain ambiguous and require manual quantity.
+  const repeat = s.match(/^(\d+)\s*[xX×]\s*((?:[øØ∅Rr]\s*)?(?:\d+(?:[.,]\d+)?|[.,]\d+)(?:\s*°)?(?:\s*(?:MAX|MIN|(?:±|\+\s*[/\\]?\s*-)\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)|\+\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*\/?\s*-\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)))?)$/i);
+  // Never fall through to reading a rejected repeat count as the nominal value.
+  if (REPEAT_PREFIX.test(s) && (!repeat || !isValidOccurrenceQuantity(Number(repeat[1])))) return null;
+  const quantity = repeat ? Number(repeat[1]) : 1;
+  const withoutRepeat = repeat ? repeat[2] : s;
 
   // Strip common dimension prefixes: ø/Ø/∅ (diameter), R/r (radius), M/m (metric thread)
   const core = withoutRepeat
@@ -278,7 +295,7 @@ export function parseDimension(text) {
   const normalizeDecimal = (value) => value.replace(/\s+/g, "").replace(",", ".").replace(/^([+-]?)\./, "$10.");
   const nominal = normalizeDecimal(nominalMatch[1]);
   const suffix = core.slice(nominalMatch[0].length).trim();
-  const dimension = { nominal, ...(suffix.startsWith("°") ? { unit: "°" } : {}) };
+  const dimension = { nominal, quantity, ...(suffix.startsWith("°") ? { unit: "°" } : {}) };
   const after = suffix.replace(/^°\s*/, "");
 
   // MAX / MIN suffix
@@ -315,6 +332,8 @@ export function findNearestTextDimension(point, textItems, canvasSize, radius = 
 
   let nominalOnly = null;
   for (const { item } of nearby) {
+    const captureError = getDimensionCaptureError(item.text);
+    if (captureError) return { captureError };
     const parsed = parseDimension(item.text);
     if (!parsed) continue;
     if (parsed.tolerance) return parsed;

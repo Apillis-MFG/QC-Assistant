@@ -2,7 +2,7 @@
 
 Date: 2026-10-08  
 Product: QC Assistant  
-Status: Planned; feature development deferred  
+Status: Local implementation ready for review; cloud occurrence support deferred
 Documentation issue: [#28](https://github.com/Apillis-MFG/QC-Assistant/issues/28)
 
 ## Outcome and product rationale
@@ -15,7 +15,7 @@ An engineer captures a repeated requirement such as `3X Ø10 ±0.1`, confirms qu
 
 Quantity means feature locations on one part. Sample count means inspected parts. For quantity 3 and sample count 5, create three rows with five measurement cells each: 15 measurements total.
 
-This document plans future work only. No application changes, migrations, or deployments accompany it. Create implementation issues for the slices below and follow `WORKFLOW.md` when development starts.
+The local implementation follows this plan in [#29](https://github.com/Apillis-MFG/QC-Assistant/issues/29), with slices [#30](https://github.com/Apillis-MFG/QC-Assistant/issues/30), [#31](https://github.com/Apillis-MFG/QC-Assistant/issues/31), and [#32](https://github.com/Apillis-MFG/QC-Assistant/issues/32). Cloud occurrence support remains deferred: cloud drawings disable expansion, and local projects containing repeated requirements cannot be shared. No migration or deployment accompanies this implementation.
 
 ## Lessons from SOLIDWORKS Inspection
 
@@ -173,4 +173,31 @@ Shared-balloon presentation, generic multi-characteristic grouping, arbitrary su
 
 Start with manual quantity and expansion; complete placement and exports before release. Then wire quantity suggestions into capture. Resolve cloud support versus explicit guards before enabling sharing of grouped drawings.
 
-Follow `WORKFLOW.md` for each implementation slice. Keep state in `App.jsx`, deterministic inspection math in `src/lib/exporters.js`, and CSS tokens in `src/styles.css`. This document is a proposal for future implementation, not a claim that the acceptance checks have passed.
+Follow `WORKFLOW.md` for each implementation slice. Keep state in `App.jsx`, deterministic inspection math in `src/lib/exporters.js`, and CSS tokens in `src/styles.css`. This document records the design; the verification record below describes checks actually performed.
+
+
+## Implementation verification — 2026-10-09
+
+Branch: `feature/repeated-dimension-balloons`.
+
+Implemented the local occurrence model, explicit quantity expansion/resizing, shared requirement edits, independent inspection fields, group base swaps, stable deletion, resumable placement, capture suggestions, PDF placement guard, Excel text identifiers, and completeness-aware overall status. Pure occurrence helpers live in `src/lib/occurrences.js`; application state remains in `App.jsx` and inspection evaluation remains in `src/lib/exporters.js`.
+
+Unexpanded quantity suggestions export every intended occurrence to Excel, including empty required rows; overall result stays OPEN unless a recorded measurement already fails. PDF export requires explicit expansion and all placements. Quantity controls accept 1–1000 locations. Expanded table rows display derived identifiers; edit the integer group base in the inspector.
+
+Verification passed:
+
+- `corepack pnpm --config.verify-deps-before-run=never build` (the pnpm executable is absent from PATH; this runs the configured Vite build without reinstalling dependencies).
+- `node scripts/verify-repeated-dimensions.mjs`: quantity parsing/ambiguity, legacy normalization, labels/tuple sorting, expansion/resizing, IDs and measurements, group swaps/renumbering, missing-instance status, PDF/cloud guards, numeric MAX/MIN/null/partial sample and note/visual branches.
+- `node scripts/verify-unit-parsing.mjs`: existing parsing and inspection-math regression checks, adjusted for the parser's additive quantity field.
+- With the local dev server running, `node scripts/verify-repeated-dimensions-browser.mjs`: explicit expansion, independent measurements/notes, shared requirement edits, placement pause/reload/resume across pages, base swaps, count-reduction cancellation and retained IDs, group deletion, direct PDF quantity capture, reviewed candidate preservation, PDF coordinate assertions and Excel text IDs/limits/MIN/MAX/overall status.
+- Visually inspected screen labels, rendered multi-page PDF labels/leaders including `105.12`, and exported workbook rows. The browser script writes fixtures to `/tmp/qca-repeated-dimensions/`.
+
+Existing verification limitation: `scripts/verify-drawing-units.mjs` fails at line 86, expecting “Apply all rows (3)” but receiving “Apply all rows (1)”. The identical failure was reproduced against an isolated unmodified `develop` baseline at commit `bcb8efa6e714`; no unrelated tolerance changes were made. Cloud schema/realtime/concurrency behavior was not exercised because grouped cloud support is explicitly disabled.
+
+## Audit fixes — 2026-10-09
+
+Unsupported leading repeat expressions now return no parsed dimension instead of treating the count as nominal. Callouts such as `3X Ø10 mm`, `2X M10`, `3X Ø10 H7`, and `3X 10 ±0.1 mm` require manual nominal and quantity entry. Direct drawing capture, committed nominal edits, selected-text capture, and reviewed candidate commits report the rejection; committed invalid numeric requirements clear their nominal and tolerance so status remains OPEN.
+
+The supported quantity range is defined once as 1–1000 and enforced by parsing, occurrence resizing, quantity controls, and both exports. Existing oversized stored counts remain intact for correction. Completeness checks return incomplete without allocating arrays for invalid quantities, and exports validate every count before generating rows or loading the PDF.
+
+Verification passed: focused repeated-dimension and unit/math scripts, production build, whitespace check, and the full browser/export script. New cases cover the four audited callouts, multiplication/thread ambiguity, quantity boundaries through `Number.MAX_SAFE_INTEGER`, rejected drawing/manual capture, export error messages for an oversized saved count, and recovery through the quantity control. Multi-page PDF labels/leaders and Excel rows/limits/MIN/MAX/status were visually inspected. No dependencies or cloud behavior changed; the existing drawing-unit verification limitation above remains.
