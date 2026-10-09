@@ -261,9 +261,12 @@ export function parseDimension(text) {
   const s = String(text || "").replace(/\s+/g, " ").trim();
   if (!s) return null;
 
-  // Strip "Nx" quantity prefix before a value: "2x10.0" → "10.0", "4xR25" → "R25"
-  // Matches an integer followed by x/X/× and then a digit or type prefix.
-  const withoutRepeat = s.replace(/^\d+\s*[xX×]\s*(?=[øØ∅RrMm\d]|\.\d)/i, "");
+  // Only an entire leading quantity + dimension is a suggestion. Products and
+  // thread-pitch expressions remain ambiguous and require manual quantity.
+  const repeat = s.match(/^(\d+)\s*[xX×]\s*((?:[øØ∅Rr]\s*)?(?:\d+(?:[.,]\d+)?|[.,]\d+)(?:\s*°)?(?:\s*(?:MAX|MIN|(?:±|\+\s*[/\\]?\s*-)\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)|\+\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*\/?\s*-\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)))?)$/i);
+  const quantity = repeat && Number.isSafeInteger(Number(repeat[1])) && Number(repeat[1]) > 0
+    ? Number(repeat[1]) : 1;
+  const withoutRepeat = repeat ? repeat[2] : s;
 
   // Strip common dimension prefixes: ø/Ø/∅ (diameter), R/r (radius), M/m (metric thread)
   const core = withoutRepeat
@@ -278,7 +281,7 @@ export function parseDimension(text) {
   const normalizeDecimal = (value) => value.replace(/\s+/g, "").replace(",", ".").replace(/^([+-]?)\./, "$10.");
   const nominal = normalizeDecimal(nominalMatch[1]);
   const suffix = core.slice(nominalMatch[0].length).trim();
-  const dimension = { nominal, ...(suffix.startsWith("°") ? { unit: "°" } : {}) };
+  const dimension = { nominal, quantity, ...(suffix.startsWith("°") ? { unit: "°" } : {}) };
   const after = suffix.replace(/^°\s*/, "");
 
   // MAX / MIN suffix

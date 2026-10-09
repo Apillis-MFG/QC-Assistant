@@ -1,3 +1,4 @@
+import { balloonLabel } from "../lib/occurrences.js";
 import { useEffect, useRef, useState } from "react";
 import { X, FilePlus2, ZoomIn, ZoomOut, Upload, HelpCircle, Keyboard, BookOpen, History } from "lucide-react";
 
@@ -201,7 +202,7 @@ export function LeaderLayer({ balloons, selectedId, width, height, balloonDiamet
           y: item.y * height,
           targetX: targetX * width,
           targetY: targetY * height,
-          radius,
+          radius: balloonLabel(item).length > 3 ? radius * 1.5 : radius,
         });
         return (
           <line
