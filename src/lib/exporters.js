@@ -25,37 +25,106 @@ export function parseNumber(value) {
 }
 
 export function getLimits(characteristic) {
-  const nominal = parseNumber(characteristic.nominal);
-  const tolerance = parseNumber(characteristic.tolerance);
-  const text = String(characteristic.tolerance || "").toUpperCase();
-
-  if (nominal === null || tolerance === null) {
+  if (!characteristic) return { usl: "", lsl: "" };
+  if (characteristic.type === "note" || characteristic.type === "visual") {
     return { usl: "", lsl: "" };
   }
 
-  if (text.includes("MAX")) return { usl: tolerance, lsl: "" };
-  if (text.includes("MIN")) return { usl: "", lsl: tolerance };
+  const nomStr = String(characteristic.nominal ?? "").trim();
+  const tolStr = String(characteristic.tolerance ?? "").trim();
+  const nomUpper = nomStr.toUpperCase();
+  const tolUpper = tolStr.toUpperCase();
 
-  // Asymmetric tolerance: "+0.5/-0.2" → different upper and lower offsets
-  const asymMatch = String(characteristic.tolerance || "").match(
-    /\+\s*((?:\d+(?:\.\d+)?|\.\d+))\s*[/]?\s*-\s*((?:\d+(?:\.\d+)?|\.\d+))/,
+  const nominalNum = parseNumber(characteristic.nominal);
+  const tolNum = parseNumber(characteristic.tolerance);
+
+  // 1. Single limit MAX (e.g. "25 MAX" in nominal, "MAX" in tolerance, or "3 MAX" in tolerance)
+  if (tolUpper.includes("MAX") || nomUpper.includes("MAX")) {
+    if (tolUpper.includes("MAX") && tolNum !== null) {
+      return { usl: tolNum, lsl: "" };
+    }
+    if (nominalNum !== null) {
+      return { usl: nominalNum, lsl: "" };
+    }
+    return { usl: "", lsl: "" };
+  }
+
+  // 2. Single limit MIN (e.g. "0.5 MIN" in nominal, "MIN" in tolerance, or "0.5 MIN" in tolerance)
+  if (tolUpper.includes("MIN") || nomUpper.includes("MIN")) {
+    if (tolUpper.includes("MIN") && tolNum !== null) {
+      return { usl: "", lsl: tolNum };
+    }
+    if (nominalNum !== null) {
+      return { usl: "", lsl: nominalNum };
+    }
+    return { usl: "", lsl: "" };
+  }
+
+  // Without a valid nominal number, symmetric or offset tolerances cannot compute limits.
+  if (nominalNum === null) {
+    return { usl: "", lsl: "" };
+  }
+
+  // 3. Two signed offsets (asymmetric bilateral): e.g. "+0.5/-0.2", "+0.05 / -0", "-0.02/+0.05", "+0.05/+0.01", "-0.01/-0.05"
+  const dualMatch = tolStr.match(
+    /^([+-]\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))\s*[/,\s]\s*([+-]?\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))$/,
+  ) || tolStr.match(
+    /^([+-]?\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))\s*[/,\s]\s*([+-]\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))$/,
   );
-  if (asymMatch) {
+
+  if (dualMatch) {
+    const parseSigned = (str) => {
+      const clean = str.replace(/\s+/g, "").replace(",", ".");
+      return parseFloat(clean);
+    };
+    const offset1 = parseSigned(dualMatch[1]);
+    const offset2 = parseSigned(dualMatch[2]);
+    if (!Number.isNaN(offset1) && !Number.isNaN(offset2)) {
+      const upperOffset = Math.max(offset1, offset2);
+      const lowerOffset = Math.min(offset1, offset2);
+      return {
+        usl: round(nominalNum + upperOffset),
+        lsl: round(nominalNum + lowerOffset),
+      };
+    }
+  }
+
+  // 4. Unilateral single signed offset without slash (e.g. "+0.05" or "-0.02")
+  const isExplicitSymmetric = /^(?:[±]|\+\s*[/\\-]\s*-|\+\s*-\s*)/.test(tolStr);
+  const unilateralPlus = !isExplicitSymmetric && /^\+\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)$/.test(tolStr);
+  const unilateralMinus = !isExplicitSymmetric && /^-\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)$/.test(tolStr);
+
+  if (unilateralPlus && tolNum !== null) {
     return {
-      usl: round(nominal + parseFloat(asymMatch[1])),
-      lsl: round(nominal - parseFloat(asymMatch[2])),
+      usl: round(nominalNum + Math.abs(tolNum)),
+      lsl: nominalNum,
+    };
+  }
+  if (unilateralMinus && tolNum !== null) {
+    return {
+      usl: nominalNum,
+      lsl: round(nominalNum - Math.abs(tolNum)),
     };
   }
 
+  // 5. Symmetric tolerance (e.g. "±0.13", "+/-0.13", or numeric "0.13")
+  if (tolNum === null) {
+    return { usl: "", lsl: "" };
+  }
+
+  const absTol = Math.abs(tolNum);
   return {
-    usl: round(nominal + tolerance),
-    lsl: round(nominal - tolerance),
+    usl: round(nominalNum + absTol),
+    lsl: round(nominalNum - absTol),
   };
 }
 
 export function getStatus(characteristic, sampleCount) {
-  const values = Array.from({ length: sampleCount }, (_, index) => characteristic.samples[index] ?? "");
+  if (!characteristic || !sampleCount || sampleCount <= 0) return "OPEN";
+  const samples = characteristic.samples || {};
+  const values = Array.from({ length: sampleCount }, (_, index) => samples[index] ?? "");
   if (values.every((value) => value === "")) return "OPEN";
+
   if (characteristic.type === "note" || characteristic.type === "visual") {
     if (values.some((v) => v !== "" && String(v).toUpperCase() !== "OK")) return "NG";
     if ((characteristic.quantity || 1) > 1 && !characteristic.instancesExpanded) return "OPEN";
@@ -71,8 +140,8 @@ export function getStatus(characteristic, sampleCount) {
     if (value === "") return false;
     const n = parseNumber(value);
     if (n === null) return true;
-    if (usl !== "" && n > Number(usl)) return true;
-    if (lsl !== "" && n < Number(lsl)) return true;
+    if (usl !== "" && n > Number(usl) + 1e-9) return true;
+    if (lsl !== "" && n < Number(lsl) - 1e-9) return true;
     return false;
   });
 
@@ -238,8 +307,9 @@ export function overallStatus(characteristics, sampleCount) {
   return "PASS";
 }
 
-function round(value) {
-  return Math.round(value * 10000) / 10000;
+function round(value, decimals = 6) {
+  const factor = 10 ** decimals;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
 }
 
 function withoutExtension(fileName) {
