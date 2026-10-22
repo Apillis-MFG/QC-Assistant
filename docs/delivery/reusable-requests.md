@@ -1,6 +1,6 @@
 # QC Assistant Reusable Requests
 
-This library defines the prompt alias templates and expected behaviors for QC Assistant chat shortcuts. Match names case-insensitively.
+This library defines the prompt alias templates, sample invocations, and expected behaviors for QC Assistant chat shortcuts. Match names case-insensitively.
 
 ---
 
@@ -9,6 +9,14 @@ This library defines the prompt alias templates and expected behaviors for QC As
 **Intent**: Read-only current-state review; recommend the single next achievable slice aligned with trust, distribution, or activation.
 
 **Default Target**: Current workspace state, active spec (`SPEC.md`), and issue backlog.
+
+**Sample Invocations**:
+```text
+/Whatnext
+```
+```text
+/Whatnext focus on export fidelity and PDF balloon alignment
+```
 
 **Template**:
 ```text
@@ -26,6 +34,14 @@ Review current repository state and recommend the next smallest shippable slice.
 
 **Default Target**: Supplied component, function, or file (e.g. `src/exporters.js`, `getLimits`, `src/App.jsx`).
 
+**Sample Invocations**:
+```text
+/Explain getLimits handling of unilateral MAX/MIN tolerances in src/exporters.js
+```
+```text
+/Explain how relative balloon coordinates (0..1) map to PDF page points in exportBalloonedPdf
+```
+
 **Template**:
 ```text
 Explain the behavior, edge cases, and call paths for: <TARGET>.
@@ -41,6 +57,14 @@ Explain the behavior, edge cases, and call paths for: <TARGET>.
 **Intent**: Read-only investigation of a reported symptom or defect; provide evidence, root cause, and minimal fix proposal.
 
 **Default Target**: Reported bug or symptom.
+
+**Sample Invocations**:
+```text
+/Investigate balloon coordinates shifting on landscape drawings when printed or exported
+```
+```text
+/Investigate why Tesseract OCR fails on rotated drawing title blocks
+```
 
 **Template**:
 ```text
@@ -58,6 +82,14 @@ Investigate the following symptom: <SYMPTOM / TARGET>.
 **Intent**: Implement the requested feature or enhancement within the scoped boundaries; verify against acceptance criteria.
 
 **Default Target**: Specified feature, component, or enhancement.
+
+**Sample Invocations**:
+```text
+/Build leader line arrowheads pointing to feature targets when balloon is placed
+```
+```text
+/Build support for imperial-to-metric dimension toggle in the inspector panel
+```
 
 **Template**:
 ```text
@@ -77,6 +109,14 @@ Implement the requested behavior: <TARGET>.
 
 **Default Target**: Specific bug, failing check, or math edge case.
 
+**Sample Invocations**:
+```text
+/Fix getStatus evaluating empty sample rows as OK instead of OPEN
+```
+```text
+/Fix leader line endpoint snapping to top-left when dragging balloons near canvas edge
+```
+
 **Template**:
 ```text
 Fix the identified failure: <TARGET>.
@@ -93,6 +133,14 @@ Fix the identified failure: <TARGET>.
 **Intent**: Run the smallest relevant workflow checks and verification scripts for the target or working tree; no source edits.
 
 **Default Target**: Affected files, `pnpm build`, or verification scripts in `scripts/`.
+
+**Sample Invocations**:
+```text
+/Test exporters.js math verification and run pnpm build
+```
+```text
+/Test scripts/verify-unit-parsing.mjs
+```
 
 **Template**:
 ```text
@@ -111,6 +159,14 @@ Run verification checks for: <TARGET or current diff>.
 
 **Default Target**: Untested logic in `src/exporters.js`, unit parsing, or coordinate transformation.
 
+**Sample Invocations**:
+```text
+/Addtests script for drawing unit conversions and tolerance limits
+```
+```text
+/Addtests test cases for unilateral tolerances with MAX/MIN suffixes in exporters.js
+```
+
 **Template**:
 ```text
 Add deterministic verification coverage for: <TARGET>.
@@ -126,6 +182,14 @@ Add deterministic verification coverage for: <TARGET>.
 **Intent**: Read-only code audit of the target or working tree diff against project rules and architecture boundaries.
 
 **Default Target**: Current git diff or specified file/module.
+
+**Sample Invocations**:
+```text
+/Review working tree diff against flat state and CSS token rules
+```
+```text
+/Review src/components/DrawingCanvas.jsx against coordinate mapping contracts
+```
 
 **Template**:
 ```text
@@ -144,6 +208,14 @@ Perform a thorough code review of: <TARGET or current diff>.
 
 **Default Target**: Current diff or cloud/auth boundary (`supabase/`, `src/lib/supabaseStore.js`).
 
+**Sample Invocations**:
+```text
+/Security verify drawing PDF and characteristics remain client-side only
+```
+```text
+/Security audit Supabase RLS policies in supabase/migrations/
+```
+
 **Template**:
 ```text
 Review security and data privacy boundaries for: <TARGET>.
@@ -161,6 +233,14 @@ Review security and data privacy boundaries for: <TARGET>.
 
 **Default Target**: Completed feature or current working branch.
 
+**Sample Invocations**:
+```text
+/QA verify repeated dimension ballooning and table sync
+```
+```text
+/QA test Excel export workbook with 50+ characteristics across multiple drawing pages
+```
+
 **Template**:
 ```text
 Perform QA acceptance assessment for: <TARGET>.
@@ -176,6 +256,11 @@ Perform QA acceptance assessment for: <TARGET>.
 **Intent**: Read-only assessment of release readiness against build gates, export fidelity, and documentation.
 
 **Default Target**: Current branch candidate.
+
+**Sample Invocations**:
+```text
+/Release evaluate develop branch against production build and export gates
+```
 
 **Template**:
 ```text
@@ -194,6 +279,14 @@ Assess release readiness for candidate: <BRANCH / COMMIT>.
 
 **Default Target**: Complex feature epic or cross-cutting refactor.
 
+**Sample Invocations**:
+```text
+/Team coordinate multi-page PDF navigation and balloon persistence
+```
+```text
+/Team implement custom FAI Excel template selection with independent QA review
+```
+
 **Template**:
 ```text
 Coordinate agent execution for: <TASK>.
@@ -209,6 +302,11 @@ Coordinate agent execution for: <TASK>.
 **Intent**: Produce a concise 3-bullet summary of the current task outcome, blocker, and immediate next action.
 
 **Default Target**: Current session or git working directory.
+
+**Sample Invocations**:
+```text
+/Status
+```
 
 **Template**:
 ```text
@@ -226,6 +324,11 @@ Provide current status in three bullets:
 
 **Default Target**: Current session end state.
 
+**Sample Invocations**:
+```text
+/Handoff
+```
+
 **Template**:
 ```text
 Generate a clean session handoff:
@@ -235,4 +338,3 @@ Generate a clean session handoff:
 - Open risks or unfinished items.
 - Copyable prompt to resume work in a new thread.
 ```
-

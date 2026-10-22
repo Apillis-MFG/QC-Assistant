@@ -87,21 +87,21 @@ QC Assistant examples:
 
 Treat a user message beginning with a shortcut below as a request to execute its mapped task. Match names case-insensitively; text after the shortcut supplies the target, constraints, or acceptance criteria. These are project prompt aliases, not shell commands or native chat UI commands. Follow the full templates and defaults in [the request library](docs/delivery/reusable-requests.md).
 
-| Shortcut | Task and default target |
-| --- | --- |
-| `/Whatnext` | Read-only current-state review; recommend one next achievable slice and acceptance checks |
-| `/Explain` | Read-only code-backed explanation of the supplied component or behavior |
-| `/Investigate` | Read-only investigation of the supplied symptom; evidence, likely cause, and smallest fix |
-| `/Build` | Implement the supplied behavior within stated scope; verify against acceptance criteria |
-| `/Fix` | Reproduce and minimally fix the supplied failure; verify regression behavior |
-| `/Test` | Run the smallest relevant workflow checks for the supplied target or current diff; no source edits |
-| `/Addtests` | Inspect coverage and add missing contract-derived tests or verification scripts; run affected checks |
-| `/Review` | Read-only code audit of the supplied target or current working-tree diff and affected call paths |
-| `/Security` | Read-only security and data privacy review of the supplied target or diff against client-side boundaries |
-| `/QA` | Read-only acceptance assessment of the supplied slice or current changes; pass/fail/pending with evidence |
-| `/Release` | Read-only assessment of the current branch against export fidelity and production build gates |
-| `/Team` | Explicitly coordinate agents for the supplied outcome using the team guide, one writer and independent reviewers |
-| `/Status` | Current task outcome, blocker, and next action in three bullets; reconstruct from evidence when session context is absent |
-| `/Handoff` | Session outcome, changed files, actual checks, open findings, branch state, and copyable resume prompt; no edits or commits |
+| Shortcut | Task and default target | Sample invocation |
+| --- | --- | --- |
+| `/Whatnext` | Read-only current-state review; recommend one next achievable slice and acceptance checks | `/Whatnext focus on export fidelity` |
+| `/Explain` | Read-only code-backed explanation of the supplied component or behavior | `/Explain getLimits handling of unilateral MAX/MIN tolerances in src/exporters.js` |
+| `/Investigate` | Read-only investigation of the supplied symptom; evidence, likely cause, and smallest fix | `/Investigate balloon coordinates shifting on landscape drawings` |
+| `/Build` | Implement the supplied behavior within stated scope; verify against acceptance criteria | `/Build leader line arrowheads for balloon placement` |
+| `/Fix` | Reproduce and minimally fix the supplied failure; verify regression behavior | `/Fix getStatus evaluating empty sample rows as OK instead of OPEN` |
+| `/Test` | Run the smallest relevant workflow checks for the supplied target or current diff; no source edits | `/Test exporters.js math verification and run pnpm build` |
+| `/Addtests` | Inspect coverage and add missing contract-derived tests or verification scripts; run affected checks | `/Addtests script for drawing unit conversions and tolerance limits` |
+| `/Review` | Read-only code audit of the supplied target or current working-tree diff and affected call paths | `/Review working tree diff against flat state and CSS token rules` |
+| `/Security` | Read-only security and data privacy review of the supplied target or diff against client-side boundaries | `/Security verify drawing PDF and characteristics remain client-side only` |
+| `/QA` | Read-only acceptance assessment of the supplied slice or current changes; pass/fail/pending with evidence | `/QA verify repeated dimension ballooning and table sync` |
+| `/Release` | Read-only assessment of the current branch against export fidelity and production build gates | `/Release evaluate develop branch against production build and export gates` |
+| `/Team` | Explicitly coordinate agents for the supplied outcome using the team guide, one writer and independent reviewers | `/Team coordinate multi-page PDF navigation and balloon persistence` |
+| `/Status` | Current task outcome, blocker, and next action in three bullets; reconstruct from evidence when session context is absent | `/Status` |
+| `/Handoff` | Session outcome, changed files, actual checks, open findings, branch state, and copyable resume prompt; no edits or commits | `/Handoff` |
 
 Do not guess a missing feature, failure, or test behavior. For shortcuts requiring a target, use established conversation context; otherwise ask one concise clarification. If a review/test shortcut has no diff or usable target, report that and request a target. `/Build` and `/Fix` authorize their scoped edits; `/Team` authorizes delegation for its scoped task. No shortcut waives verification or authorizes unrelated external actions.
