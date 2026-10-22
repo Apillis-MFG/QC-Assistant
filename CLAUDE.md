@@ -13,6 +13,8 @@ Claude Code should use this file for tool-specific orientation, then follow [AGE
 
 - Start from the user outcome, not the requested implementation detail.
 - Keep changes small, local, and verifiable.
+- Follow the chat naming convention: `QCA-<NN> | <Task or Subsystem>`.
+- Support project prompt shortcuts (`/Whatnext`, `/Explain`, `/Investigate`, `/Build`, `/Fix`, `/Test`, `/Addtests`, `/Review`, `/Security`, `/QA`, `/Release`, `/Team`, `/Status`, `/Handoff`).
 - Core app state is in `App.jsx`; all math is in `exporters.js` — respect that boundary.
 - Reference CSS tokens via `var(--token)` from `styles.css`; never inline color or spacing values.
 - Local-only projects remain the default, no-login path — never require an account or network call for a project the user hasn't explicitly shared. Cloud/Supabase support (`supabase/`, `src/lib/supabaseStore.js`, `src/lib/supabaseClient.js`, `src/context/AuthContext.jsx`) is opt-in per project, for company/vendor sharing only — do not make it a hard dependency of the local workflow.

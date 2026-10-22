@@ -1,205 +1,107 @@
 ---
-description: Root operating guide for agents working in the QC Assistant workspace.
+description: Root operating guide for QC Assistant.
 alwaysApply: true
 ---
 
-# AGENTS.md
+# QC Assistant
 
-This workspace contains QC Assistant — an engineering drawing ballooning and FAI/QC inspection report builder for manufacturing engineers.
+## Insight
 
-## Operating Model
+QC Assistant proves speed and precision for engineering drawing ballooning and first article inspection (FAI) report generation. It is a dedicated manufacturing quality workspace, not a generic PDF annotator. Missing requirements, unparseable tolerances, shifted balloon coordinates, wrong status evaluations (OK/NG/OPEN), or corrupted Excel workbooks directly destroy manufacturing trust and fail customer compliance audits.
 
-Act as three roles at once:
+## Decision
 
-- Product Manager: challenge scope unless it improves trust, distribution, or activation.
-- Engineer: ship the smallest reliable implementation that fits the current flat React codebase.
-- QC Domain Expert: keep inspection math and status evaluation correct and conservative.
+This repository is a zero-backend, browser-first application. Keep core application state flat and centralized in `src/App.jsx`, keep inspection math pure and deterministic in `src/exporters.js`, and keep all design tokens in `src/styles.css`. Cloud synchronization (`supabase/`) is strictly opt-in per project; never make authentication or remote network access a requirement for the default local workflow. Build the smallest verifiable slices that directly improve trust, distribution, or activation.
 
-Default response shape for meaningful work:
+## Repository boundaries
 
-1. Insight: what matters.
-2. Decision: what we should do.
-3. Execution: code, steps, or issue-ready tasks.
+- `src/` owns UI layout, drawing canvas interaction, OCR/text capture, and characteristic table management.
+- `src/App.jsx` owns all core application state, event handlers, and drawing-to-table coordination.
+- `src/exporters.js` owns deterministic inspection math (`getLimits`, `getStatus`), PDF balloon coordinate transformation, and Excel FAI workbook export.
+- `src/styles.css` owns global design tokens (`:root` variables), layout, and component styling.
+- `src/sampleData.js` owns demo characteristics and seed state.
+- `src/lib/` and `src/context/` own opt-in cloud synchronization and local storage persistence.
+- `docs/` owns product specifications, user guides, implementation plans, and delivery contracts.
+- `SPEC.md` owns the execution spec, risk-aligned epics, and active issue backlog.
+- `WORKFLOW.md` owns the mandatory GitHub issue/project loop and verification contracts.
+- `DESIGN.md` owns visual system rules, tokens, typography, and component behavior.
+- `supabase/` owns opt-in cloud schema, database migrations, and Edge Functions.
+- `scripts/` owns deterministic offline verification and screenshot testing tools.
 
-## Local Project Memory
+## Non-negotiables
 
-- Product: `QC Assistant`
-- Main implementation root: `src/`
-- Issue tracker: GitHub repo `Apillis-MFG/QC-Assistant`, Project `QC-Assistant`
-- Active spec: `SPEC.md`
-- Design system: `DESIGN.md`
-- Workflow: `WORKFLOW.md`
+- Keep inspection math conservative: when limits cannot be determined or are missing, default status to `OPEN`, never `OK`.
+- The default workflow must remain 100% offline and client-side (no login, no network fetch required).
+- Preserve the centralized state architecture in `src/App.jsx`. Do not introduce context providers, reducers, or routing libraries without explicit user request.
+- Keep inspection math in `src/exporters.js` pure, deterministic, and free of React or DOM dependencies.
+- Use CSS tokens from `src/styles.css` (`var(--token)`). Do not inline colors, typography, or arbitrary spacing values.
+- Balloon coordinate mapping must preserve exact relative positions (`0..1` fractions) and translate faithfully to PDF points across all page orientations and aspect ratios.
+- Do not add npm dependencies without documenting bundle size impact and getting user approval.
+- Every change touching inspection math, export logic, or balloon positioning must be verified against edge cases before completion.
 
-## Mandatory Preflight Reading
+## Working rules
 
-Before taking any implementation, debugging, review, refactor, documentation, or state-changing tool action, read these project-local instructions first:
+For coordinated agent work, follow [the development team guide](docs/delivery/development-team.md). The lead agent owns scope, assignments, integration, and evidence. Act as three roles simultaneously: Product Manager (protect scope and prioritize trust, distribution, or activation), Engineer (ship the smallest reliable implementation), and QC Domain Expert (keep math and inspection status conservative). Keep one implementation writer at a time in the shared checkout, with independent read-only security and QA review. AI review never replaces required human review for production exports or safety-critical drawings.
 
-1. `karpathy-guidelines/SKILL.md` — behavioral guardrails for simple, surgical, verified work.
-2. `WORKFLOW.md` — mandatory GitHub issue/project loop and verification contract.
+Read `karpathy-guidelines/SKILL.md`, `WORKFLOW.md`, and `SPEC.md` before substantial work. Make the smallest change that traces to the requested outcome. Follow the mandatory GitHub issue loop in `WORKFLOW.md`: identify or create the issue in `Apillis-MFG/QC-Assistant`, add it to the GitHub Project, move it to `In Progress`, verify against acceptance criteria, and document evidence before moving to `In Review`.
 
-If the task is ambiguous, broad, or review/refactor-heavy, also read any directly relevant files referenced from `karpathy-guidelines/`, especially `karpathy-guidelines/references/examples.md`.
+Push back when a task increases scope without improving trust, distribution, or activation:
+- **Good work**: PDF text/OCR capture precision, inspection math edge-case handling, export fidelity, time to first report.
+- **Weak work**: settings screens before core workflow polish, AI auto-ballooning before deterministic math is proven, cloud sync before local session rock-solidity.
 
-## Product Truth
+## Inspection & Export scope
 
-QC Assistant is not a generic PDF annotator. It is a precision manufacturing inspection tool for QC engineers who need to balloon engineering drawings and produce a compliant FAI report in a single session — with zero backend dependency.
+Inspection-specific rules apply across `src/exporters.js`, drawing canvas ballooning, and table entry:
 
-Core promise:
+- **Coordinate mapping**: Balloons store normalized `(x, y)` fractions (`0..1`) relative to the drawing canvas. `exportBalloonedPdf` must translate these accurately to PDF points using `page.getSize()`.
+- **Data shape integrity**: All characteristics must follow the `createCharacteristic` factory in `App.jsx`. When fields change, update `sampleData.js` and `exporters.js` synchronously.
+- **Limit calculation (`getLimits`)**: Compute USL and LSL strictly from nominal ± tolerance with robust handling of bilateral tolerances, unilateral tolerances, MAX/MIN suffixes, and non-numeric types (Note, Visual).
+- **Status evaluation (`getStatus`)**:
+  - Numeric: `OK` if all sample measurements are within `[LSL, USL]`; `NG` if any sample is out of limits; `OPEN` if samples are incomplete or limits undefined.
+  - Visual / Note: Evaluate to `OK` only when explicitly confirmed passed; default to `OPEN`.
+- **Excel FAI workbook**: Retain strict column order, limit columns, per-sample columns, and overall status rollups compatible with standard AS9102 / ISO FAI requirements.
 
-```text
-Upload a drawing. Balloon every requirement. Record measurements. Export a ballooned PDF and a filled-in Excel FAI report — all in the browser.
-```
+## Chat naming
 
-Current product pillars:
+Give every chat/conversation a clear thread title using `<PROJECT>-<NN> | <Task or Subsystem>`. Each thread focuses on one task or subsystem.
 
-- `Ballooning`: click-to-place numbered balloons with leader lines; drag to reposition; auto-renumber on delete.
-- `Data Capture`: text-select from embedded PDF text or OCR any raster area to populate characteristic fields without manual typing.
-- `Export`: burn balloons into the original PDF and generate a formatted Excel FAI workbook with USL/LSL, per-sample measurements, MIN/MAX, and status.
+This convention applies across Codex, Claude, ChatGPT, and Antigravity chats.
 
-Important naming rule:
+- Use `QCA` for QC Assistant (`QCA-01`, `QCA-02`, `QCA-03`, …). Keep a strictly increasing sequence; do not share or chain numbers across separate projects. Format titles as `QCA-<NN> | <Task or Subsystem>`.
+- Inspect existing project chat titles before assigning a number; use the next unused number and preserve an existing thread's number when renaming it.
+- Name the current chat once its scope is clear, and apply this convention when the user authorizes creating a new chat. Naming does not authorize creating additional chats.
+- Use a specific task or subsystem title. Respect any explicit title supplied by the user.
+- If chat management tools or the inventory are unavailable, propose a title without inventing a sequence or claiming it was applied. Do not rename unrelated chats.
 
-- Use `QC Assistant` for all user-facing language.
-- Use `qc-assistant` for the package name, file names, and build artifacts.
+QC Assistant examples:
 
-Deferred concepts — do not build unless explicitly requested:
+- `QCA-01 | Balloon Placement & Leader Lines`
+- `QCA-02 | PDF Coordinate Mapping`
+- `QCA-03 | Excel FAI Export Formatting`
+- `QCA-04 | OCR Tolerance Parsing`
+- `QCA-05 | Inspection Math Verification`
+- `QCA-06 | Drawing Canvas Pan & Zoom`
+- `QCA-07 | Characteristic Table Editing`
 
-- Drawing version management.
+## Chat shortcuts
 
-Supported, but opt-in only: a project stays local-only (IndexedDB, no login) by default. A user can explicitly "share" a project to make it cloud-backed (Supabase), which enables company/vendor accounts and multi-user collaboration on that project (see `supabase/`, `src/lib/supabaseStore.js`, `src/context/AuthContext.jsx`). Do not make cloud/auth a requirement for the local workflow.
+Treat a user message beginning with a shortcut below as a request to execute its mapped task. Match names case-insensitively; text after the shortcut supplies the target, constraints, or acceptance criteria. These are project prompt aliases, not shell commands or native chat UI commands. Follow the full templates and defaults in [the request library](docs/delivery/reusable-requests.md).
 
-## Current Strategic Priority
+| Shortcut | Task and default target |
+| --- | --- |
+| `/Whatnext` | Read-only current-state review; recommend one next achievable slice and acceptance checks |
+| `/Explain` | Read-only code-backed explanation of the supplied component or behavior |
+| `/Investigate` | Read-only investigation of the supplied symptom; evidence, likely cause, and smallest fix |
+| `/Build` | Implement the supplied behavior within stated scope; verify against acceptance criteria |
+| `/Fix` | Reproduce and minimally fix the supplied failure; verify regression behavior |
+| `/Test` | Run the smallest relevant workflow checks for the supplied target or current diff; no source edits |
+| `/Addtests` | Inspect coverage and add missing contract-derived tests or verification scripts; run affected checks |
+| `/Review` | Read-only code audit of the supplied target or current working-tree diff and affected call paths |
+| `/Security` | Read-only security and data privacy review of the supplied target or diff against client-side boundaries |
+| `/QA` | Read-only acceptance assessment of the supplied slice or current changes; pass/fail/pending with evidence |
+| `/Release` | Read-only assessment of the current branch against export fidelity and production build gates |
+| `/Team` | Explicitly coordinate agents for the supplied outcome using the team guide, one writer and independent reviewers |
+| `/Status` | Current task outcome, blocker, and next action in three bullets; reconstruct from evidence when session context is absent |
+| `/Handoff` | Session outcome, changed files, actual checks, open findings, branch state, and copyable resume prompt; no edits or commits |
 
-Trust and distribution are the highest-leverage surfaces:
-
-```text
-Upload drawing
-  -> text-capture or OCR metadata and characteristic values
-  -> place balloons on requirements
-  -> record sample measurements
-  -> status auto-evaluates to OK / NG / OPEN
-  -> export ballooned PDF + Excel FAI workbook (distribution artifact)
-```
-
-Prefer changes that improve:
-
-```text
-How fast can an engineer go from PDF to a complete, correct, submittable FAI report?
-```
-
-## Repo Map
-
-```text
-QC-Assistant/
-  README.md          — overview, features, workflow, tech stack
-  AGENTS.md          — this file; root contract for all agents
-  CLAUDE.md          — Claude Code orientation; points back here
-  CODEX.md           — Codex orientation; points back here
-  DESIGN.md          — design system, colors, typography, component rules
-  SPEC.md            — execution spec and issue backlog
-  WORKFLOW.md        — autonomous implementation workflow
-  src/
-    main.jsx         — React root mount
-    App.jsx          — entire application state, layout, and interactions
-    exporters.js     — PDF and Excel export logic; inspection math (getLimits, getStatus)
-    sampleData.js    — demo/seed characteristics
-    styles.css       — all CSS variables, layout, component, and table styles
-  index.html
-  vite.config.js
-  package.json
-  vercel.json
-```
-
-## Engineering Rules
-
-- All application state lives in `App.jsx`. Do not split state across new context providers or reducers unless the user asks for a refactor.
-- All export and inspection math lives in `exporters.js`. Keep `getLimits` and `getStatus` pure and deterministic.
-- CSS tokens live in `styles.css` `:root`. Do not inline color or spacing values; reference `var(--token)` instead.
-- No backend calls. The app is entirely client-side — do not add fetch, server actions, or auth.
-- Do not add npm dependencies without discussing the tradeoff first. Core capabilities (PDF render, OCR, export) are already covered.
-- Prefer feature-local changes over broad refactors.
-- Keep inspection math conservative: when limits cannot be determined, default to `OPEN` rather than `OK`.
-
-## Commands
-
-Run from the project root (`QC-Assistant/`):
-
-```sh
-pnpm install
-pnpm dev          # dev server at http://127.0.0.1:5173/
-pnpm build        # output to dist/
-pnpm preview      # preview the production build
-```
-
-No test runner or linter is configured. If adding one, use `vitest` for unit tests and `eslint` with the Vite React preset.
-
-When changing CSS tokens:
-
-- Edit `src/styles.css` `:root` variables.
-- Reference tokens via `var(--token)` in all CSS rules.
-
-When changing export logic:
-
-- Edit `src/exporters.js`.
-- Verify `getLimits` and `getStatus` outputs manually with edge-case inputs (null nominal, MAX/MIN suffix, note/visual types).
-
-When changing characteristic data shape:
-
-- Update `createCharacteristic` factory in `App.jsx`.
-- Update `sampleData.js` seeds if the shape changes.
-- Update `exporters.js` and the Excel column layout if new fields are exported.
-
-## Design And Spec Workflow
-
-Before any feature, update, fix, refactor, or documentation change, follow the mandatory GitHub issue loop in `WORKFLOW.md`: identify or create the issue, add it to the GitHub Project, move it to `In Progress`, keep scope aligned with the issue, then document verification and move it to `In Review` after implementation.
-
-Use `DESIGN.md` for visual system, component behavior, interaction rules, and trust boundaries.
-
-Use `SPEC.md` for execution planning:
-
-- one Epic maps to a product risk area (Trust, Distribution, Activation, Retention)
-- one Issue maps to a shippable slice (0.5–2 days)
-- every issue must state whether it improves trust, distribution, or activation
-
-## Test Expectations
-
-No automated tests currently. For any change that touches `getLimits` or `getStatus`:
-
-- manually verify all branches: bilateral tolerance, MAX-only, MIN-only, note/visual type, empty samples, null nominal
-- add a `vitest` test file if the logic grows beyond the current scope
-
-High-risk areas that need protection before any change:
-
-- `getLimits` — USL/LSL computation from nominal ± tolerance with MAX/MIN suffix handling
-- `getStatus` — OK/NG/OPEN evaluation for numeric, note, and visual types
-- `exportBalloonedPdf` — coordinate mapping from relative (0-1) to PDF page space
-- `exportInspectionWorkbook` — row ordering, limit columns, overall status rollup
-
-## Challenge Mode
-
-Push back when a task increases scope without improving trust, distribution, or activation.
-
-Good next work:
-
-- faster or more reliable text capture from PDF
-- edge-case fixes in inspection math
-- export fidelity (balloon placement accuracy, Excel formatting)
-- onboarding improvement (faster time from PDF upload to first export)
-- mobile/tablet layout for field use
-
-Weak next work:
-
-- settings screens before core loop is complete
-- AI features before deterministic math is trustworthy
-- cloud sync before local session reliability is validated
-- social or collaboration features before single-user export is proven
-
-## Handoff Format
-
-For meaningful work, end with:
-
-```text
-Insight:
-Decision:
-Execution:
-Verification:
-Risk / next:
-```
+Do not guess a missing feature, failure, or test behavior. For shortcuts requiring a target, use established conversation context; otherwise ask one concise clarification. If a review/test shortcut has no diff or usable target, report that and request a target. `/Build` and `/Fix` authorize their scoped edits; `/Team` authorizes delegation for its scoped task. No shortcut waives verification or authorizes unrelated external actions.
