@@ -33,7 +33,16 @@ export function balloonLabel(item) {
 }
 
 export function compareOccurrences(a, b) {
-  return a.balloonNo - b.balloonNo || (a.occurrenceIndex || 1) - (b.occurrenceIndex || 1);
+  const numA = Number(a.balloonNo);
+  const numB = Number(b.balloonNo);
+  if (!Number.isNaN(numA) && !Number.isNaN(numB) && numA !== numB) {
+    return numA - numB;
+  }
+  const strA = String(a.balloonNo ?? "");
+  const strB = String(b.balloonNo ?? "");
+  const strDiff = strA.localeCompare(strB, undefined, { numeric: true, sensitivity: "base" });
+  if (strDiff !== 0) return strDiff;
+  return (a.occurrenceIndex || 1) - (b.occurrenceIndex || 1);
 }
 
 export function sameRequirement(a, b) {

@@ -1,5 +1,5 @@
 import { balloonLabel, compareOccurrences, missingOccurrences, resizeOccurrences, assertOccurrenceQuantity } from "./occurrences.js";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import * as XLSX from "xlsx";
 
 const red = rgb(1, 0, 0);
@@ -150,10 +150,41 @@ export function getStatus(characteristic, sampleCount) {
   return values.every((value) => value !== "") ? "OK" : "OPEN";
 }
 
-export async function exportBalloonedPdf({
+export function mapRelativeCoordinatesToPdf({ x, y, width, height, rotation = 0 }) {
+  const rot = ((rotation % 360) + 360) % 360;
+  const u = Math.min(1, Math.max(0, Number(x) || 0));
+  const v = Math.min(1, Math.max(0, Number(y) || 0));
+
+  let pdfX;
+  let pdfY;
+
+  switch (rot) {
+    case 90:
+      pdfX = v * width;
+      pdfY = u * height;
+      break;
+    case 180:
+      pdfX = (1 - u) * width;
+      pdfY = v * height;
+      break;
+    case 270:
+      pdfX = (1 - v) * width;
+      pdfY = (1 - u) * height;
+      break;
+    case 0:
+    default:
+      pdfX = u * width;
+      pdfY = height - v * height;
+      break;
+  }
+
+  const textAngle = (360 - rot) % 360;
+  return { x: pdfX, y: pdfY, rotation: rot, textAngle };
+}
+
+export async function generateBalloonedPdf({
   pdfBytes,
   characteristics,
-  fileName,
   showLeaderLine = true,
   fontColor = "#000000",
   fontFamily = "Times New Roman",
@@ -176,10 +207,28 @@ export async function exportBalloonedPdf({
     const pageIndex = Math.max(0, Math.min((item.page || 1) - 1, pdfDoc.getPageCount() - 1));
     const page = pdfDoc.getPage(pageIndex);
     const { width, height } = page.getSize();
-    const x = item.x * width;
-    const y = height - item.y * height;
-    const targetX = (item.targetX ?? item.x) * width;
-    const targetY = height - (item.targetY ?? item.y) * height;
+    const pageRotation = page.getRotation()?.angle || 0;
+
+    const balloonCoords = mapRelativeCoordinatesToPdf({
+      x: item.x,
+      y: item.y,
+      width,
+      height,
+      rotation: pageRotation,
+    });
+    const targetCoords = mapRelativeCoordinatesToPdf({
+      x: item.targetX ?? item.x,
+      y: item.targetY ?? item.y,
+      width,
+      height,
+      rotation: pageRotation,
+    });
+
+    const x = balloonCoords.x;
+    const y = balloonCoords.y;
+    const targetX = targetCoords.x;
+    const targetY = targetCoords.y;
+
     const label = balloonLabel(item);
     const radius = label.length > 3 ? baseRadius * 1.5 : baseRadius;
     const itemFontSize = Math.min(fontSize, (radius * 1.6) / font.widthOfTextAtSize(label, 1));
@@ -203,31 +252,52 @@ export async function exportBalloonedPdf({
       borderWidth: 1.2,
       color: undefined,
     });
+
+    const textAngle = balloonCoords.textAngle;
+    const dx = -textWidth / 2;
+    const dy = -itemFontSize / 2 + 1.5;
+    const rad = (textAngle * Math.PI) / 180;
+    const rx = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const ry = dx * Math.sin(rad) + dy * Math.cos(rad);
+
     page.drawText(label, {
-      x: x - textWidth / 2,
-      y: y - itemFontSize / 2 + 1.5,
+      x: x + rx,
+      y: y + ry,
       size: itemFontSize,
       font,
       color: textColor,
+      ...(textAngle !== 0 ? { rotate: degrees(textAngle) } : {}),
     });
   });
 
-  const bytes = await pdfDoc.save();
+  return await pdfDoc.save();
+}
+
+export async function exportBalloonedPdf({
+  pdfBytes,
+  characteristics,
+  fileName,
+  ...options
+}) {
+  const bytes = await generateBalloonedPdf({ pdfBytes, characteristics, ...options });
   const base = withoutExtension(fileName || "drawing") || "drawing";
   downloadBlob(bytes, "application/pdf", `${base}_ballooned.pdf`);
 }
 
-export function exportInspectionWorkbook({ metadata, characteristics, sampleCount }) {
+export function buildInspectionWorkbook({ metadata, characteristics = [], sampleCount = 1 }) {
   characteristics.forEach((item) => assertOccurrenceQuantity(item.quantity ?? 1));
+  const validSampleCount = Math.max(1, Number.isSafeInteger(sampleCount) && sampleCount > 0 ? sampleCount : 1);
+  const meta = metadata || {};
   const rows = [];
-  rows.push(["", "", "", "", "FIRST ARTICLE INSPECTION REPORT"]);
+
+  rows.push(["FIRST ARTICLE INSPECTION REPORT"]);
   rows.push([]);
-  rows.push(["Part / Drawing No.:", metadata.drawingNo, "", "", "", "Part Description:", metadata.description]);
-  rows.push(["Revision:", metadata.revision, "", "", "", "Supplier:", metadata.supplier]);
-  rows.push(["Sample Size:", sampleCount, "", "", "", "Overall Result:", overallStatus(characteristics, sampleCount)]);
+  rows.push(["Part / Drawing No.:", meta.drawingNo || "-", "", "", "Part Description:", meta.description || "-"]);
+  rows.push(["Revision:", meta.revision || "-", "", "", "Supplier:", meta.supplier || "-"]);
+  rows.push(["Sample Size:", validSampleCount, "", "", "Overall Result:", overallStatus(characteristics, validSampleCount)]);
   rows.push([]);
 
-  const sampleHeaders = Array.from({ length: sampleCount }, (_, index) => `#${index + 1}`);
+  const sampleHeaders = Array.from({ length: validSampleCount }, (_, index) => `#${index + 1}`);
   rows.push([
     "ID #",
     "Type",
@@ -245,14 +315,20 @@ export function exportInspectionWorkbook({ metadata, characteristics, sampleCoun
   ]);
 
   // An unconfirmed repeat count still needs every required measurement row.
-  const exportRows = characteristics.reduce((items, item) => (item.quantity || 1) > 1 && !item.instancesExpanded
-    ? resizeOccurrences(items, item.id, item.quantity) : items, characteristics);
+  const exportRows = characteristics.reduce(
+    (items, item) =>
+      (item.quantity || 1) > 1 && !item.instancesExpanded
+        ? resizeOccurrences(items, item.id, item.quantity)
+        : items,
+    characteristics,
+  );
+
   exportRows
     .slice()
     .sort(compareOccurrences)
     .forEach((item) => {
       const { usl, lsl } = getLimits(item);
-      const values = Array.from({ length: sampleCount }, (_, index) => item.samples[index] ?? "");
+      const values = Array.from({ length: validSampleCount }, (_, index) => item.samples?.[index] ?? "");
       const numericValues = values.map(parseNumber).filter((value) => value !== null);
       rows.push([
         balloonLabel(item),
@@ -266,7 +342,7 @@ export function exportInspectionWorkbook({ metadata, characteristics, sampleCoun
         numericValues.length ? Math.min(...numericValues) : "",
         numericValues.length ? Math.max(...numericValues) : "",
         item.method,
-        getStatus(item, sampleCount),
+        getStatus(item, validSampleCount),
         item.notes,
       ]);
     });
@@ -278,25 +354,47 @@ export function exportInspectionWorkbook({ metadata, characteristics, sampleCoun
   ]);
 
   const worksheet = XLSX.utils.aoa_to_sheet(rows);
+
+  const totalCols = 7 + validSampleCount + 5;
   worksheet["!cols"] = [
     { wch: 8 },
     { wch: 12 },
-    { wch: 10 },
+    { wch: 8 },
     { wch: 12 },
     { wch: 14 },
     { wch: 10 },
     { wch: 10 },
-    ...Array.from({ length: sampleCount }, () => ({ wch: 10 })),
+    ...Array.from({ length: validSampleCount }, () => ({ wch: 10 })),
     { wch: 10 },
     { wch: 10 },
     { wch: 10 },
     { wch: 10 },
-    { wch: 38 },
+    { wch: 36 },
+  ];
+
+  const lastCol = Math.max(6, totalCols - 1);
+  const legendRowIndex = rows.length - 1;
+  worksheet["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } },
+    { s: { r: 2, c: 1 }, e: { r: 2, c: 3 } },
+    { s: { r: 2, c: 5 }, e: { r: 2, c: lastCol } },
+    { s: { r: 3, c: 1 }, e: { r: 3, c: 3 } },
+    { s: { r: 3, c: 5 }, e: { r: 3, c: lastCol } },
+    { s: { r: 4, c: 1 }, e: { r: 4, c: 3 } },
+    { s: { r: 4, c: 5 }, e: { r: 4, c: lastCol } },
+    { s: { r: legendRowIndex, c: 1 }, e: { r: legendRowIndex, c: lastCol } },
   ];
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "FAI Report");
-  XLSX.writeFile(workbook, `${metadata.drawingNo || "inspection"}_FAI_Report.xlsx`);
+
+  return { workbook, worksheet, rows };
+}
+
+export function exportInspectionWorkbook({ metadata, characteristics, sampleCount }) {
+  const { workbook } = buildInspectionWorkbook({ metadata, characteristics, sampleCount });
+  const fileName = `${metadata?.drawingNo || "inspection"}_FAI_Report.xlsx`;
+  XLSX.writeFile(workbook, fileName);
 }
 
 export function overallStatus(characteristics, sampleCount) {
