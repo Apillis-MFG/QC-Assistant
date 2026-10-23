@@ -433,11 +433,154 @@ export function isDualDimensionConsistent(primary, secondary, epsilon = 0.02) {
   };
 }
 
+/**
+ * Convert an angular callout string (degrees, minutes, seconds) to decimal degrees.
+ * Handles:
+ *  - "45° 30' 36\"" -> 45.51
+ *  - "45° 30'" -> 45.5
+ *  - "45°" -> 45
+ *  - "30'" -> 0.5
+ *  - "30\"" -> 0.008333...
+ *  - "45.5°" or "45.5" -> 45.5
+ *  - "±15'" -> 0.25
+ *  - "+15'" -> 0.25
+ *  - "-15'" -> -0.25
+ *  - "45° 30' MAX" -> 45.5
+ *
+ * @param {string|number} value
+ * @returns {number|null} Decimal degrees, or null if unparseable
+ */
+export function parseAngleToDecimal(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const s = String(value).trim();
+  if (!s) return null;
+
+  const clean = s
+    .replace(/[′']/g, "'")
+    .replace(/[″“”]|''/g, '"')
+    .replace(/,/g, ".");
+
+  let sign = 1;
+  let text = clean;
+  if (text.startsWith("±") || text.startsWith("+/-") || text.startsWith("+/ -")) {
+    text = text.replace(/^(?:±|\+\s*[/\\-]\s*-|\+\s*-\s*)/, "").trim();
+  } else if (text.startsWith("+")) {
+    text = text.slice(1).trim();
+  } else if (text.startsWith("-")) {
+    sign = -1;
+    text = text.slice(1).trim();
+  }
+
+  text = text.replace(/\s*(?:MAX|MIN)$/i, "").trim();
+
+  const hasDms = /[°'"]|deg|min|sec/i.test(text);
+  if (!hasDms) {
+    const numMatch = text.match(/^-?(?:\d+(?:\.\d+)?|\.\d+)/);
+    if (!numMatch) return null;
+    return sign * Number(numMatch[0]);
+  }
+
+  let deg = 0;
+  let min = 0;
+  let sec = 0;
+  let matched = false;
+
+  const degMatch = text.match(/(\d+(?:\.\d+)?|\.\d+)\s*(?:°|deg)/i);
+  if (degMatch) {
+    deg = parseFloat(degMatch[1]);
+    matched = true;
+  }
+
+  const minMatch = text.match(/(\d+(?:\.\d+)?|\.\d+)\s*(?:'|min)/i);
+  if (minMatch) {
+    min = parseFloat(minMatch[1]);
+    matched = true;
+  }
+
+  const secMatch = text.match(/(\d+(?:\.\d+)?|\.\d+)\s*(?:"|sec)/i);
+  if (secMatch) {
+    sec = parseFloat(secMatch[1]);
+    matched = true;
+  }
+
+  if (!matched) {
+    const numMatch = text.match(/^-?(?:\d+(?:\.\d+)?|\.\d+)/);
+    if (!numMatch) return null;
+    return sign * Number(numMatch[0]);
+  }
+
+  const result = deg + min / 60 + sec / 3600;
+  return sign * result;
+}
+
+/**
+ * Format decimal degrees into standard Degrees-Minutes-Seconds (DMS) notation.
+ * e.g.
+ *  - 45.5 -> "45° 30'"
+ *  - 45.51, true -> "45° 30' 36\""
+ *  - 45.0 -> "45°"
+ *
+ * @param {number|string} decimalDeg
+ * @param {boolean} includeSeconds
+ * @returns {string}
+ */
+export function formatDecimalToDms(decimalDeg, includeSeconds = false) {
+  if (decimalDeg === null || decimalDeg === undefined || !Number.isFinite(Number(decimalDeg))) {
+    return "";
+  }
+  const val = Number(decimalDeg);
+  const sign = val < 0 ? "-" : "";
+  const abs = Math.abs(val);
+  const deg = Math.floor(abs);
+  const remMinutes = (abs - deg) * 60;
+
+  if (!includeSeconds) {
+    const min = Math.round(remMinutes);
+    if (min === 60) {
+      return `${sign}${deg + 1}°`;
+    }
+    return min === 0 ? `${sign}${deg}°` : `${sign}${deg}° ${min}'`;
+  }
+
+  const min = Math.floor(remMinutes);
+  const sec = Math.round((remMinutes - min) * 60);
+  let finalMin = min;
+  let finalDeg = deg;
+  let finalSec = sec;
+  if (finalSec === 60) {
+    finalSec = 0;
+    finalMin += 1;
+  }
+  if (finalMin === 60) {
+    finalMin = 0;
+    finalDeg += 1;
+  }
+
+  const parts = [`${sign}${finalDeg}°`];
+  if (finalMin > 0 || finalSec > 0) {
+    parts.push(`${finalMin}'`);
+  }
+  if (finalSec > 0) {
+    parts.push(`${finalSec}"`);
+  }
+  return parts.join(" ");
+}
+
 function normalizeDecimal(value) {
   return String(value || "")
     .replace(/\s+/g, "")
     .replace(",", ".")
     .replace(/^([+-]?)\./, "$10.");
+}
+
+function isValidAngleTolerancePart(str) {
+  if (!str) return false;
+  const s = str.trim();
+  return (
+    /^(?:\d+(?:[.,]\d+)?|[.,]\d+)(?:\s*°)?(?:\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*')?(?:\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*")?$/.test(s) ||
+    /^(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*'(?:\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*")?$/.test(s) ||
+    /^(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*"$/.test(s)
+  );
 }
 
 function parseSingleDimensionCore(coreText) {
@@ -450,6 +593,80 @@ function parseSingleDimensionCore(coreText) {
     .replace(/^[Rr](?=\d|\.\d)/, "")
     .replace(/^[Mm](?=\d)/, "")
     .trim();
+
+  // Check for DMS angle dimension:
+  // e.g. "45° 30' 36" ±18"", "45° 30' ±15'", "45° 30' MAX", "45° 30'", "45° ±15'", "30' ±5'"
+  const normalizedCore = core
+    .replace(/[′']/g, "'")
+    .replace(/[″“”]|''/g, '"');
+
+  const dmsMatch = normalizedCore.match(
+    /^([+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*°(?:\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*')?(?:\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*")?|[+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*'(?:\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*")?)/
+  );
+
+  if (dmsMatch) {
+    const rawNominal = dmsMatch[0].trim();
+    const after = normalizedCore.slice(dmsMatch[0].length).trim();
+    const hasMinOrSec = /['"]/.test(rawNominal);
+    const nominal = hasMinOrSec
+      ? rawNominal.replace(/\s+/g, " ")
+      : normalizeDecimal(rawNominal.replace(/°\s*$/, "").trim());
+
+    const res = { nominal, unit: "°" };
+
+    if (!after) return { ...res, tolerance: "" };
+
+    // MAX / MIN suffix
+    if (/^max$/i.test(after)) return { ...res, tolerance: "MAX" };
+    if (/^min$/i.test(after)) return { ...res, tolerance: "MIN" };
+
+    // Symmetric tolerance: ±15', ±0° 15', ±30", ±0.5°, +/- 15'
+    const symMatch = after.match(/^(?:[±]|\+\s*[/\\-]\s*-|\+\s*-\s*)(.+)$/);
+    if (symMatch) {
+      const tolPart = symMatch[1].trim();
+      if (isValidAngleTolerancePart(tolPart)) {
+        return { ...res, tolerance: `±${tolPart.replace(/\s+/g, " ")}` };
+      }
+      return null;
+    }
+
+    // Asymmetric tolerance: +15'/-5', +0° 30' / -0° 15', +10'/-5', +0.5°/-0.2°
+    const asymMatch = after.match(/^(\+\s*.+?)\s*[/]\s*(-\s*.+)$/);
+    if (asymMatch) {
+      const p1 = asymMatch[1].replace(/^\+\s*/, "").trim();
+      const p2 = asymMatch[2].replace(/^-\s*/, "").trim();
+      if (isValidAngleTolerancePart(p1) && isValidAngleTolerancePart(p2)) {
+        return { ...res, tolerance: `+${p1.replace(/\s+/g, " ")}/-${p2.replace(/\s+/g, " ")}` };
+      }
+      return null;
+    }
+
+    // Dual signed: +15'/+5', -5'/-15'
+    const dualSignMatch = after.match(/^([+-]\s*.+?)\s*[/]\s*([+-]\s*.+)$/);
+    if (dualSignMatch) {
+      const s1 = dualSignMatch[1].trim().charAt(0);
+      const s2 = dualSignMatch[2].trim().charAt(0);
+      const p1 = dualSignMatch[1].slice(1).trim();
+      const p2 = dualSignMatch[2].slice(1).trim();
+      if (isValidAngleTolerancePart(p1) && isValidAngleTolerancePart(p2)) {
+        return { ...res, tolerance: `${s1}${p1.replace(/\s+/g, " ")}/${s2}${p2.replace(/\s+/g, " ")}` };
+      }
+      return null;
+    }
+
+    // Unilateral tolerance: +15', -10'
+    const uniMatch = after.match(/^([+-])\s*(.+)$/);
+    if (uniMatch) {
+      const sign = uniMatch[1];
+      const p = uniMatch[2].trim();
+      if (isValidAngleTolerancePart(p)) {
+        return { ...res, tolerance: `${sign}${p.replace(/\s+/g, " ")}` };
+      }
+      return null;
+    }
+
+    return null;
+  }
 
   // Must start with a number (possibly signed)
   const nominalMatch = core.match(/^([+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+))/);
@@ -502,9 +719,15 @@ export function parseDimension(text) {
 
   // Only an entire leading quantity + dimension is a suggestion. Products and
   // thread-pitch expressions remain ambiguous and require manual quantity.
-  const repeat = s.match(
+  let repeat = s.match(
     /^(\d+)\s*[xX×]\s*((?:[øØ∅Rr]\s*)?(?:\d+(?:[.,]\d+)?|[.,]\d+)(?:\s*\[.*?\])?(?:\s*°)?(?:\s*(?:MAX|MIN|(?:±|\+\s*[/\\]?\s*-)\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)|\+\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*\/?\s*-\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)))?(?:\s*\[.*?\])?)$/i,
   );
+  if (!repeat) {
+    const dmsRepeat = s.match(/^(\d+)\s*[xX×]\s*(.+[°'′].*)$/i);
+    if (dmsRepeat) {
+      repeat = dmsRepeat;
+    }
+  }
   // Never fall through to reading a rejected repeat count as the nominal value.
   if (REPEAT_PREFIX.test(s) && (!repeat || !isValidOccurrenceQuantity(Number(repeat[1])))) return null;
   const quantity = repeat ? Number(repeat[1]) : 1;

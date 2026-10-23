@@ -298,6 +298,53 @@ Acceptance:
 - Rejection guards for products (`2x10x20`) and threads (`2X M10`) remain intact.
 - 100% of offline verification tests and production build pass.
 
+### P0-6: Non-Standard Angle Unit Conversions (Degrees-Minutes-Seconds)
+
+Epic:
+
+```text
+Trust: Inspection Math
+```
+
+Outcome:
+
+```text
+Drawings with angular callouts in Degrees-Minutes-Seconds (DMS) notation (e.g. `45° 30' ±15'`,
+`45° 30' 36" ±18"`, `30° 15' +10'/-5'`, `45° 30' MAX`) parse reliably, compute decimal degree
+tolerance limit envelopes in `getLimits`, and correctly evaluate inspection sample measurements entered
+in either DMS or decimal degrees.
+```
+
+Scope:
+
+- Add `parseAngleToDecimal(str)` to parse DMS callouts (`°`, `'`, `"`, unicode primes) to decimal degrees.
+- Add `formatDecimalToDms(val, includeSeconds)` for standard DMS formatting.
+- Update `parseSingleDimensionCore` and `parseDimension` to capture DMS nominals and tolerances with unit `°`.
+- Update `parseNumber(value, unit)` to safely disambiguate linear inch quotes from angular arcseconds.
+- Update `getLimits` to compute accurate decimal degree limit envelopes for bilateral, asymmetric, unilateral, and single-limit MAX/MIN angular callouts.
+- Update `getStatus` so sample measurements entered as DMS or decimal degrees evaluate accurately against angular limits.
+- Update `exportInspectionWorkbook` to preserve angular sample parsing in Excel FAI statistics.
+- Comprehensive test coverage in `scripts/verify-inspection-math.mjs`.
+
+Out:
+
+- No conversion between radians and degrees (engineering drawings use degrees / DMS).
+- No new external npm dependencies.
+
+Likely files:
+
+- `src/lib/utils.js`
+- `src/lib/exporters.js`
+- `src/lib/constants.js`
+- `scripts/verify-inspection-math.mjs`
+
+Acceptance:
+
+- Angular callouts in DMS notation (`45° 30' ±15'`, `45° 30' 36" ±18"`, `30° 15' +10'/-5'`) parse with unit `°`.
+- `getLimits` computes decimal degree bounds without truncating minutes or seconds (e.g. $45^\circ\ 30' \pm 15' \to [45.25^\circ, 45.75^\circ]$).
+- Measurements entered in DMS or decimal degrees evaluate accurately in `getStatus`.
+- 100% of offline verification test suites and production build pass cleanly.
+
 ### P1-1: Text capture reliability for rotated and small PDF text
 
 Epic:

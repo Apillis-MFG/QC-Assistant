@@ -1,4 +1,5 @@
 import { balloonLabel, compareOccurrences, missingOccurrences, resizeOccurrences, assertOccurrenceQuantity } from "./occurrences.js";
+import { parseAngleToDecimal } from "./utils.js";
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import * as XLSX from "xlsx";
 
@@ -18,9 +19,16 @@ function hexToRgbColor(hex) {
   return rgb(r, g, b);
 }
 
-export function parseNumber(value) {
+export function parseNumber(value, unit) {
   if (value === null || value === undefined || value === "") return null;
-  const match = String(value).replace(",", ".").match(/-?(?:\d+(?:\.\d+)?|\.\d+)/);
+  const s = String(value).trim();
+  if (!s) return null;
+  const isAngle = unit === "°" || unit === "DEG" || /[°'′]|deg|min/i.test(s);
+  if (isAngle) {
+    const angle = parseAngleToDecimal(s);
+    if (angle !== null) return angle;
+  }
+  const match = s.replace(",", ".").match(/-?(?:\d+(?:\.\d+)?|\.\d+)/);
   return match ? Number(match[0]) : null;
 }
 
@@ -34,11 +42,13 @@ export function getLimits(characteristic) {
   const tolStr = String(characteristic.tolerance ?? "").trim();
   const nomUpper = nomStr.toUpperCase();
   const tolUpper = tolStr.toUpperCase();
+  const unit = characteristic.unit;
+  const isAngle = unit === "°" || unit === "DEG" || /[°'′]|deg|min/i.test(nomStr) || /[°'′]|deg|min/i.test(tolStr);
 
-  const nominalNum = parseNumber(characteristic.nominal);
-  const tolNum = parseNumber(characteristic.tolerance);
+  const nominalNum = parseNumber(characteristic.nominal, isAngle ? "°" : unit);
+  const tolNum = parseNumber(characteristic.tolerance, isAngle ? "°" : unit);
 
-  // 1. Single limit MAX (e.g. "25 MAX" in nominal, "MAX" in tolerance, or "3 MAX" in tolerance)
+  // 1. Single limit MAX (e.g. "25 MAX" in nominal, "MAX" in tolerance, or "3 MAX" in tolerance, or "45° 30' MAX")
   if (tolUpper.includes("MAX") || nomUpper.includes("MAX")) {
     if (tolUpper.includes("MAX") && tolNum !== null) {
       return { usl: tolNum, lsl: "" };
@@ -49,7 +59,7 @@ export function getLimits(characteristic) {
     return { usl: "", lsl: "" };
   }
 
-  // 2. Single limit MIN (e.g. "0.5 MIN" in nominal, "MIN" in tolerance, or "0.5 MIN" in tolerance)
+  // 2. Single limit MIN (e.g. "0.5 MIN" in nominal, "MIN" in tolerance, or "0.5 MIN" in tolerance, or "30° MIN")
   if (tolUpper.includes("MIN") || nomUpper.includes("MIN")) {
     if (tolUpper.includes("MIN") && tolNum !== null) {
       return { usl: "", lsl: tolNum };
@@ -65,34 +75,51 @@ export function getLimits(characteristic) {
     return { usl: "", lsl: "" };
   }
 
-  // 3. Two signed offsets (asymmetric bilateral): e.g. "+0.5/-0.2", "+0.05 / -0", "-0.02/+0.05", "+0.05/+0.01", "-0.01/-0.05"
-  const dualMatch = tolStr.match(
-    /^([+-]\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))\s*[/,\s]\s*([+-]?\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))$/,
-  ) || tolStr.match(
-    /^([+-]?\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))\s*[/,\s]\s*([+-]\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))$/,
-  );
-
-  if (dualMatch) {
-    const parseSigned = (str) => {
-      const clean = str.replace(/\s+/g, "").replace(",", ".");
-      return parseFloat(clean);
-    };
-    const offset1 = parseSigned(dualMatch[1]);
-    const offset2 = parseSigned(dualMatch[2]);
-    if (!Number.isNaN(offset1) && !Number.isNaN(offset2)) {
-      const upperOffset = Math.max(offset1, offset2);
-      const lowerOffset = Math.min(offset1, offset2);
-      return {
-        usl: round(nominalNum + upperOffset),
-        lsl: round(nominalNum + lowerOffset),
-      };
+  // 3. Two signed offsets (asymmetric bilateral): e.g. "+0.5/-0.2", "+15'/-5'", "+0° 30' / -0° 15'", "+0.05 / -0", "-0.02/+0.05", "+0.05/+0.01", "-0.01/-0.05"
+  let dualOffsets = null;
+  if (tolStr.includes("/")) {
+    const slashParts = tolStr.split("/").map((p) => p.trim());
+    if (slashParts.length === 2 && slashParts[0] && slashParts[1]) {
+      const off1 = parseNumber(slashParts[0], isAngle ? "°" : unit);
+      const off2 = parseNumber(slashParts[1], isAngle ? "°" : unit);
+      if (off1 !== null && off2 !== null) {
+        dualOffsets = [off1, off2];
+      }
     }
   }
 
-  // 4. Unilateral single signed offset without slash (e.g. "+0.05" or "-0.02")
+  if (!dualOffsets) {
+    const dualMatch = tolStr.match(
+      /^([+-]\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))\s*[/,\s]\s*([+-]?\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))$/,
+    ) || tolStr.match(
+      /^([+-]?\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))\s*[/,\s]\s*([+-]\s*(?:\d+(?:[.,]\d+)?|[.,]\d+))$/,
+    );
+    if (dualMatch) {
+      const parseSigned = (str) => {
+        const clean = str.replace(/\s+/g, "").replace(",", ".");
+        return parseFloat(clean);
+      };
+      const offset1 = parseSigned(dualMatch[1]);
+      const offset2 = parseSigned(dualMatch[2]);
+      if (!Number.isNaN(offset1) && !Number.isNaN(offset2)) {
+        dualOffsets = [offset1, offset2];
+      }
+    }
+  }
+
+  if (dualOffsets) {
+    const upperOffset = Math.max(dualOffsets[0], dualOffsets[1]);
+    const lowerOffset = Math.min(dualOffsets[0], dualOffsets[1]);
+    return {
+      usl: round(nominalNum + upperOffset),
+      lsl: round(nominalNum + lowerOffset),
+    };
+  }
+
+  // 4. Unilateral single signed offset without slash (e.g. "+0.05", "-0.02", "+15'", "-10'")
   const isExplicitSymmetric = /^(?:[±]|\+\s*[/\\-]\s*-|\+\s*-\s*)/.test(tolStr);
-  const unilateralPlus = !isExplicitSymmetric && /^\+\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)$/.test(tolStr);
-  const unilateralMinus = !isExplicitSymmetric && /^-\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)$/.test(tolStr);
+  const unilateralPlus = !isExplicitSymmetric && /^\+\s*(?:[^\-/]+)$/.test(tolStr);
+  const unilateralMinus = !isExplicitSymmetric && /^-\s*(?:[^\+/]+)$/.test(tolStr);
 
   if (unilateralPlus && tolNum !== null) {
     return {
@@ -107,7 +134,7 @@ export function getLimits(characteristic) {
     };
   }
 
-  // 5. Symmetric tolerance (e.g. "±0.13", "+/-0.13", or numeric "0.13")
+  // 5. Symmetric tolerance (e.g. "±0.13", "+/-0.13", "±15'", or numeric "0.13")
   if (tolNum === null) {
     return { usl: "", lsl: "" };
   }
@@ -150,9 +177,14 @@ export function getStatus(characteristic, sampleCount) {
   const hasNumericLimits = usl !== "" || lsl !== "";
   if (!hasNumericLimits) return "OPEN";
 
+  const nomStr = String(characteristic.nominal ?? "");
+  const tolStr = String(characteristic.tolerance ?? "");
+  const isAngle = characteristic.unit === "°" || characteristic.unit === "DEG" || /[°'′]|deg|min/i.test(nomStr) || /[°'′]|deg|min/i.test(tolStr);
+  const targetUnit = characteristic.unit || (isAngle ? "°" : undefined);
+
   const failed = values.some((value) => {
     if (value === "") return false;
-    const n = parseNumber(value);
+    const n = parseNumber(value, targetUnit);
     if (n === null) return true;
     if (usl !== "" && n > Number(usl) + 1e-9) return true;
     if (lsl !== "" && n < Number(lsl) - 1e-9) return true;
@@ -553,7 +585,7 @@ export function buildInspectionWorkbook({ metadata, characteristics = [], sample
     .forEach((item) => {
       const { usl, lsl } = getLimits(item);
       const values = Array.from({ length: validSampleCount }, (_, index) => item.samples?.[index] ?? "");
-      const numericValues = values.map(parseNumber).filter((value) => value !== null);
+      const numericValues = values.map((v) => parseNumber(v, item.unit)).filter((value) => value !== null);
       const rowNotes = item.dual && !item.notes?.includes("[Dual:")
         ? [item.notes, `[Dual: ${item.dual.nominal}${item.dual.tolerance ? " " + item.dual.tolerance : ""}${item.dual.unit ? " " + item.dual.unit : ""}]`].filter(Boolean).join(" ")
         : (item.notes || "");
