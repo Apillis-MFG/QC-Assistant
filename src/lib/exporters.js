@@ -338,6 +338,71 @@ export async function exportBalloonedPdf({
   downloadBlob(bytes, "application/pdf", `${base}_ballooned.pdf`);
 }
 
+export async function generateBatchBalloonedPdf({
+  drawings = [],
+  showLeaderLine = true,
+  fontColor = "#000000",
+  fontFamily = "Times New Roman",
+  fontSize = 11,
+  diameter = 24,
+}) {
+  if (!Array.isArray(drawings) || !drawings.length) {
+    throw new Error("No drawings provided for batch PDF export.");
+  }
+
+  const validDrawings = drawings.filter(
+    (d) => d && d.pdfBytes && (d.pdfBytes instanceof Uint8Array || ArrayBuffer.isView(d.pdfBytes)) && d.pdfBytes.byteLength > 0
+  );
+  if (!validDrawings.length) {
+    throw new Error("None of the project drawings have uploaded PDF files.");
+  }
+
+  const masterPdf = await PDFDocument.create();
+
+  for (const drawing of validDrawings) {
+    const chars = Array.isArray(drawing.characteristics) ? drawing.characteristics : [];
+    const drawingName = drawing.name || drawing.fileName || "Drawing";
+
+    if (chars.length > 0) {
+      if (missingOccurrences(chars) || chars.some((item) => item.isPlaced === false)) {
+        throw new Error(`Drawing "${drawingName}" has unplaced balloon instances. Place every required instance before exporting PDF.`);
+      }
+    }
+
+    let drawingBytes;
+    if (chars.length > 0) {
+      drawingBytes = await generateBalloonedPdf({
+        pdfBytes: drawing.pdfBytes,
+        characteristics: chars,
+        showLeaderLine,
+        fontColor,
+        fontFamily,
+        fontSize,
+        diameter,
+      });
+    } else {
+      drawingBytes = drawing.pdfBytes;
+    }
+
+    const doc = await PDFDocument.load(drawingBytes);
+    const pageIndices = doc.getPageIndices();
+    const copiedPages = await masterPdf.copyPages(doc, pageIndices);
+    copiedPages.forEach((page) => masterPdf.addPage(page));
+  }
+
+  return await masterPdf.save();
+}
+
+export async function exportBatchBalloonedPdf({
+  drawings = [],
+  fileName = "All_Drawings_Ballooned.pdf",
+  ...options
+}) {
+  const bytes = await generateBatchBalloonedPdf({ drawings, ...options });
+  const base = withoutExtension(fileName) || "All_Drawings_Ballooned";
+  downloadBlob(bytes, "application/pdf", `${base}.pdf`);
+}
+
 export function buildAs9102Form1({ metadata, characteristics = [], sampleCount = 1 }) {
   const meta = metadata || {};
   const validSampleCount = Math.max(1, Number.isSafeInteger(sampleCount) && sampleCount > 0 ? sampleCount : 1);

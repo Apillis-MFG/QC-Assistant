@@ -1,6 +1,6 @@
 import { balloonLabel, compareOccurrences, MAX_OCCURRENCE_QUANTITY } from "../lib/occurrences.js";
 import { memo, useMemo, useRef, useCallback } from "react";
-import { X, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft, Sparkles, CheckSquare } from "lucide-react";
+import { X, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft, Sparkles, CheckSquare, Download } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
 import { methods, types, APP_VERSION, getDefaultUnit, normalizeUnitSystem, CHARACTERISTIC_UNITS, hasCharacteristicUnit } from "../lib/constants.js";
 import { formatBytes, formatDate, parseClipboardGrid, computePastedSampleUpdates } from "../lib/utils.js";
@@ -626,6 +626,7 @@ export function ProjectDetail({
   onAddDrawing,
   onRenameDrawing,
   onDeleteDrawing,
+  onExportAllDrawingsPdf,
   drawingDialog,
   onDrawingDialogChange,
   onDrawingDialogSubmit,
@@ -753,11 +754,24 @@ export function ProjectDetail({
               <h2>Drawings</h2>
               <p>{drawings.length} drawings</p>
             </div>
-            <label className="small-button project-action add file-button">
-              <Plus size={14} />
-              Add Drawing
-              <input type="file" accept="application/pdf" onChange={onAddDrawing} />
-            </label>
+            <div className="project-title-actions">
+              {drawings.length > 0 && (
+                <button
+                  type="button"
+                  className="small-button project-action"
+                  onClick={onExportAllDrawingsPdf}
+                  title="Export all drawings in this project as a combined ballooned PDF package"
+                >
+                  <Download size={14} />
+                  Export All PDFs
+                </button>
+              )}
+              <label className="small-button project-action add file-button">
+                <Plus size={14} />
+                Add Drawing
+                <input type="file" accept="application/pdf" onChange={onAddDrawing} />
+              </label>
+            </div>
           </div>
 
           {drawings.length ? (

@@ -27,6 +27,7 @@ import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { demoCharacteristics } from "./lib/sampleData.js";
 import {
   exportBalloonedPdf,
+  exportBatchBalloonedPdf,
   exportInspectionWorkbook,
   overallStatus,
 } from "./lib/exporters.js";
@@ -2332,6 +2333,60 @@ export default function App() {
     }
   }, [characteristics, metadata, sampleCount]);
 
+  const exportAllProjectDrawings = useCallback(
+    async (targetProject, targetDrawings, activeState = null) => {
+      if (!targetProject || !targetDrawings || !targetDrawings.length) {
+        setMessage("No drawings found to export.");
+        return;
+      }
+      try {
+        setMessage("Preparing multi-drawing PDF export...");
+        const loader = targetProject.kind === "cloud" ? supabaseStore.loadDrawing : loadDrawing;
+        const fullDrawings = [];
+
+        for (const d of targetDrawings) {
+          if (activeState && d.id === activeState.activeDrawingId) {
+            fullDrawings.push({
+              id: d.id,
+              name: d.name,
+              fileName: activeState.pdfName || d.name,
+              pdfBytes: activeState.pdfBytes,
+              characteristics: activeState.characteristics,
+            });
+          } else {
+            const loaded = await loader(d.id);
+            if (loaded && loaded.pdfBytes) {
+              fullDrawings.push(loaded);
+            }
+          }
+        }
+
+        if (!fullDrawings.length) {
+          throw new Error("None of the drawings in this project have uploaded PDF files.");
+        }
+
+        const projectName = targetProject.name || "Project";
+        const cleanName = projectName.replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, "_");
+        const exportFileName = `${cleanName}_All_Drawings_Ballooned.pdf`;
+
+        await exportBatchBalloonedPdf({
+          drawings: fullDrawings,
+          fileName: exportFileName,
+          showLeaderLine: balloonSettings.showLeaderLine,
+          fontColor: balloonSettings.fontColor,
+          fontFamily: balloonSettings.fontFamily,
+          fontSize: balloonSettings.fontSize,
+          diameter: balloonSettings.diameter,
+        });
+
+        setMessage(`Exported complete multi-drawing PDF package (${fullDrawings.length} drawing${fullDrawings.length === 1 ? "" : "s"}).`);
+      } catch (error) {
+        setMessage(error.message);
+      }
+    },
+    [balloonSettings],
+  );
+
   const beginPanelResize = useCallback((event, axis) => {
     if (layoutMode !== "split-v" && layoutMode !== "split-h") return;
     const metrics = getContentMetrics();
@@ -2503,6 +2558,7 @@ export default function App() {
       onAddDrawing={handleDetailAddDrawing}
       onRenameDrawing={handleOpenDrawingDialog}
       onDeleteDrawing={handleDetailDeleteDrawing}
+      onExportAllDrawingsPdf={() => exportAllProjectDrawings(detailProject, detailDrawings)}
       drawingDialog={drawingDialog}
       onDrawingDialogChange={handleDrawingDialogChange}
       onDrawingDialogSubmit={handleDrawingDialogSubmit}
@@ -2633,6 +2689,24 @@ export default function App() {
                 <Download size={16} />
                 PDF
               </button>
+              {drawings.length > 1 ? (
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() =>
+                    exportAllProjectDrawings(activeProject, drawings, {
+                      activeDrawingId,
+                      pdfBytes,
+                      characteristics,
+                      pdfName,
+                    })
+                  }
+                  title="Export all drawings in this project as a single merged ballooned PDF package"
+                >
+                  <Download size={16} />
+                  All PDFs ({drawings.length})
+                </button>
+              ) : null}
               <button className="button primary" onClick={exportExcel} disabled={!characteristics.length}>
                 <Save size={16} />
                 Excel

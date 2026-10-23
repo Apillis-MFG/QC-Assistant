@@ -554,6 +554,52 @@ Acceptance:
 - "Clear Samples" resets recorded measurements while preserving balloon geometry and requirements.
 - 100% of offline verification test suites and production build pass cleanly.
 
+### P1-6: Multi-Drawing Batch PDF Export
+
+Epic:
+
+```text
+Distribution: Report Quality
+```
+
+Outcome:
+
+```text
+Inspectors and quality managers can export all ballooned drawings in a project into a single merged
+multi-drawing PDF package with one click, eliminating repetitive manual exports across multi-part projects.
+```
+
+Scope:
+
+- Implement `generateBatchBalloonedPdf({ drawings, ...options })` and `exportBatchBalloonedPdf` in `src/lib/exporters.js`.
+- Sequentially merge all ballooned project drawings into a single master document via `pdf-lib`.
+- Preserve individual page dimensions, aspect ratios, orientations, balloon coordinates, leader lines, and solid arrowheads.
+- Add "Export All PDFs" button in `ProjectDetail` drawings list.
+- Add "All PDFs (N)" button in workspace toolbar when a project contains more than one drawing.
+- Robust guardrails validating PDF byte presence and reporting specific drawing names when unplaced instances exist.
+- Deterministic verification tests in `scripts/verify-batch-pdf-export.mjs`.
+
+Out:
+
+- No external PDF conversion binaries or cloud microservices.
+- No zip packaging (single merged PDF package satisfies standard customer submission audits).
+
+Likely files:
+
+- `src/lib/exporters.js`
+- `src/App.jsx`
+- `src/components/panels.jsx`
+- `src/styles.css`
+- `scripts/verify-batch-pdf-export.mjs`
+
+Acceptance:
+
+- Export merges all project drawings with uploaded PDFs into a single downloadable PDF package.
+- Balloon annotations, leader lines, arrowheads, and page orientations are preserved on every page.
+- Drawings without balloons are included cleanly without errors.
+- Drawings with unplaced balloon instances are prevented with drawing-specific error messaging.
+- 100% of offline verification test suites and production build pass cleanly.
+
 ### P2-1: Solid Arrowhead Terminations on Balloon Leader Lines
 
 Epic:

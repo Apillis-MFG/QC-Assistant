@@ -194,3 +194,4 @@ assert.equal(getStatus(updatedState[0], 3), "NG", "10.50 exceeds USL 10.10 -> st
 assert.equal(overallStatus(updatedState, 3), "FAIL", "Overall status must reflect FAIL when any characteristic is NG");
 
 console.log("PASS: 100% batch sample auto-fill & clipboard pasting checks passed successfully!");
+

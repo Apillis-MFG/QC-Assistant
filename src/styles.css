@@ -745,6 +745,13 @@ kbd {
   display: none;
 }
 
+.project-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .project-action {
   display: inline-flex;
   align-items: center;
