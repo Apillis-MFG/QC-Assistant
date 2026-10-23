@@ -1103,6 +1103,14 @@ export function getLeaderGeometry({
   };
 }
 
+export {
+  normalizeFaiTemplate,
+  inspectTemplateWorkbook,
+  validateTemplateConfig,
+  fillCustomTemplateWorkbook,
+  exportCustomInspectionWorkbook,
+} from "./faiTemplate.js";
+
 function downloadBlob(bytes, type, name) {
   const blob = new Blob([bytes], { type });
   const url = URL.createObjectURL(blob);

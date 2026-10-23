@@ -101,9 +101,56 @@ What could break inspection correctness, export fidelity, or drawing integrity?
 
 ## Current Execution Backlog
 
-### Planned: uploaded Excel FAI templates
+### P1-8: Uploaded Excel FAI Templates (Phase 1: Ingestion, Validation, & Storage)
 
-Implementation deferred. See [the implementation plan](docs/fai-template-implementation-plan.md) for the optional `.xlsx` template flow, manual mapping contract, default-export fallback, local persistence, fidelity gate, and development slices. Documentation tracking: [issue #27](https://github.com/Apillis-MFG/QC-Assistant/issues/27). Create separate implementation issues when development begins.
+Epic:
+
+```text
+Distribution: Report Quality
+```
+
+Outcome:
+
+```text
+Engineers can upload customer-specific blank .xlsx FAI templates, validate cell mappings
+and table row capacity, persist the template locally with the project, and export completed
+inspection workbooks into the customer's exact format.
+```
+
+Scope:
+
+- Add `src/lib/faiTemplate.js` implementing:
+  - `normalizeFaiTemplate` data schema.
+  - `isValidCellAddress` and `isValidColumnLetter` A1 notation validation.
+  - `inspectTemplateWorkbook` extracting worksheet names, dimensions, and ranges.
+  - `validateTemplateConfig` enforcing required columns, capacity bounds, duplicate column guards, and header/table overlap checks.
+  - `clearMappedTableCells` clearing only declared writable cells prior to export.
+  - `fillCustomTemplateWorkbook` generating a fresh copy of the customer's workbook with mapped headers and sorted characteristic rows.
+  - `exportCustomInspectionWorkbook` client-side Excel download.
+- Extend `src/lib/projectStore.js` to persist `faiTemplate` with the local project and track byte length in storage estimates.
+- Re-export template engine utilities from `src/lib/exporters.js`.
+- Deterministic verification tests in `scripts/verify-fai-template.mjs`.
+
+Out:
+
+- No dynamic row insertion, macros, or server-side Excel generation.
+- No cloud synchronization of template bytes in MVP (remains local to project in IndexedDB).
+
+Likely files:
+
+- `src/lib/faiTemplate.js`
+- `src/lib/projectStore.js`
+- `src/lib/exporters.js`
+- `scripts/verify-fai-template.mjs`
+
+Acceptance:
+
+- Valid templates accept mapping and export to the customer's layout with correct limits and statuses.
+- Insufficient table row capacity is rejected with clear error message.
+- Duplicate column mappings and overlapping header targets are rejected.
+- Unused rows and sample columns within declared bounds remain blank.
+- Original template bytes remain immutable.
+- 100% of offline verification test suites and production build pass cleanly.
 
 ### P0-1: Verify all `getLimits` branches against known manufacturing values
 
