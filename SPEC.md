@@ -101,7 +101,7 @@ What could break inspection correctness, export fidelity, or drawing integrity?
 
 ## Current Execution Backlog
 
-### P1-8: Uploaded Excel FAI Templates (Phase 1: Ingestion, Validation, & Storage)
+### P1-8: Uploaded Excel FAI Templates (Custom Customer Form Ingestion & UI Mapping)
 
 Epic:
 
@@ -112,9 +112,9 @@ Distribution: Report Quality
 Outcome:
 
 ```text
-Engineers can upload customer-specific blank .xlsx FAI templates, validate cell mappings
-and table row capacity, persist the template locally with the project, and export completed
-inspection workbooks into the customer's exact format.
+Engineers can upload customer-specific blank .xlsx FAI templates, map header cell addresses
+and table column targets, validate row capacity, persist the template locally with the project,
+and export completed inspection workbooks into the customer's exact format with one click.
 ```
 
 Scope:
@@ -127,6 +127,20 @@ Scope:
   - `clearMappedTableCells` clearing only declared writable cells prior to export.
   - `fillCustomTemplateWorkbook` generating a fresh copy of the customer's workbook with mapped headers and sorted characteristic rows.
   - `exportCustomInspectionWorkbook` client-side Excel download.
+- Add `FaiTemplateDialog` in `src/components/panels.jsx`:
+  - Upload blank `.xlsx` template.
+  - Worksheet selection dropdown.
+  - Header cell mapping inputs (A1 notation).
+  - Table start/end row inputs with live capacity badge.
+  - Characteristic column mappings (Balloon #, Nominal, Tolerance, USL, LSL, Min, Max, Method, Status, Notes).
+  - Dynamic sample column inputs matching active sample count.
+  - Real-time validation feedback and error list.
+  - "Save Template" and "Use Default Report" actions.
+- Workspace Topbar and Project Details integration in `src/App.jsx`:
+  - Primary button dynamically displays active template name `Excel (<Name>)`.
+  - Secondary "Default" button allows fallback to standard AS9102 export without removing template.
+  - Quick access "Template" / settings button opening the configuration dialog.
+  - Project Info panel displays configured template status.
 - Extend `src/lib/projectStore.js` to persist `faiTemplate` with the local project and track byte length in storage estimates.
 - Re-export template engine utilities from `src/lib/exporters.js`.
 - Deterministic verification tests in `scripts/verify-fai-template.mjs`.
@@ -141,6 +155,9 @@ Likely files:
 - `src/lib/faiTemplate.js`
 - `src/lib/projectStore.js`
 - `src/lib/exporters.js`
+- `src/components/panels.jsx`
+- `src/App.jsx`
+- `src/styles.css`
 - `scripts/verify-fai-template.mjs`
 
 Acceptance:
@@ -150,6 +167,7 @@ Acceptance:
 - Duplicate column mappings and overlapping header targets are rejected.
 - Unused rows and sample columns within declared bounds remain blank.
 - Original template bytes remain immutable.
+- Topbar shows active template name and default fallback action.
 - 100% of offline verification test suites and production build pass cleanly.
 
 ### P0-1: Verify all `getLimits` branches against known manufacturing values

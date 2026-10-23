@@ -1,7 +1,8 @@
 import { balloonLabel, compareOccurrences, MAX_OCCURRENCE_QUANTITY } from "../lib/occurrences.js";
-import { memo, useMemo, useRef, useCallback } from "react";
-import { X, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft, Sparkles, CheckSquare, Download, Save } from "lucide-react";
+import { memo, useMemo, useRef, useCallback, useState, useEffect } from "react";
+import { X, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft, Sparkles, CheckSquare, Download, Save, FileSpreadsheet, Settings2, Upload, AlertCircle, CheckCircle2 } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
+import { inspectTemplateWorkbook, validateTemplateConfig, normalizeFaiTemplate } from "../lib/faiTemplate.js";
 import { methods, types, APP_VERSION, getDefaultUnit, normalizeUnitSystem, CHARACTERISTIC_UNITS, hasCharacteristicUnit } from "../lib/constants.js";
 import { formatBytes, formatDate, parseClipboardGrid, computePastedSampleUpdates } from "../lib/utils.js";
 import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer, Field, HelpMenu } from "./widgets.jsx";
@@ -646,6 +647,7 @@ export function ProjectDetail({
   onDeleteDrawing,
   onExportAllDrawingsPdf,
   onExportAllDrawingsExcel,
+  onOpenTemplateDialog,
   drawingDialog,
   onDrawingDialogChange,
   onDrawingDialogSubmit,
@@ -717,6 +719,21 @@ export function ProjectDetail({
                 <button className="button primary" onClick={onSaveFields} disabled={!fieldDraft.name.trim() || !fieldsDirty}>
                   Save
                 </button>
+              </div>
+
+              <div className="template-info-box">
+                <div className="template-info-text">
+                  <span className="template-info-label">Customer FAI Template</span>
+                  <span className="template-info-value">
+                    {project?.faiTemplate ? project.faiTemplate.name : "None (Standard AS9102 Report)"}
+                  </span>
+                </div>
+                {onOpenTemplateDialog ? (
+                  <button type="button" className="button secondary" onClick={onOpenTemplateDialog}>
+                    <FileSpreadsheet size={15} />
+                    {project?.faiTemplate ? "Configure Template" : "Upload Template"}
+                  </button>
+                ) : null}
               </div>
             </div>
           )}
@@ -1970,6 +1987,562 @@ export function ToleranceTableDialog({
           <button type="button" className="settings-close-btn" onClick={onClose}>
             Done
           </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function FaiTemplateDialog({
+  open,
+  onClose,
+  template,
+  onSaveTemplate,
+  onRemoveTemplate,
+  characteristics = [],
+  sampleCount = 1,
+  metadata = {},
+}) {
+  const fileInputRef = useRef(null);
+  const [draft, setDraft] = useState(() => normalizeFaiTemplate(template) || {
+    name: "",
+    bytes: null,
+    byteLength: 0,
+    worksheet: "",
+    headers: { drawingNo: "", revision: "", supplier: "", description: "", sampleCount: "", overallStatus: "" },
+    table: {
+      startRow: 6,
+      endRow: 50,
+      columns: {
+        balloonNo: "A",
+        nominal: "",
+        tolerance: "",
+        usl: "",
+        lsl: "",
+        type: "",
+        unit: "",
+        method: "",
+        min: "",
+        max: "",
+        status: "M",
+        notes: "",
+        samples: [],
+      },
+    },
+  });
+  const [sheetNames, setSheetNames] = useState([]);
+  const [uploadError, setUploadError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    if (template) {
+      const norm = normalizeFaiTemplate(template);
+      setDraft(norm);
+      if (template.bytes) {
+        try {
+          const inspected = inspectTemplateWorkbook(template.bytes);
+          setSheetNames(inspected.sheetNames);
+        } catch (e) {
+          console.warn("Could not inspect existing template bytes:", e);
+        }
+      }
+    } else {
+      setDraft({
+        name: "",
+        bytes: null,
+        byteLength: 0,
+        worksheet: "",
+        headers: { drawingNo: "", revision: "", supplier: "", description: "", sampleCount: "", overallStatus: "" },
+        table: {
+          startRow: 6,
+          endRow: 50,
+          columns: {
+            balloonNo: "A",
+            nominal: "",
+            tolerance: "",
+            usl: "",
+            lsl: "",
+            type: "",
+            unit: "",
+            method: "",
+            min: "",
+            max: "",
+            status: "M",
+            notes: "",
+            samples: [],
+          },
+        },
+      });
+      setSheetNames([]);
+    }
+    setUploadError("");
+  }, [open, template]);
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      setUploadError("Only unencrypted Excel (.xlsx) workbooks are supported.");
+      return;
+    }
+    try {
+      setUploadError("");
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8 = new Uint8Array(arrayBuffer);
+      const inspected = inspectTemplateWorkbook(uint8);
+      setSheetNames(inspected.sheetNames);
+      const defaultSheet = inspected.sheetNames[0] || "";
+
+      setDraft((prev) => ({
+        ...prev,
+        name: file.name,
+        bytes: uint8,
+        byteLength: uint8.byteLength,
+        worksheet: defaultSheet,
+      }));
+    } catch (err) {
+      setUploadError(`Failed to parse workbook: ${err.message}`);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const validation = useMemo(() => {
+    if (!draft.bytes && !draft.byteLength) {
+      return {
+        valid: false,
+        errors: ["Please upload a blank customer .xlsx workbook template."],
+        warnings: [],
+        capacity: 0,
+      };
+    }
+    return validateTemplateConfig(draft, characteristics.length, sampleCount);
+  }, [draft, characteristics.length, sampleCount]);
+
+  if (!open) return null;
+
+  const validSampleCount = Math.max(1, parseInt(sampleCount, 10) || 1);
+  const currentCapacity = draft.table.startRow > 0 && draft.table.endRow >= draft.table.startRow
+    ? draft.table.endRow - draft.table.startRow + 1
+    : 0;
+
+  const updateHeader = (field, val) => {
+    setDraft((prev) => ({
+      ...prev,
+      headers: { ...prev.headers, [field]: val.toUpperCase() },
+    }));
+  };
+
+  const updateCol = (field, val) => {
+    setDraft((prev) => ({
+      ...prev,
+      table: {
+        ...prev.table,
+        columns: { ...prev.table.columns, [field]: val.toUpperCase() },
+      },
+    }));
+  };
+
+  const updateSampleCol = (idx, val) => {
+    setDraft((prev) => {
+      const s = [...(prev.table?.columns?.samples || [])];
+      s[idx] = val.toUpperCase();
+      return {
+        ...prev,
+        table: {
+          ...prev.table,
+          columns: { ...prev.table.columns, samples: s },
+        },
+      };
+    });
+  };
+
+  const updateRowBound = (field, val) => {
+    const num = parseInt(val, 10) || 0;
+    setDraft((prev) => ({
+      ...prev,
+      table: {
+        ...prev.table,
+        [field]: num,
+      },
+    }));
+  };
+
+  const handleSave = () => {
+    if (!validation.valid) return;
+    onSaveTemplate(draft);
+    onClose();
+  };
+
+  const handleRemove = () => {
+    if (onRemoveTemplate) onRemoveTemplate();
+    onClose();
+  };
+
+  return (
+    <div className="dialog-backdrop help-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="settings-dialog template-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="template-dialog-title"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="dialog-title help-title">
+          <div>
+            <h2 id="template-dialog-title">Customer Excel FAI Template</h2>
+            <p>Upload a blank .xlsx workbook, map headers and characteristic columns, and save it locally for this project.</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close template dialog">
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="template-dialog-body">
+          {/* Upload Zone */}
+          <div className="template-upload-zone">
+            <div className="template-file-meta">
+              <span className="template-file-name">
+                {draft.name || "No workbook uploaded"}
+              </span>
+              <span className="template-file-size">
+                {draft.byteLength ? `${formatBytes(draft.byteLength)} • .xlsx` : "Select a blank customer form"}
+              </span>
+            </div>
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx"
+                style={{ display: "none" }}
+                onChange={handleFileChange}
+              />
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload size={14} />
+                {draft.name ? "Replace .xlsx" : "Upload .xlsx"}
+              </button>
+            </div>
+          </div>
+
+          {uploadError ? (
+            <div className="template-validation-box error">
+              <strong>Upload Error:</strong> {uploadError}
+            </div>
+          ) : null}
+
+          {/* Worksheet Selection */}
+          {sheetNames.length > 0 ? (
+            <div className="template-section">
+              <span className="template-section-title">Inspection Worksheet</span>
+              <select
+                className="template-field-input"
+                style={{ fontFamily: "inherit" }}
+                value={draft.worksheet}
+                onChange={(e) => setDraft((prev) => ({ ...prev, worksheet: e.target.value }))}
+              >
+                {sheetNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          {/* Header Mappings */}
+          <div className="template-section">
+            <span className="template-section-title">Header Cell Mappings (A1 Notation)</span>
+            <div className="template-grid-3">
+              <div className="template-field-group">
+                <label className="template-field-label">Drawing Number</label>
+                <input
+                  type="text"
+                  placeholder="e.g. C2"
+                  className="template-field-input"
+                  value={draft.headers.drawingNo || ""}
+                  onChange={(e) => updateHeader("drawingNo", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Revision</label>
+                <input
+                  type="text"
+                  placeholder="e.g. E2"
+                  className="template-field-input"
+                  value={draft.headers.revision || ""}
+                  onChange={(e) => updateHeader("revision", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Supplier</label>
+                <input
+                  type="text"
+                  placeholder="e.g. C3"
+                  className="template-field-input"
+                  value={draft.headers.supplier || ""}
+                  onChange={(e) => updateHeader("supplier", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Description</label>
+                <input
+                  type="text"
+                  placeholder="e.g. E3"
+                  className="template-field-input"
+                  value={draft.headers.description || ""}
+                  onChange={(e) => updateHeader("description", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Sample Size</label>
+                <input
+                  type="text"
+                  placeholder="e.g. G2"
+                  className="template-field-input"
+                  value={draft.headers.sampleCount || ""}
+                  onChange={(e) => updateHeader("sampleCount", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Overall Status</label>
+                <input
+                  type="text"
+                  placeholder="e.g. G3"
+                  className="template-field-input"
+                  value={draft.headers.overallStatus || ""}
+                  onChange={(e) => updateHeader("overallStatus", e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Table Bounds */}
+          <div className="template-section">
+            <div className="template-section-title">
+              <span>Inspection Table Bounds</span>
+              <span className={`template-badge ${currentCapacity >= characteristics.length && currentCapacity > 0 ? "template-badge--active" : "template-badge--none"}`}>
+                Capacity: {currentCapacity} rows ({characteristics.length} active characteristics)
+              </span>
+            </div>
+            <div className="template-grid-2">
+              <div className="template-field-group">
+                <label className="template-field-label">Start Row (First characteristic row)</label>
+                <input
+                  type="number"
+                  min="1"
+                  className="template-field-input"
+                  value={draft.table.startRow || ""}
+                  onChange={(e) => updateRowBound("startRow", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">End Row (Last characteristic row)</label>
+                <input
+                  type="number"
+                  min="1"
+                  className="template-field-input"
+                  value={draft.table.endRow || ""}
+                  onChange={(e) => updateRowBound("endRow", e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Characteristic Column Mappings */}
+          <div className="template-section">
+            <span className="template-section-title">Characteristic Column Mappings</span>
+            <div className="template-grid-3">
+              <div className="template-field-group">
+                <label className="template-field-label">Balloon # (Required)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. A"
+                  className="template-field-input"
+                  value={draft.table.columns.balloonNo || ""}
+                  onChange={(e) => updateCol("balloonNo", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Status Result (Required)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. M"
+                  className="template-field-input"
+                  value={draft.table.columns.status || ""}
+                  onChange={(e) => updateCol("status", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Nominal</label>
+                <input
+                  type="text"
+                  placeholder="e.g. C"
+                  className="template-field-input"
+                  value={draft.table.columns.nominal || ""}
+                  onChange={(e) => updateCol("nominal", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Tolerance</label>
+                <input
+                  type="text"
+                  placeholder="e.g. D"
+                  className="template-field-input"
+                  value={draft.table.columns.tolerance || ""}
+                  onChange={(e) => updateCol("tolerance", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">USL</label>
+                <input
+                  type="text"
+                  placeholder="e.g. E"
+                  className="template-field-input"
+                  value={draft.table.columns.usl || ""}
+                  onChange={(e) => updateCol("usl", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">LSL</label>
+                <input
+                  type="text"
+                  placeholder="e.g. F"
+                  className="template-field-input"
+                  value={draft.table.columns.lsl || ""}
+                  onChange={(e) => updateCol("lsl", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Method</label>
+                <input
+                  type="text"
+                  placeholder="e.g. L"
+                  className="template-field-input"
+                  value={draft.table.columns.method || ""}
+                  onChange={(e) => updateCol("method", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Min</label>
+                <input
+                  type="text"
+                  placeholder="e.g. J"
+                  className="template-field-input"
+                  value={draft.table.columns.min || ""}
+                  onChange={(e) => updateCol("min", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Max</label>
+                <input
+                  type="text"
+                  placeholder="e.g. K"
+                  className="template-field-input"
+                  value={draft.table.columns.max || ""}
+                  onChange={(e) => updateCol("max", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Type</label>
+                <input
+                  type="text"
+                  placeholder="e.g. B"
+                  className="template-field-input"
+                  value={draft.table.columns.type || ""}
+                  onChange={(e) => updateCol("type", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Unit</label>
+                <input
+                  type="text"
+                  placeholder="e.g. MM"
+                  className="template-field-input"
+                  value={draft.table.columns.unit || ""}
+                  onChange={(e) => updateCol("unit", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Notes</label>
+                <input
+                  type="text"
+                  placeholder="e.g. N"
+                  className="template-field-input"
+                  value={draft.table.columns.notes || ""}
+                  onChange={(e) => updateCol("notes", e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Sample Columns */}
+          <div className="template-section">
+            <span className="template-section-title">Sample Measurement Columns ({validSampleCount} active)</span>
+            <div className="template-grid-3">
+              {Array.from({ length: validSampleCount }, (_, i) => (
+                <div key={i} className="template-field-group">
+                  <label className="template-field-label">Sample #{i + 1} Column</label>
+                  <input
+                    type="text"
+                    placeholder={`e.g. ${String.fromCharCode(71 + i)}`}
+                    className="template-field-input"
+                    value={draft.table.columns.samples?.[i] || ""}
+                    onChange={(e) => updateSampleCol(i, e.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Validation Status */}
+          {validation.valid ? (
+            <div className="template-validation-box success">
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <CheckCircle2 size={16} />
+                <strong>Mapping Valid:</strong> Ready to save and export {characteristics.length} characteristics into {draft.name}.
+              </div>
+            </div>
+          ) : (
+            <div className="template-validation-box error">
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <AlertCircle size={16} />
+                <strong>Configuration Issues:</strong>
+              </div>
+              <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+                {validation.errors.map((err, i) => (
+                  <li key={i}>{err}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        <div className="settings-footer" style={{ justifyContent: "space-between" }}>
+          <div>
+            {template ? (
+              <button type="button" className="button secondary danger-text" onClick={handleRemove}>
+                <Trash2 size={15} />
+                Use Default Report
+              </button>
+            ) : null}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="button secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="button primary"
+              disabled={!validation.valid}
+              onClick={handleSave}
+            >
+              Save Template
+            </button>
+          </div>
         </div>
       </section>
     </div>

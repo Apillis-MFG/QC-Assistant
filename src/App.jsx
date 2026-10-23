@@ -21,6 +21,8 @@ import {
   Sparkles,
   CheckSquare,
   RotateCcw,
+  FileSpreadsheet,
+  Settings2,
 } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -30,6 +32,7 @@ import {
   exportBatchBalloonedPdf,
   exportInspectionWorkbook,
   exportBatchInspectionWorkbook,
+  exportCustomInspectionWorkbook,
   overallStatus,
 } from "./lib/exporters.js";
 import {
@@ -79,7 +82,7 @@ import {
 } from "./components/widgets.jsx";
 import {
   ProjectDashboard, ProjectDetail, NewProjectPage, GuidePage, UserGuidePage, VersionHistoryPage, MeasurementWorkspace, BalloonEditor, CharacteristicTable, SettingsPage,
-  ToleranceTableDialog,
+  ToleranceTableDialog, FaiTemplateDialog,
 } from "./components/panels.jsx";
 import {
   loadBalloonSettings, saveBalloonSettings,
@@ -210,6 +213,8 @@ export default function App() {
   const [autoBalloonCandidates, setAutoBalloonCandidates] = useState([]);
   const [autoBalloonReviewOpen, setAutoBalloonReviewOpen] = useState(false);
   const [toleranceTableOpen, setToleranceTableOpen] = useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [templateDialogProject, setTemplateDialogProject] = useState(null);
   const [balloonSettings, setBalloonSettings] = useState(loadBalloonSettings);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [layoutMode, setLayoutMode] = useState("split-v");
@@ -2327,12 +2332,66 @@ export default function App() {
 
   const exportExcel = useCallback(() => {
     try {
-      exportInspectionWorkbook({ metadata, characteristics, sampleCount });
-      setMessage("Exported QC/FAI Excel workbook.");
+      if (activeProject?.faiTemplate) {
+        exportCustomInspectionWorkbook({
+          template: activeProject.faiTemplate,
+          metadata,
+          characteristics,
+          sampleCount,
+        });
+        setMessage(`Exported custom FAI Excel workbook (${activeProject.faiTemplate.name}).`);
+      } else {
+        exportInspectionWorkbook({ metadata, characteristics, sampleCount });
+        setMessage("Exported standard AS9102 FAI Excel workbook.");
+      }
     } catch (error) {
       setMessage(error.message);
     }
-  }, [characteristics, metadata, sampleCount]);
+  }, [activeProject, characteristics, metadata, sampleCount]);
+
+  const handleSaveProjectTemplate = useCallback(
+    async (templateDraft) => {
+      const target = templateDialogProject || activeProject;
+      if (!target) return;
+      try {
+        const updatedProject = {
+          ...target,
+          faiTemplate: templateDraft,
+          updatedAt: new Date().toISOString(),
+        };
+        await saveProject(updatedProject);
+        if (activeProject?.id === target.id) setActiveProject(updatedProject);
+        if (detailProject?.id === target.id) setDetailProject(updatedProject);
+        await refreshProjectList();
+        setMessage(`Custom Excel FAI template '${templateDraft.name}' saved for ${target.name}.`);
+      } catch (error) {
+        setMessage(`Failed to save template: ${error.message}`);
+      }
+    },
+    [templateDialogProject, activeProject, detailProject, refreshProjectList],
+  );
+
+  const handleRemoveProjectTemplate = useCallback(
+    async () => {
+      const target = templateDialogProject || activeProject;
+      if (!target) return;
+      try {
+        const updatedProject = {
+          ...target,
+          faiTemplate: null,
+          updatedAt: new Date().toISOString(),
+        };
+        await saveProject(updatedProject);
+        if (activeProject?.id === target.id) setActiveProject(updatedProject);
+        if (detailProject?.id === target.id) setDetailProject(updatedProject);
+        await refreshProjectList();
+        setMessage(`Custom template removed from ${target.name}. Default AS9102 report restored.`);
+      } catch (error) {
+        setMessage(`Failed to remove template: ${error.message}`);
+      }
+    },
+    [templateDialogProject, activeProject, detailProject, refreshProjectList],
+  );
 
   const exportAllProjectDrawings = useCallback(
     async (targetProject, targetDrawings, activeState = null) => {
@@ -2587,8 +2646,9 @@ export default function App() {
   );
 
   const detailElement = (
-    <ProjectDetail
-      project={detailProject}
+    <>
+      <ProjectDetail
+        project={detailProject}
       drawings={detailDrawings}
       ready={Boolean(detailProject)}
       fieldDraft={detailFields}
@@ -2609,6 +2669,10 @@ export default function App() {
       onDeleteDrawing={handleDetailDeleteDrawing}
       onExportAllDrawingsPdf={() => exportAllProjectDrawings(detailProject, detailDrawings)}
       onExportAllDrawingsExcel={() => exportAllProjectExcel(detailProject, detailDrawings)}
+      onOpenTemplateDialog={() => {
+        setTemplateDialogProject(detailProject);
+        setTemplateDialogOpen(true);
+      }}
       drawingDialog={drawingDialog}
       onDrawingDialogChange={handleDrawingDialogChange}
       onDrawingDialogSubmit={handleDrawingDialogSubmit}
@@ -2623,6 +2687,20 @@ export default function App() {
       onInviteVendor={handleInviteVendor}
       onRevokeShare={handleRevokeShare}
     />
+    <FaiTemplateDialog
+      open={templateDialogOpen && templateDialogProject?.id === detailProject?.id}
+      onClose={() => {
+        setTemplateDialogOpen(false);
+        setTemplateDialogProject(null);
+      }}
+      template={detailProject?.faiTemplate}
+      onSaveTemplate={handleSaveProjectTemplate}
+      onRemoveTemplate={handleRemoveProjectTemplate}
+      characteristics={[]}
+      sampleCount={1}
+      metadata={{}}
+    />
+  </>
   );
 
   const settingsElement = (
@@ -2757,10 +2835,65 @@ export default function App() {
                   All PDFs ({drawings.length})
                 </button>
               ) : null}
-              <button className="button primary" onClick={exportExcel} disabled={!characteristics.length}>
-                <Save size={16} />
-                Excel
-              </button>
+              {activeProject?.faiTemplate ? (
+                <div className="template-export-cluster">
+                  <button
+                    className="button primary"
+                    onClick={exportExcel}
+                    disabled={!characteristics.length}
+                    title={`Export using customer template: ${activeProject.faiTemplate.name}`}
+                  >
+                    <FileSpreadsheet size={16} />
+                    Excel ({activeProject.faiTemplate.name.replace(/\.xlsx$/i, "")})
+                  </button>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => {
+                      try {
+                        exportInspectionWorkbook({ metadata, characteristics, sampleCount });
+                        setMessage("Exported standard AS9102 FAI Excel workbook.");
+                      } catch (err) {
+                        setMessage(err.message);
+                      }
+                    }}
+                    disabled={!characteristics.length}
+                    title="Export standard AS9102 FAI Excel report"
+                  >
+                    Default
+                  </button>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => {
+                      setTemplateDialogProject(activeProject);
+                      setTemplateDialogOpen(true);
+                    }}
+                    title="Configure customer Excel FAI template"
+                  >
+                    <Settings2 size={16} />
+                  </button>
+                </div>
+              ) : (
+                <div className="template-export-cluster">
+                  <button className="button primary" onClick={exportExcel} disabled={!characteristics.length}>
+                    <Save size={16} />
+                    Excel
+                  </button>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => {
+                      setTemplateDialogProject(activeProject);
+                      setTemplateDialogOpen(true);
+                    }}
+                    title="Upload and configure custom customer FAI Excel template"
+                  >
+                    <FileSpreadsheet size={16} />
+                    Template
+                  </button>
+                </div>
+              )}
               {drawings.length > 1 ? (
                 <button
                   type="button"
@@ -3273,6 +3406,19 @@ export default function App() {
         onResetOverride={resetToleranceOverride}
         onApply={applyToleranceToMatching}
         countMatches={countToleranceMatches}
+      />
+      <FaiTemplateDialog
+        open={templateDialogOpen && (!templateDialogProject || templateDialogProject?.id === activeProject?.id)}
+        onClose={() => {
+          setTemplateDialogOpen(false);
+          setTemplateDialogProject(null);
+        }}
+        template={activeProject?.faiTemplate}
+        onSaveTemplate={handleSaveProjectTemplate}
+        onRemoveTemplate={handleRemoveProjectTemplate}
+        characteristics={characteristics}
+        sampleCount={sampleCount}
+        metadata={metadata}
       />
     </div>
   );
