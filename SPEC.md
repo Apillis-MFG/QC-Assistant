@@ -101,9 +101,74 @@ What could break inspection correctness, export fidelity, or drawing integrity?
 
 ## Current Execution Backlog
 
-### Planned: uploaded Excel FAI templates
+### P1-8: Uploaded Excel FAI Templates (Custom Customer Form Ingestion & UI Mapping)
 
-Implementation deferred. See [the implementation plan](docs/fai-template-implementation-plan.md) for the optional `.xlsx` template flow, manual mapping contract, default-export fallback, local persistence, fidelity gate, and development slices. Documentation tracking: [issue #27](https://github.com/Apillis-MFG/QC-Assistant/issues/27). Create separate implementation issues when development begins.
+Epic:
+
+```text
+Distribution: Report Quality
+```
+
+Outcome:
+
+```text
+Engineers can upload customer-specific blank .xlsx FAI templates, map header cell addresses
+and table column targets, validate row capacity, persist the template locally with the project,
+and export completed inspection workbooks into the customer's exact format with one click.
+```
+
+Scope:
+
+- Add `src/lib/faiTemplate.js` implementing:
+  - `normalizeFaiTemplate` data schema.
+  - `isValidCellAddress` and `isValidColumnLetter` A1 notation validation.
+  - `inspectTemplateWorkbook` extracting worksheet names, dimensions, and ranges.
+  - `validateTemplateConfig` enforcing required columns, capacity bounds, duplicate column guards, and header/table overlap checks.
+  - `clearMappedTableCells` clearing only declared writable cells prior to export.
+  - `fillCustomTemplateWorkbook` generating a fresh copy of the customer's workbook with mapped headers and sorted characteristic rows.
+  - `exportCustomInspectionWorkbook` client-side Excel download.
+- Add `FaiTemplateDialog` in `src/components/panels.jsx`:
+  - Upload blank `.xlsx` template.
+  - Worksheet selection dropdown.
+  - Header cell mapping inputs (A1 notation).
+  - Table start/end row inputs with live capacity badge.
+  - Characteristic column mappings (Balloon #, Nominal, Tolerance, USL, LSL, Min, Max, Method, Status, Notes).
+  - Dynamic sample column inputs matching active sample count.
+  - Real-time validation feedback and error list.
+  - "Save Template" and "Use Default Report" actions.
+- Workspace Topbar and Project Details integration in `src/App.jsx`:
+  - Primary button dynamically displays active template name `Excel (<Name>)`.
+  - Secondary "Default" button allows fallback to standard AS9102 export without removing template.
+  - Quick access "Template" / settings button opening the configuration dialog.
+  - Project Info panel displays configured template status.
+- Extend `src/lib/projectStore.js` to persist `faiTemplate` with the local project and track byte length in storage estimates.
+- Re-export template engine utilities from `src/lib/exporters.js`.
+- Deterministic verification tests in `scripts/verify-fai-template.mjs`.
+
+Out:
+
+- No dynamic row insertion, macros, or server-side Excel generation.
+- No cloud synchronization of template bytes in MVP (remains local to project in IndexedDB).
+
+Likely files:
+
+- `src/lib/faiTemplate.js`
+- `src/lib/projectStore.js`
+- `src/lib/exporters.js`
+- `src/components/panels.jsx`
+- `src/App.jsx`
+- `src/styles.css`
+- `scripts/verify-fai-template.mjs`
+
+Acceptance:
+
+- Valid templates accept mapping and export to the customer's layout with correct limits and statuses.
+- Insufficient table row capacity is rejected with clear error message.
+- Duplicate column mappings and overlapping header targets are rejected.
+- Unused rows and sample columns within declared bounds remain blank.
+- Original template bytes remain immutable.
+- Topbar shows active template name and default fallback action.
+- 100% of offline verification test suites and production build pass cleanly.
 
 ### P0-1: Verify all `getLimits` branches against known manufacturing values
 

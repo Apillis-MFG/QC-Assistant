@@ -1,5 +1,6 @@
 import { normalizeOccurrence } from "./occurrences.js";
 import { ZOOM_DEFAULT, normalizeUnitSystem } from "./constants.js";
+import { normalizeFaiTemplate } from "./faiTemplate.js";
 
 const DB_NAME = "qca_projects_v1";
 const DB_VERSION = 1;
@@ -34,7 +35,9 @@ export async function listProjects() {
       return {
         ...project,
         drawingCount: projectDrawings.length,
-        totalBytes: projectDrawings.reduce((sum, drawing) => sum + (drawing.pdfByteLength || 0), 0),
+        totalBytes:
+          projectDrawings.reduce((sum, drawing) => sum + (drawing.pdfByteLength || 0), 0) +
+          (project.faiTemplate?.byteLength || 0),
         status: summarizeProjectStatus(projectDrawings),
       };
     })
@@ -199,6 +202,7 @@ function normalizeProject(project) {
     owner: project.owner?.trim() || "",
     estimatedDeliveryDate: project.estimatedDeliveryDate || "",
     notes: project.notes || "",
+    faiTemplate: normalizeFaiTemplate(project.faiTemplate),
     createdAt: project.createdAt || now,
     updatedAt: project.updatedAt || now,
   };
