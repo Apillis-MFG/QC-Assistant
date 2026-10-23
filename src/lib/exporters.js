@@ -119,6 +119,20 @@ export function getLimits(characteristic) {
   };
 }
 
+export function getDualLimits(characteristic) {
+  const primary = getLimits(characteristic);
+  if (!characteristic?.dual?.nominal) return { primary, dual: null };
+  const dual = getLimits({
+    type: characteristic.type,
+    nominal: characteristic.dual.nominal,
+    tolerance: characteristic.dual.tolerance,
+  });
+  return {
+    primary: { ...primary, unit: characteristic.unit || "MM" },
+    dual: { ...dual, unit: characteristic.dual.unit || "IN" },
+  };
+}
+
 export function getStatus(characteristic, sampleCount) {
   if (!characteristic || !sampleCount || sampleCount <= 0) return "OPEN";
   const samples = characteristic.samples || {};
@@ -540,6 +554,10 @@ export function buildInspectionWorkbook({ metadata, characteristics = [], sample
       const { usl, lsl } = getLimits(item);
       const values = Array.from({ length: validSampleCount }, (_, index) => item.samples?.[index] ?? "");
       const numericValues = values.map(parseNumber).filter((value) => value !== null);
+      const rowNotes = item.dual && !item.notes?.includes("[Dual:")
+        ? [item.notes, `[Dual: ${item.dual.nominal}${item.dual.tolerance ? " " + item.dual.tolerance : ""}${item.dual.unit ? " " + item.dual.unit : ""}]`].filter(Boolean).join(" ")
+        : (item.notes || "");
+
       rows.push([
         balloonLabel(item),
         item.type,
@@ -553,7 +571,7 @@ export function buildInspectionWorkbook({ metadata, characteristics = [], sample
         numericValues.length ? Math.max(...numericValues) : "",
         item.method,
         getStatus(item, validSampleCount),
-        item.notes,
+        rowNotes,
       ]);
     });
 

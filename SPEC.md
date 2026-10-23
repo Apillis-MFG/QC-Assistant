@@ -255,6 +255,49 @@ Acceptance:
 - Form 2 populates standard material, finish, workmanship, and characteristic compliance rows.
 - 100% of Excel verification tests and full build pass cleanly.
 
+### P0-5: Metric & Imperial Dual Dimensioning & Tolerance Conversion
+
+Epic:
+
+```text
+Trust: Inspection Math
+```
+
+Outcome:
+
+```text
+Drawings with dual dimension callouts (e.g. `25.40 [1.000] ±0.10 [±.004]`) automatically parse both primary
+and bracketed secondary values, infer units accurately from mathematical scale, and preserve dual traceability in FAI reports.
+```
+
+Scope:
+
+- Upgrade `parseDimension` to recognize bracketed secondary dimensions (`[secondary]`) across all standard layouts.
+- Auto-infer `MM` vs `IN` unit assignment based on the $25.4$ metric/imperial scale ratio.
+- Pure conversion helpers `convertLinearValue`, `convertToleranceString`, and `isDualDimensionConsistent`.
+- Compute dual limit envelopes via `getDualLimits({ primary, dual })` in `src/lib/exporters.js`.
+- Export bracketed dual references in Excel FAI notes column for customer compliance auditability.
+- Deterministic unit tests covering dual dimension syntax and conversions in `scripts/verify-unit-parsing.mjs`.
+
+Out:
+
+- No changes to single-dimension parsing contracts.
+- No unit conversion of recorded physical sample measurements.
+
+Likely files:
+
+- `src/lib/utils.js`
+- `src/lib/exporters.js`
+- `src/App.jsx`
+- `scripts/verify-unit-parsing.mjs`
+
+Acceptance:
+
+- Dual dimensions with brackets (`25.4 [1.000]`, `25.4 ±0.1 [1.000 ±.004]`, `Ø12.00 +0.05/-0.02 [.472 +.002/-.001]`) parse both nominals and tolerances.
+- Inferred units assign `MM` to the millimeter value and `IN` to the inch value.
+- Rejection guards for products (`2x10x20`) and threads (`2X M10`) remain intact.
+- 100% of offline verification tests and production build pass.
+
 ### P1-1: Text capture reliability for rotated and small PDF text
 
 Epic:

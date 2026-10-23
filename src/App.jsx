@@ -146,6 +146,7 @@ function createCharacteristic({ balloonNo, x = 0.5, y = 0.5, targetX = x, target
     tolerance: seed.tolerance ?? "",
     method: seed.method ?? TYPE_DEFAULT_METHOD[seed.type ?? "dimension"] ?? "DC",
     notes: seed.notes ?? "",
+    dual: seed.dual ?? null,
     samples: seed.samples ?? {},
   };
 }
@@ -1183,11 +1184,20 @@ export default function App() {
           : point;
 
         const resolvedSeed = hit
-          ? { nominal: hit.nominal, quantity: hit.quantity, tolerance: hit.tolerance, ...(hit.unit ? { unit: hit.unit } : {}) }
+          ? {
+              nominal: hit.nominal,
+              quantity: hit.quantity,
+              tolerance: hit.tolerance,
+              ...(hit.unit ? { unit: hit.unit } : {}),
+              ...(hit.dual ? { dual: hit.dual } : {}),
+            }
           : (() => {
               const dim = findNearestTextDimension(point, textItems, canvasSize);
               return dim
-                ? { ...dim, tolerance: applyGeneralTolerance(dim.nominal, dim.tolerance, dim.unit === "°" ? resolvedTolerances.angle : resolvedTolerances.linear) }
+                ? {
+                    ...dim,
+                    tolerance: applyGeneralTolerance(dim.nominal, dim.tolerance, dim.unit === "°" ? resolvedTolerances.angle : resolvedTolerances.linear),
+                  }
                 : {};
             })();
 
