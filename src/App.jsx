@@ -651,71 +651,6 @@ export default function App() {
     setMessage("Edit mode: add balloons, capture drawing text, and refine requirement setup.");
   }, []);
 
-  const isWorkspaceRoute = /^\/projects\/[^/]+\/drawings(\/|$)/.test(location.pathname);
-
-  useEffect(() => {
-    const handleShortcut = (event) => {
-      if (!isWorkspaceRoute) return;
-      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
-      const target = event.target;
-      const tagName = target?.tagName?.toLowerCase();
-      const isTyping =
-        tagName === "input" ||
-        tagName === "textarea" ||
-        tagName === "select" ||
-        target?.isContentEditable;
-      if (isTyping) return;
-
-      const key = event.key.toLowerCase();
-      if (key === "escape") {
-        if (placementGroupId) {
-          setMode("select");
-          setMessage("Placement paused. Select a requirement and resume placement to continue.");
-        }
-        setPlacementGroupId(null);
-        if (toleranceTableOpen) {
-          event.preventDefault();
-          setToleranceTableOpen(false);
-          return;
-        }
-        if (editingBalloonId || ocrRect || autoBalloonRect || autoBalloonReviewOpen || pendingTarget) {
-          event.preventDefault();
-          setEditingBalloonId(null);
-          setPendingTarget(null);
-          setOcrRect(null);
-          setAutoBalloonRect(null);
-          setAutoBalloonCandidates([]);
-          setAutoBalloonReviewOpen(false);
-        }
-        return;
-      }
-      if (toleranceTableOpen) return;
-      if (workspaceMode === "measurement") return;
-
-      const shortcutModes = {
-        b: "balloon",
-        v: "select",
-        h: "pan",
-        t: "text",
-        a: "autoBalloon",
-      };
-      if (shortcutModes[key]) {
-        event.preventDefault();
-        switchMode(shortcutModes[key]);
-        return;
-      }
-
-      if (key === "e" && selected?.page === pageNumber) {
-        event.preventDefault();
-        setEditingBalloonId(selected.id);
-        setMessage(`Editing balloon ${balloonLabel(selected)}.`);
-      }
-    };
-
-    window.addEventListener("keydown", handleShortcut);
-    return () => window.removeEventListener("keydown", handleShortcut);
-  }, [placementGroupId, autoBalloonRect, autoBalloonReviewOpen, editingBalloonId, isWorkspaceRoute, toleranceTableOpen, ocrRect, pageNumber, pendingTarget, selected, switchMode, workspaceMode]);
-
   const persistActiveDrawing = useCallback((reason = "auto") => {
     const save = async () => {
       if (!projectsReady || !activeProject?.id || !activeDrawingId) return true;
@@ -2139,6 +2074,184 @@ export default function App() {
   const deleteSelected = useCallback(() => {
     deleteCharacteristic(selectedId);
   }, [deleteCharacteristic, selectedId]);
+
+  const isWorkspaceRoute = /^\/projects\/[^/]+\/drawings(\/|$)/.test(location.pathname);
+
+  useEffect(() => {
+    const handleShortcut = (event) => {
+      if (!isWorkspaceRoute) return;
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping =
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select" ||
+        target?.isContentEditable;
+      if (isTyping) return;
+
+      const key = event.key;
+      const lowerKey = key.toLowerCase();
+
+      // 1. Escape: cancel active tool states, placement, dialogs, review panels
+      if (lowerKey === "escape") {
+        if (placementGroupId) {
+          setMode("select");
+          setMessage("Placement paused. Select a requirement and resume placement to continue.");
+        }
+        setPlacementGroupId(null);
+        if (toleranceTableOpen) {
+          event.preventDefault();
+          setToleranceTableOpen(false);
+          return;
+        }
+        if (editingBalloonId || ocrRect || autoBalloonRect || autoBalloonReviewOpen || pendingTarget) {
+          event.preventDefault();
+          setEditingBalloonId(null);
+          setPendingTarget(null);
+          setOcrRect(null);
+          setAutoBalloonRect(null);
+          setAutoBalloonCandidates([]);
+          setAutoBalloonReviewOpen(false);
+        }
+        return;
+      }
+
+      // If tolerance table modal is open, don't trigger workspace shortcuts
+      if (toleranceTableOpen) return;
+
+      // 2. Enter: confirm pending candidate review or finish balloon edit
+      if (lowerKey === "enter") {
+        if (autoBalloonReviewOpen && autoBalloonCandidates.length > 0) {
+          event.preventDefault();
+          commitAutoBalloonCandidates();
+          return;
+        }
+        if (editingBalloonId) {
+          event.preventDefault();
+          setEditingBalloonId(null);
+          setMessage("Finished balloon editing.");
+          return;
+        }
+      }
+
+      if (workspaceMode === "measurement") return;
+
+      // 3. Delete / Backspace: delete selected requirement
+      if (key === "Delete" || key === "Backspace") {
+        if (selectedId && !editingBalloonId) {
+          event.preventDefault();
+          deleteSelected();
+          return;
+        }
+      }
+
+      // 4. Primary Tool Shortcuts
+      const shortcutModes = {
+        b: "balloon",
+        v: "select",
+        h: "pan",
+        t: "text",
+        a: "autoBalloon",
+      };
+      if (shortcutModes[lowerKey]) {
+        event.preventDefault();
+        switchMode(shortcutModes[lowerKey]);
+        return;
+      }
+
+      // 5. Edit Selected Balloon
+      if (lowerKey === "e" && selected?.page === pageNumber) {
+        event.preventDefault();
+        setEditingBalloonId(selected.id);
+        setMessage(`Editing balloon ${balloonLabel(selected)}.`);
+        return;
+      }
+
+      // 6. 'd': Cycle requirement type (dimension -> gdt -> note -> visual)
+      if (lowerKey === "d" && selected) {
+        event.preventDefault();
+        const currentType = selected.type || "dimension";
+        const currentIndex = types.indexOf(currentType);
+        const nextType = types[(currentIndex + 1) % types.length];
+        const nextMethod = TYPE_DEFAULT_METHOD[nextType] || selected.method || "DC";
+        updateCharacteristic(selected.id, {
+          type: nextType,
+          method: nextMethod,
+          ...(hasCharacteristicUnit(nextType) ? {} : { unit: "" }),
+        });
+        setMessage(`Changed ${balloonLabel(selected)} type to ${nextType}.`);
+        return;
+      }
+
+      // 7. ArrowUp / ArrowDown (or k / j): Navigate characteristic selection in table
+      if (key === "ArrowDown" || lowerKey === "j") {
+        if (characteristics.length > 0) {
+          event.preventDefault();
+          const currentIndex = characteristics.findIndex((c) => c.id === selectedId);
+          const nextIndex = currentIndex < characteristics.length - 1 ? currentIndex + 1 : 0;
+          setSelectedId(characteristics[nextIndex].id);
+          setMessage(`Selected characteristic #${balloonLabel(characteristics[nextIndex])}.`);
+          return;
+        }
+      }
+      if (key === "ArrowUp" || lowerKey === "k") {
+        if (characteristics.length > 0) {
+          event.preventDefault();
+          const currentIndex = characteristics.findIndex((c) => c.id === selectedId);
+          const prevIndex = currentIndex > 0 ? currentIndex - 1 : characteristics.length - 1;
+          setSelectedId(characteristics[prevIndex].id);
+          setMessage(`Selected characteristic #${balloonLabel(characteristics[prevIndex])}.`);
+          return;
+        }
+      }
+
+      // 8. Number keys 1-9: Quick set balloon number for selected requirement
+      if (/^[1-9]$/.test(key) && selected && !editingBalloonId) {
+        event.preventDefault();
+        const newNo = Number(key);
+        updateCharacteristic(selected.id, { balloonNo: newNo });
+        setMessage(`Set balloon number to ${newNo}.`);
+        return;
+      }
+
+      // 9. Zoom Shortcuts: '+' or '=' to zoom in, '-' to zoom out
+      if (key === "+" || key === "=") {
+        event.preventDefault();
+        zoomIn();
+        return;
+      }
+      if (key === "-") {
+        event.preventDefault();
+        zoomOut();
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [
+    autoBalloonCandidates,
+    autoBalloonRect,
+    autoBalloonReviewOpen,
+    characteristics,
+    commitAutoBalloonCandidates,
+    deleteSelected,
+    editingBalloonId,
+    isWorkspaceRoute,
+    ocrRect,
+    pageNumber,
+    pendingTarget,
+    placementGroupId,
+    selected,
+    selectedId,
+    switchMode,
+    toleranceTableOpen,
+    updateCharacteristic,
+    workspaceMode,
+    zoomIn,
+    zoomOut,
+  ]);
 
   const exportPdf = useCallback(async () => {
     try {

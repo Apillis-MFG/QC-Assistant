@@ -411,6 +411,52 @@ Acceptance:
 - Uneven shadows and lighting gradients are eliminated via Bradley-Roth local adaptive thresholding.
 - Node offline verification suite and production build pass with 100% success.
 
+### P1-4: Keyboard Shortcuts & High-Throughput Quick-Ballooning
+
+Epic:
+
+```text
+Activation: First Session
+```
+
+Outcome:
+
+```text
+QC inspectors can rapidly navigate, balloon, classify, and edit characteristics entirely from the keyboard
+without repetitive mouse round-trips to the toolbar or inspector dropdowns.
+```
+
+Scope:
+
+- `Enter`: Confirm Auto-Balloon candidates or finish editing selected balloon.
+- `Delete` / `Backspace`: Remove selected characteristic from drawing and table.
+- `D`: Rapidly cycle requirement type (`dimension` -> `gdt` -> `note` -> `visual`) with automatic default method.
+- `ArrowUp` / `ArrowDown` (and `K` / `J`): Navigate characteristic selection row by row in the table.
+- `1`–`9`: Quick-assign balloon number to selected requirement.
+- `+` / `-`: Zoom drawing in and out.
+- Guards suppressing shortcuts during text entry (`input`, `textarea`, `select`) and when modifier keys are held.
+- Updated shortcut documentation in Help panel (`src/components/panels.jsx`).
+- Verification test suite in `scripts/verify-keyboard-shortcuts.mjs`.
+
+Out:
+
+- No changes to default mouse interaction.
+- No third-party keybinding libraries.
+
+Likely files:
+
+- `src/App.jsx`
+- `src/components/panels.jsx`
+- `scripts/verify-keyboard-shortcuts.mjs`
+
+Acceptance:
+
+- Pressing `D` cycles requirement types and assigns matching default methods.
+- Arrow keys traverse characteristic rows with selection wrapping.
+- `Enter` confirms auto-balloon candidate reviews.
+- `Delete` removes selected requirements.
+- 100% of offline verification tests and production build pass.
+
 ### P2-1: Solid Arrowhead Terminations on Balloon Leader Lines
 
 Epic:

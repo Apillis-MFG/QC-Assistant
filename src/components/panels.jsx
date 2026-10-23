@@ -178,8 +178,14 @@ export function GuidePage({ onBack }) {
     ["V", "Select tool"],
     ["H", "Pan tool"],
     ["T", "Text Select / OCR"],
-    ["E", "Edit selected balloon actions"],
-    ["Esc", "Close help, cancel selection UI"],
+    ["E", "Edit selected balloon"],
+    ["Enter", "Confirm Auto-Balloon candidates / finish edit"],
+    ["Del / ⌫", "Delete selected characteristic"],
+    ["D", "Cycle requirement type (dimension/GD&T/note/visual)"],
+    ["↑ / ↓ (J/K)", "Navigate characteristic rows in table"],
+    ["1–9", "Quick-set balloon number"],
+    ["+ / −", "Zoom drawing in / out"],
+    ["Esc", "Cancel current tool, dialog, or review"],
   ];
 
   return (
