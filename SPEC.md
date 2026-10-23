@@ -368,6 +368,50 @@ Acceptance:
 - Uneven shadows and lighting gradients are eliminated via Bradley-Roth local adaptive thresholding.
 - Node offline verification suite and production build pass with 100% success.
 
+### P2-1: Solid Arrowhead Terminations on Balloon Leader Lines
+
+Epic:
+
+```text
+Distribution: Report Quality
+```
+
+Outcome:
+
+```text
+Balloon leader lines terminate with solid arrowheads pointing directly at the dimension or feature
+in both the interactive drawing canvas and the exported PDF, conforming to standard engineering drawing practices.
+```
+
+Scope:
+
+- Implement deterministic directional vector math in `getLeaderGeometry` (`src/lib/exporters.js`) and `getLeaderLine` (`src/lib/utils.js`).
+- Arrowhead tip touches target feature while base connects seamlessly to leader line terminus.
+- SVG `<polygon>` with CSS tokens for interactive editor canvas and auto-balloon preview.
+- Vector SVG path rendering (`page.drawSvgPath`) for crisp vector PDF export.
+- Distance threshold omitting leader line when balloon sits directly on target.
+- Verification tests in `scripts/verify-pdf-export.mjs`.
+
+Out:
+
+- No new external/npm dependencies.
+- No curved or spline leader lines.
+
+Likely files:
+
+- `src/lib/exporters.js`
+- `src/lib/utils.js`
+- `src/components/widgets.jsx`
+- `src/styles.css`
+- `scripts/verify-pdf-export.mjs`
+
+Acceptance:
+
+- Leader line points to target feature with solid filled arrowhead.
+- Arrowhead rotates cleanly to any 360-degree orientation.
+- Arrowhead renders consistently across interactive canvas editor and exported PDF.
+- 100% of offline verification tests and production build pass.
+
 ## Status Rules
 
 - Backlog: not selected for current sprint

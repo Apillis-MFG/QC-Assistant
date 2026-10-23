@@ -239,9 +239,17 @@ export async function generateBalloonedPdf({
       page.drawLine({
         start: { x: leader.startX, y: leader.startY },
         end: { x: leader.endX, y: leader.endY },
-        thickness: 0.7,
+        thickness: 0.8,
         color: red,
       });
+
+      if (leader.arrow) {
+        page.drawSvgPath(leader.arrow.svgPath, {
+          color: red,
+          borderColor: red,
+          borderWidth: 0.5,
+        });
+      }
     }
 
     page.drawCircle({
@@ -641,21 +649,48 @@ function withoutExtension(fileName) {
   return fileName.replace(/\.[^/.]+$/, "");
 }
 
-function getLeaderGeometry({ x, y, targetX, targetY, radius }) {
+export function getLeaderGeometry({
+  x,
+  y,
+  targetX,
+  targetY,
+  radius,
+  arrowLength = 5.5,
+  arrowWidth = 2.2,
+}) {
   const dx = targetX - x;
   const dy = targetY - y;
   const distance = Math.hypot(dx, dy);
-  if (distance < radius + 4) return null;
+  if (distance < radius + arrowLength + 1.5) return null;
 
-  const targetGap = 2.4;
   const ux = dx / distance;
   const uy = dy / distance;
+  const nx = -uy;
+  const ny = ux;
+
+  const tipX = targetX;
+  const tipY = targetY;
+
+  const baseX = tipX - ux * arrowLength;
+  const baseY = tipY - uy * arrowLength;
+
+  const leftX = baseX + nx * arrowWidth;
+  const leftY = baseY + ny * arrowWidth;
+  const rightX = baseX - nx * arrowWidth;
+  const rightY = baseY - ny * arrowWidth;
 
   return {
     startX: x + ux * (radius + 1.5),
     startY: y + uy * (radius + 1.5),
-    endX: targetX - ux * targetGap,
-    endY: targetY - uy * targetGap,
+    endX: baseX,
+    endY: baseY,
+    arrow: {
+      tip: { x: tipX, y: tipY },
+      base: { x: baseX, y: baseY },
+      left: { x: leftX, y: leftY },
+      right: { x: rightX, y: rightY },
+      svgPath: `M ${round(tipX, 2)} ${round(tipY, 2)} L ${round(leftX, 2)} ${round(leftY, 2)} L ${round(rightX, 2)} ${round(rightY, 2)} Z`,
+    },
   };
 }
 

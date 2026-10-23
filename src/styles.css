@@ -1649,6 +1649,25 @@ textarea:focus {
   stroke-width: 1.6;
 }
 
+.leader-arrow {
+  fill: var(--accent);
+  stroke: var(--accent);
+  stroke-width: 0.5;
+  stroke-linejoin: round;
+}
+
+.leader-group.selected .leader-arrow,
+.leader-arrow.selected {
+  stroke-width: 1;
+}
+
+.auto-balloon-leader-arrow {
+  fill: var(--accent);
+  stroke: var(--accent);
+  stroke-width: 0.5;
+  stroke-linejoin: round;
+}
+
 .pending-target,
 .target-handle {
   position: absolute;

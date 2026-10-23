@@ -283,6 +283,59 @@ export function getDefaultBalloonPosition(target, leaderScale = 1) {
   };
 }
 
+export function getLeaderLine({
+  x,
+  y,
+  targetX,
+  targetY,
+  radius = 13,
+  arrowLength = 7,
+  arrowWidth = 2.8,
+}) {
+  const dx = targetX - x;
+  const dy = targetY - y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < radius + arrowLength + 1) {
+    return {
+      startX: x,
+      startY: y,
+      endX: targetX,
+      endY: targetY,
+      arrow: null,
+    };
+  }
+
+  const ux = dx / distance;
+  const uy = dy / distance;
+  const nx = -uy;
+  const ny = ux;
+
+  const tipX = targetX;
+  const tipY = targetY;
+
+  const baseX = tipX - ux * arrowLength;
+  const baseY = tipY - uy * arrowLength;
+
+  const leftX = baseX + nx * arrowWidth;
+  const leftY = baseY + ny * arrowWidth;
+  const rightX = baseX - nx * arrowWidth;
+  const rightY = baseY - ny * arrowWidth;
+
+  return {
+    startX: x + ux * radius,
+    startY: y + uy * radius,
+    endX: baseX,
+    endY: baseY,
+    arrow: {
+      tip: { x: tipX, y: tipY },
+      base: { x: baseX, y: baseY },
+      left: { x: leftX, y: leftY },
+      right: { x: rightX, y: rightY },
+      polygonPoints: `${tipX.toFixed(1)},${tipY.toFixed(1)} ${leftX.toFixed(1)},${leftY.toFixed(1)} ${rightX.toFixed(1)},${rightY.toFixed(1)}`,
+    },
+  };
+}
+
 const REPEAT_PREFIX = /^(\d+(?:[.,]\d+)?|[.,]\d+)\s*[xX×]/;
 
 export function getDimensionCaptureError(text) {
