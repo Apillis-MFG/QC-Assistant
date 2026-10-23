@@ -284,7 +284,209 @@ export async function exportBalloonedPdf({
   downloadBlob(bytes, "application/pdf", `${base}_ballooned.pdf`);
 }
 
-export function buildInspectionWorkbook({ metadata, characteristics = [], sampleCount = 1 }) {
+export function buildAs9102Form1({ metadata, characteristics = [], sampleCount = 1 }) {
+  const meta = metadata || {};
+  const validSampleCount = Math.max(1, Number.isSafeInteger(sampleCount) && sampleCount > 0 ? sampleCount : 1);
+  const status = overallStatus(characteristics, validSampleCount);
+  const rows = [];
+
+  rows.push(["AS9102 REV C - FORM 1: PART NUMBER ACCOUNTABILITY"]);
+  rows.push([]);
+  rows.push(["1. Part Number:", meta.drawingNo || "-", "", "2. Part Name / Description:", meta.description || "-", ""]);
+  rows.push([
+    "3. Serial Number:",
+    meta.serialNo || meta.lotNo || "N/A",
+    "",
+    "4. FAI Report Number:",
+    meta.faiReportNo || (meta.drawingNo ? `${meta.drawingNo}-FAI-01` : "FAI-01"),
+    "",
+  ]);
+  rows.push(["5. Part Revision Level:", meta.revision || "-", "", "6. Drawing Number:", meta.drawingNo || "-", ""]);
+  rows.push(["7. Drawing Revision Level:", meta.revision || "-", "", "8. Additional Changes:", meta.additionalChanges || "None", ""]);
+  rows.push([
+    "9. Manufacturing Process Ref:",
+    meta.processRef || "Precision Machining / Fabrication",
+    "",
+    "10. Organization Name / Supplier:",
+    meta.supplier || "-",
+    "",
+  ]);
+  rows.push(["11. Supplier Code:", meta.supplierCode || "-", "", "12. Purchase Order Number:", meta.poNumber || "-", ""]);
+  rows.push([
+    "13. Detail FAI or Assembly FAI:",
+    meta.faiType || "Detail FAI",
+    "",
+    "14. Full FAI or Partial FAI:",
+    meta.faiScope || "Full FAI",
+    "",
+  ]);
+  rows.push([
+    "15. Baseline Part Number:",
+    meta.baselinePartNo || "-",
+    "",
+    "16. Reason for Partial FAI:",
+    meta.partialReason || "N/A - Full Initial FAI",
+    "",
+  ]);
+  rows.push([]);
+  rows.push(["INDEX OF SUB-ASSEMBLIES / DETAIL PARTS"]);
+  rows.push(["Item #", "Part Number", "Part Description", "Serial Number", "FAI Report Reference"]);
+  rows.push([
+    "1",
+    meta.drawingNo || "-",
+    meta.description || "-",
+    meta.serialNo || "N/A",
+    meta.faiReportNo || (meta.drawingNo ? `${meta.drawingNo}-FAI-01` : "FAI-01"),
+  ]);
+  rows.push([]);
+  rows.push(["APPROVAL & DISPOSITION"]);
+  rows.push([
+    "FAI Overall Disposition:",
+    status,
+    "",
+    "Inspection Date:",
+    meta.date || new Date().toISOString().split("T")[0],
+    "",
+  ]);
+  rows.push([
+    "Evaluated By:",
+    meta.inspector || "Quality Assurance Inspector",
+    "",
+    "Customer Conformance Status:",
+    status === "FAIL" ? "REJECTED" : (status === "PASS" ? "ACCEPTED" : "PENDING"),
+    "",
+  ]);
+
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  worksheet["!cols"] = [
+    { wch: 28 },
+    { wch: 24 },
+    { wch: 4 },
+    { wch: 28 },
+    { wch: 32 },
+    { wch: 20 },
+  ];
+
+  worksheet["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+    { s: { r: 2, c: 1 }, e: { r: 2, c: 2 } },
+    { s: { r: 2, c: 4 }, e: { r: 2, c: 5 } },
+    { s: { r: 3, c: 1 }, e: { r: 3, c: 2 } },
+    { s: { r: 3, c: 4 }, e: { r: 3, c: 5 } },
+    { s: { r: 4, c: 1 }, e: { r: 4, c: 2 } },
+    { s: { r: 4, c: 4 }, e: { r: 4, c: 5 } },
+    { s: { r: 5, c: 1 }, e: { r: 5, c: 2 } },
+    { s: { r: 5, c: 4 }, e: { r: 5, c: 5 } },
+    { s: { r: 6, c: 1 }, e: { r: 6, c: 2 } },
+    { s: { r: 6, c: 4 }, e: { r: 6, c: 5 } },
+    { s: { r: 7, c: 1 }, e: { r: 7, c: 2 } },
+    { s: { r: 7, c: 4 }, e: { r: 7, c: 5 } },
+    { s: { r: 8, c: 1 }, e: { r: 8, c: 2 } },
+    { s: { r: 8, c: 4 }, e: { r: 8, c: 5 } },
+    { s: { r: 9, c: 1 }, e: { r: 9, c: 2 } },
+    { s: { r: 9, c: 4 }, e: { r: 9, c: 5 } },
+    { s: { r: 11, c: 0 }, e: { r: 11, c: 4 } },
+    { s: { r: 15, c: 0 }, e: { r: 15, c: 4 } },
+    { s: { r: 16, c: 1 }, e: { r: 16, c: 2 } },
+    { s: { r: 16, c: 4 }, e: { r: 16, c: 5 } },
+    { s: { r: 17, c: 1 }, e: { r: 17, c: 2 } },
+    { s: { r: 17, c: 4 }, e: { r: 17, c: 5 } },
+  ];
+
+  return { worksheet, rows };
+}
+
+export function buildAs9102Form2({ metadata, characteristics = [], sampleCount = 1 }) {
+  const meta = metadata || {};
+  const validSampleCount = Math.max(1, Number.isSafeInteger(sampleCount) && sampleCount > 0 ? sampleCount : 1);
+  const status = overallStatus(characteristics, validSampleCount);
+  const rows = [];
+
+  rows.push(["AS9102 REV C - FORM 2: PRODUCT PROCESS ACCOUNTABILITY, SPECIAL PROCESSES & FUNCTIONAL TESTING"]);
+  rows.push([]);
+  rows.push(["Part / Drawing No.:", meta.drawingNo || "-", "", "Part Description:", meta.description || "-", ""]);
+  rows.push([
+    "Revision:",
+    meta.revision || "-",
+    "",
+    "FAI Report Number:",
+    meta.faiReportNo || (meta.drawingNo ? `${meta.drawingNo}-FAI-01` : "FAI-01"),
+    "",
+  ]);
+  rows.push([]);
+  rows.push([
+    "Item #",
+    "Process / Material Name",
+    "Specification / Standard",
+    "Supplier / Source Code",
+    "Customer Approval Verification",
+    "CoC / Test Report #",
+    "Compliance Status",
+  ]);
+
+  rows.push([
+    "1",
+    "Raw Material (Base Alloy / Stock)",
+    meta.material || "As per Drawing Specification",
+    meta.supplier || "-",
+    "Verified",
+    meta.materialCertNo || "Attached Certificate of Conformance",
+    "CONFORMING",
+  ]);
+
+  rows.push([
+    "2",
+    "Surface Finish / Coating Treatment",
+    meta.finish || "As per Drawing Finish Callout",
+    meta.supplier || "-",
+    "Verified",
+    meta.finishCertNo || "Attached Certificate of Conformance",
+    "CONFORMING",
+  ]);
+
+  rows.push([
+    "3",
+    "Drawing General Notes & Workmanship",
+    "ISO 9001 / AS9100 Standard Workmanship",
+    meta.supplier || "-",
+    "Verified",
+    "Internal QA Inspection Record",
+    status === "FAIL" ? "NON-CONFORMING" : "CONFORMING",
+  ]);
+
+  rows.push([
+    "4",
+    "Dimensional & Characteristic Verification",
+    "AS9102 Characteristic Accountability",
+    meta.supplier || "-",
+    "Verified",
+    `QCA-FAI-${meta.drawingNo || "Report"}`,
+    status === "FAIL" ? "NON-CONFORMING" : (status === "PASS" ? "CONFORMING" : "OPEN"),
+  ]);
+
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  worksheet["!cols"] = [
+    { wch: 8 },
+    { wch: 34 },
+    { wch: 38 },
+    { wch: 22 },
+    { wch: 26 },
+    { wch: 32 },
+    { wch: 18 },
+  ];
+
+  worksheet["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+    { s: { r: 2, c: 1 }, e: { r: 2, c: 2 } },
+    { s: { r: 2, c: 4 }, e: { r: 2, c: 6 } },
+    { s: { r: 3, c: 1 }, e: { r: 3, c: 2 } },
+    { s: { r: 3, c: 4 }, e: { r: 3, c: 6 } },
+  ];
+
+  return { worksheet, rows };
+}
+
+export function buildInspectionWorkbook({ metadata, characteristics = [], sampleCount = 1, options = {} }) {
   characteristics.forEach((item) => assertOccurrenceQuantity(item.quantity ?? 1));
   const validSampleCount = Math.max(1, Number.isSafeInteger(sampleCount) && sampleCount > 0 ? sampleCount : 1);
   const meta = metadata || {};
@@ -388,11 +590,36 @@ export function buildInspectionWorkbook({ metadata, characteristics = [], sample
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "FAI Report");
 
-  return { workbook, worksheet, rows };
+  let form1Worksheet = null;
+  let form1Rows = null;
+  let form2Worksheet = null;
+  let form2Rows = null;
+
+  if (options.includeAs9102Forms !== false) {
+    const form1 = buildAs9102Form1({ metadata: meta, characteristics, sampleCount: validSampleCount });
+    form1Worksheet = form1.worksheet;
+    form1Rows = form1.rows;
+    XLSX.utils.book_append_sheet(workbook, form1Worksheet, "AS9102 Form 1");
+
+    const form2 = buildAs9102Form2({ metadata: meta, characteristics, sampleCount: validSampleCount });
+    form2Worksheet = form2.worksheet;
+    form2Rows = form2.rows;
+    XLSX.utils.book_append_sheet(workbook, form2Worksheet, "AS9102 Form 2");
+  }
+
+  return {
+    workbook,
+    worksheet,
+    rows,
+    form1Worksheet,
+    form1Rows,
+    form2Worksheet,
+    form2Rows,
+  };
 }
 
-export function exportInspectionWorkbook({ metadata, characteristics, sampleCount }) {
-  const { workbook } = buildInspectionWorkbook({ metadata, characteristics, sampleCount });
+export function exportInspectionWorkbook({ metadata, characteristics, sampleCount, options }) {
+  const { workbook } = buildInspectionWorkbook({ metadata, characteristics, sampleCount, options });
   const fileName = `${metadata?.drawingNo || "inspection"}_FAI_Report.xlsx`;
   XLSX.writeFile(workbook, fileName);
 }

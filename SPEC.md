@@ -215,6 +215,46 @@ Acceptance:
 - Leader line connects balloon circle to target point within 2px visual tolerance.
 - Multi-page drawings export balloons on the correct page.
 
+### P0-4: AS9102 Rev C Multi-Sheet FAI Workbook Export (Forms 1, 2, and 3)
+
+Epic:
+
+```text
+Trust: Export Fidelity
+```
+
+Outcome:
+
+```text
+Excel export generates an audit-ready AS9102 Rev C compliant workbook containing Form 1 (Part Number Accountability),
+Form 2 (Product Process Accountability), and Form 3 (Characteristic Accountability) without requiring manual data re-entry.
+```
+
+Scope:
+
+- Implement `buildAs9102Form1` with part number, revision, description, FAI report number, process reference, and disposition blocks.
+- Implement `buildAs9102Form2` with raw material, special processing/finishes, general note workmanship, and characteristic verification conformance rows.
+- Retain primary `FAI Report` (Form 3) sheet and table structure with full backward compatibility.
+- Multi-sheet workbook builder and export option toggle (`includeAs9102Forms`).
+- Deterministic verification suite covering Form 1, Form 2, and multi-sheet structure in `scripts/verify-excel-export.mjs`.
+
+Out:
+
+- No external/npm dependencies (pure SheetJS `xlsx` structure).
+- No manual template file requirements.
+
+Likely files:
+
+- `src/lib/exporters.js`
+- `scripts/verify-excel-export.mjs`
+
+Acceptance:
+
+- Exported workbook includes `FAI Report`, `AS9102 Form 1`, and `AS9102 Form 2` sheets.
+- Form 1 accurately populates part number, revision, supplier, FAI report number, and overall disposition.
+- Form 2 populates standard material, finish, workmanship, and characteristic compliance rows.
+- 100% of Excel verification tests and full build pass cleanly.
+
 ### P1-1: Text capture reliability for rotated and small PDF text
 
 Epic:

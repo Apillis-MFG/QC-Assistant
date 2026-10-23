@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { buildInspectionWorkbook } from "../src/lib/exporters.js";
+import {
+  buildInspectionWorkbook,
+  buildAs9102Form1,
+  buildAs9102Form2,
+} from "../src/lib/exporters.js";
 
 console.log("Starting verification of Excel FAI export structure and compliance...");
 
@@ -204,5 +208,68 @@ assert.deepEqual(
   ["3.1", "3.2", "3.3"],
   "Unexpanded quantity=3 must expand into 3 occurrence rows in export",
 );
+
+// 9. AS9102 Rev C Multi-Sheet Workbook Verification
+assert.ok(workbook.SheetNames.includes("AS9102 Form 1"), "Workbook must include 'AS9102 Form 1'");
+assert.ok(workbook.SheetNames.includes("AS9102 Form 2"), "Workbook must include 'AS9102 Form 2'");
+assert.equal(workbook.SheetNames.length, 3, "Multi-sheet workbook must have exactly 3 sheets");
+
+// Verify Form 1 (Part Number Accountability)
+const form1Rows = buildInspectionWorkbook({
+  metadata: sampleMetadata,
+  characteristics: sampleCharacteristics,
+  sampleCount,
+}).form1Rows;
+
+assert.equal(form1Rows[0][0], "AS9102 REV C - FORM 1: PART NUMBER ACCOUNTABILITY");
+assert.equal(form1Rows[2][0], "1. Part Number:");
+assert.equal(form1Rows[2][1], "DWG-10023");
+assert.equal(form1Rows[2][3], "2. Part Name / Description:");
+assert.equal(form1Rows[2][4], "Housing Bracket");
+assert.equal(form1Rows[3][3], "4. FAI Report Number:");
+assert.equal(form1Rows[3][4], "DWG-10023-FAI-01");
+assert.equal(form1Rows[4][1], "B"); // Part Revision
+assert.equal(form1Rows[6][4], "Acme Precision Mfg"); // Supplier
+assert.equal(form1Rows[16][0], "FAI Overall Disposition:");
+assert.equal(form1Rows[16][1], "PASS");
+assert.equal(form1Rows[17][3], "Customer Conformance Status:");
+assert.equal(form1Rows[17][4], "ACCEPTED");
+
+// Verify Form 2 (Product Process Accountability)
+const form2Rows = buildInspectionWorkbook({
+  metadata: sampleMetadata,
+  characteristics: sampleCharacteristics,
+  sampleCount,
+}).form2Rows;
+
+assert.equal(form2Rows[0][0], "AS9102 REV C - FORM 2: PRODUCT PROCESS ACCOUNTABILITY, SPECIAL PROCESSES & FUNCTIONAL TESTING");
+assert.equal(form2Rows[2][0], "Part / Drawing No.:");
+assert.equal(form2Rows[2][1], "DWG-10023");
+assert.equal(form2Rows[5][0], "Item #");
+assert.equal(form2Rows[5][1], "Process / Material Name");
+assert.equal(form2Rows[5][6], "Compliance Status");
+assert.equal(form2Rows[6][1], "Raw Material (Base Alloy / Stock)");
+assert.equal(form2Rows[6][6], "CONFORMING");
+assert.equal(form2Rows[7][1], "Surface Finish / Coating Treatment");
+assert.equal(form2Rows[7][6], "CONFORMING");
+assert.equal(form2Rows[9][1], "Dimensional & Characteristic Verification");
+assert.equal(form2Rows[9][6], "CONFORMING");
+
+// 10. Standalone builders and options toggle
+const standaloneForm1 = buildAs9102Form1({ metadata: sampleMetadata, characteristics: sampleCharacteristics });
+assert.ok(standaloneForm1.worksheet, "Standalone buildAs9102Form1 must return worksheet");
+assert.ok(Array.isArray(standaloneForm1.worksheet["!merges"]), "Form 1 merges must be present");
+
+const standaloneForm2 = buildAs9102Form2({ metadata: sampleMetadata, characteristics: sampleCharacteristics });
+assert.ok(standaloneForm2.worksheet, "Standalone buildAs9102Form2 must return worksheet");
+assert.ok(Array.isArray(standaloneForm2.worksheet["!merges"]), "Form 2 merges must be present");
+
+const singleSheetWorkbook = buildInspectionWorkbook({
+  metadata: sampleMetadata,
+  characteristics: sampleCharacteristics,
+  options: { includeAs9102Forms: false },
+});
+assert.equal(singleSheetWorkbook.workbook.SheetNames.length, 1);
+assert.equal(singleSheetWorkbook.workbook.SheetNames[0], "FAI Report");
 
 console.log("PASS: 100% Excel FAI export compliance checks passed successfully!");
