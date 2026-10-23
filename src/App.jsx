@@ -60,7 +60,7 @@ import {
   buildDrawingSnapshot, updateDrawingSummary, getStorageWarning, getStorageErrorMessage,
   formatDate, setMetadataValue, mapTextItem, metadataLabel, fieldLabel,
   getNormalizedPoint, normalizeRect, getDefaultBalloonPosition, cropCanvasArea, clamp,
-  parseDimension, getDimensionCaptureError, findNearestTextDimension, findDimensionAtPoint, getTextItemBounds,
+  parseDimension, getDimensionCaptureError, findNearestTextDimension, findDimensionAtPoint, findTextItemAtPoint, getTextItemBounds,
 } from "./lib/utils.js";
 import {
   getEmbeddedAutoBalloonCandidates, getOcrAutoBalloonCandidates, buildAutoBalloonCandidates,
@@ -1637,11 +1637,17 @@ export default function App() {
 
     if (rect.width < 0.012 || rect.height < 0.012) {
       setOcrRect(null);
+      if (mode === "text") {
+        const item = findTextItemAtPoint(point, textItems, canvasSize);
+        if (item) {
+          captureTextSelection(item.text);
+        }
+      }
       return;
     }
 
     await recognizeSelectedArea(rect);
-  }, [detectAutoBalloonCandidates, recognizeSelectedArea]);
+  }, [canvasSize, captureTextSelection, detectAutoBalloonCandidates, mode, recognizeSelectedArea, textItems]);
 
   const applyCapturedText = useCallback((destination) => {
     const text = selectedText.trim();

@@ -1596,6 +1596,17 @@ textarea:focus {
   background: rgba(41, 75, 119, 0.08);
   pointer-events: auto;
   user-select: text;
+  overflow: visible;
+}
+
+.text-layer.active .pdf-text-item::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: -4px;
+  right: -4px;
+  pointer-events: auto;
 }
 
 .text-layer.active .pdf-text-item:hover {
@@ -2276,7 +2287,49 @@ td select:focus {
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 768px) {
+  /* Minimum 44px touch targets on toolbar buttons and interactive controls */
+  .button,
+  .small-button,
+  .icon-button,
+  .icon-button-labeled,
+  .panel-toolbar .button,
+  .panel-toolbar .icon-button,
+  .panel-toolbar .small-button,
+  .topbar .button,
+  .topbar .icon-button,
+  .layout-bar button,
+  .workspace-tab,
+  .layout-tab {
+    min-height: 44px;
+  }
+
+  .icon-button {
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .icon-button-labeled {
+    height: 44px;
+    padding: 0 12px;
+  }
+
+  /* Table horizontal scrolling strictly contained without affecting page scroll */
+  .table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
+  }
+
+  /* Prevent page-level horizontal overflow */
+  html,
+  body,
+  .app-shell {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
   .content-area {
     --resize-handle-size: 12px;
     padding: 8px;

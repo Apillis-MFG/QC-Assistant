@@ -159,7 +159,7 @@ export function mapTextItem(item, index, viewport, zoom) {
     ? Math.max(4, Math.abs(item.width) * zoom)
     : Math.max(4, text.length * height * 0.45);
   const fontSize = Math.max(6, height * 0.94);
-  const angle = Math.atan2(transform[1] || 0, transform[0] || 1);
+  const angle = Math.atan2(transform[1] ?? 0, transform[0] ?? 1);
   const bounds = getTransformedTextBounds(transform, width, height);
 
   return {
@@ -351,13 +351,46 @@ export function findDimensionAtPoint(point, candidates, canvasSize, padding = 6)
   if (!canvasSize.width || !canvasSize.height || !candidates?.length) return null;
   const px = point.x * canvasSize.width;
   const py = point.y * canvasSize.height;
-  return candidates.find(
-    (c) =>
-      px >= c.left - padding &&
-      px <= c.left + c.width + padding &&
-      py >= c.top - padding &&
-      py <= c.top + c.height + padding,
-  ) ?? null;
+  return (
+    candidates.find((c) => {
+      const bounds = getTextItemBounds(c);
+      return (
+        px >= bounds.left - padding &&
+        px <= bounds.left + bounds.width + padding &&
+        py >= bounds.top - padding &&
+        py <= bounds.top + bounds.height + padding
+      );
+    }) ?? null
+  );
+}
+
+/**
+ * Find the nearest text item whose bounding box contains (or is closest to)
+ * the given normalized point in Text Select mode.
+ */
+export function findTextItemAtPoint(point, textItems, canvasSize, padding = 8) {
+  if (!canvasSize.width || !canvasSize.height || !textItems?.length) return null;
+  const px = point.x * canvasSize.width;
+  const py = point.y * canvasSize.height;
+
+  const hits = textItems
+    .map((item) => {
+      const bounds = getTextItemBounds(item);
+      const contains =
+        px >= bounds.left - padding &&
+        px <= bounds.left + bounds.width + padding &&
+        py >= bounds.top - padding &&
+        py <= bounds.top + bounds.height + padding;
+      if (!contains) return null;
+      const cx = bounds.left + bounds.width / 2;
+      const cy = bounds.top + bounds.height / 2;
+      const dist = Math.hypot(cx - px, cy - py);
+      return { item, dist };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.dist - b.dist);
+
+  return hits[0]?.item ?? null;
 }
 
 export function cropCanvasArea(canvas, rect) {
