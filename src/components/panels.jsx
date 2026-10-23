@@ -270,6 +270,14 @@ export function GuidePage({ onBack }) {
 }
 
 export function VersionHistoryPage({ onBack }) {
+  const releaseNotes092 = [
+    "Added support for uploaded customer-specific blank Excel FAI templates (.xlsx).",
+    "Interactive FAI Template Mapping dialog: upload blank customer workbooks, select worksheets, map header cells (A1 notation), define table bounds, and map characteristic/sample columns.",
+    "Real-time validation engine: checks row capacity, prevents duplicate column collisions, and protects against header/table row overlaps.",
+    "Project persistence: customer templates are stored locally with the active project in IndexedDB, with instant one-click export into the customer's exact format.",
+    "Added fallback 'Default' export button alongside custom template export so standard AS9102 reports remain accessible at any time.",
+  ];
+
   const releaseNotes091 = [
     "AS9102 Rev C Multi-Sheet FAI Excel Workbook export with Form 1 (Part Accountability), Form 2 (Product Process Accountability), and Form 3 (Characteristic Accountability).",
     "Multi-drawing project rollup: export all drawings to a single merged PDF package or consolidated AS9102 Excel workbook with Form 1 index and Master Characteristics sheet.",
@@ -351,6 +359,14 @@ export function VersionHistoryPage({ onBack }) {
 
       <section className="help-dialog dashboard-main" aria-labelledby="version-history-title">
         <div className="help-content">
+          <div className="release-note">
+            <h3>v0.9.2</h3>
+            <ul>
+              {releaseNotes092.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
           <div className="release-note">
             <h3>v0.9.1</h3>
             <ul>
