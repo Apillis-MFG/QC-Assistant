@@ -269,6 +269,16 @@ export function GuidePage({ onBack }) {
 }
 
 export function VersionHistoryPage({ onBack }) {
+  const releaseNotes091 = [
+    "AS9102 Rev C Multi-Sheet FAI Excel Workbook export with Form 1 (Part Accountability), Form 2 (Product Process Accountability), and Form 3 (Characteristic Accountability).",
+    "Multi-drawing project rollup: export all drawings to a single merged PDF package or consolidated AS9102 Excel workbook with Form 1 index and Master Characteristics sheet.",
+    "Adaptive client-side OCR contrast enhancement and binarization for faint scans and dark/inverted title blocks.",
+    "High-throughput keyboard navigation shortcuts (B, N, D, Tab, Delete, Arrow navigation) for rapid balloon placement and characteristic editing.",
+    "Batch sample auto-fill (Nominal, Midpoint, Random spread within tolerance) and tabular clipboard pasting.",
+    "Dual dimension parsing and conversions (Metric/Imperial) and non-standard angle parsing (Degrees-Minutes-Seconds).",
+    "Solid vector arrowhead terminations on balloon leader lines conforming to engineering drawing standards.",
+  ];
+
   const releaseNotes081 = [
     "Added Settings controls for the balloon number's font color (default Black) and font (Times New Roman, Arial, or Courier).",
     "The font color and font settings apply everywhere balloon numbers are drawn: the editor and exported PDFs.",
@@ -340,6 +350,14 @@ export function VersionHistoryPage({ onBack }) {
 
       <section className="help-dialog dashboard-main" aria-labelledby="version-history-title">
         <div className="help-content">
+          <div className="release-note">
+            <h3>v0.9.1</h3>
+            <ul>
+              {releaseNotes091.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
           <div className="release-note">
             <h3>v0.8.1</h3>
             <ul>
