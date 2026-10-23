@@ -600,6 +600,55 @@ Acceptance:
 - Drawings with unplaced balloon instances are prevented with drawing-specific error messaging.
 - 100% of offline verification test suites and production build pass cleanly.
 
+### P1-7: Multi-Drawing FAI Report Rollup (Combined AS9102 Multi-Part Package)
+
+Epic:
+
+```text
+Distribution: Report Quality
+```
+
+Outcome:
+
+```text
+Inspectors and quality managers can export a consolidated AS9102 Rev C multi-drawing FAI report
+rollup across all drawings in a project into a single master Excel workbook (.xlsx), complete with
+Form 1 part index, Form 2 process accountability, Form 3 per-drawing sheets, and a unified characteristics tab.
+```
+
+Scope:
+
+- Implement `overallProjectStatus(drawings, sampleCount)` conservative status rollup.
+- Implement `sanitizeSheetName(name, existingNames)` enforcing 31-character Excel worksheet limits and deduplication.
+- Implement `buildBatchInspectionWorkbook({ project, drawings, sampleCount, options })` and `exportBatchInspectionWorkbook` in `src/lib/exporters.js`.
+- AS9102 Form 1 Master Project Index tab listing sub-assemblies/parts with counts, statuses, and FAI references.
+- AS9102 Form 2 Master Process Accountability tab covering processes and specifications per part.
+- Consolidated Master "All Characteristics" tab merging all requirements across all drawings with part labels.
+- Dedicated standalone Form 3 characteristic sheets per drawing.
+- Add "Export All Excel" button in `ProjectDetail` drawings list.
+- Add "All Excel (N)" button in workspace toolbar when a project contains more than one drawing.
+- Deterministic verification tests in `scripts/verify-batch-excel-export.mjs`.
+
+Out:
+
+- No server-side Excel generation or cloud dependencies.
+- No third-party zip generation or multi-file downloads.
+
+Likely files:
+
+- `src/lib/exporters.js`
+- `src/App.jsx`
+- `src/components/panels.jsx`
+- `scripts/verify-batch-excel-export.mjs`
+
+Acceptance:
+
+- Master workbook includes Form 1, Form 2, All Characteristics, and per-drawing Form 3 tabs.
+- Sheet names conform strictly to Excel constraints (<= 31 characters, no invalid chars `[]*?/\:`, unique).
+- Overall project status is conservative: FAIL if any part fails, OPEN if incomplete, PASS only when all pass.
+- Single-click export triggers from project detail page and workspace toolbar.
+- 100% of offline verification test suites and production build pass cleanly.
+
 ### P2-1: Solid Arrowhead Terminations on Balloon Leader Lines
 
 Epic:

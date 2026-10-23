@@ -131,3 +131,4 @@ assert.equal(page4.getSize().width, 600);
 assert.equal(page4.getSize().height, 600);
 
 console.log("PASS: 100% multi-drawing batch PDF export checks passed successfully!");
+

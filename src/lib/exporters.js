@@ -755,6 +755,300 @@ export function overallStatus(characteristics, sampleCount) {
   return "PASS";
 }
 
+export function overallProjectStatus(drawings, sampleCount) {
+  if (!Array.isArray(drawings) || !drawings.length) return "OPEN";
+  const statuses = drawings.map((d) => overallStatus(d.characteristics || [], sampleCount));
+  if (statuses.includes("FAIL")) return "FAIL";
+  if (statuses.includes("OPEN") || statuses.some((s) => s !== "PASS")) return "OPEN";
+  return "PASS";
+}
+
+export function sanitizeSheetName(name, existingNames = new Set()) {
+  const clean = String(name || "Sheet")
+    .replace(/[/\\?*:[\]]/g, "_")
+    .trim();
+  let base = clean.slice(0, 28) || "Sheet";
+  let candidate = base;
+  let counter = 2;
+  while (existingNames.has(candidate.toUpperCase())) {
+    candidate = `${base.slice(0, 24)} (${counter})`;
+    counter++;
+  }
+  existingNames.add(candidate.toUpperCase());
+  return candidate;
+}
+
+export function buildBatchInspectionWorkbook({ project, drawings = [], sampleCount = 1, options = {} }) {
+  const validSampleCount = Math.max(1, Number.isSafeInteger(sampleCount) && sampleCount > 0 ? sampleCount : 1);
+  const proj = project || {};
+  const projStatus = overallProjectStatus(drawings, validSampleCount);
+  const existingSheetNames = new Set();
+
+  const workbook = XLSX.utils.book_new();
+
+  // 1. AS9102 Form 1 (Master Project Rollup)
+  const form1Rows = [];
+  form1Rows.push(["AS9102 REV C - FORM 1: PART NUMBER ACCOUNTABILITY (PROJECT ROLLUP)"]);
+  form1Rows.push([]);
+  form1Rows.push(["1. Project / Assembly Name:", proj.name || "-", "", "2. Project Code:", proj.code || "-", ""]);
+  form1Rows.push([
+    "3. Project Owner:",
+    proj.owner || "-",
+    "",
+    "4. FAI Report / Package #:",
+    proj.code ? `${proj.code}-FAI-PKG` : "FAI-PKG-01",
+    "",
+  ]);
+  form1Rows.push(["5. Total Drawings / Details:", drawings.length, "", "6. Delivery Target Date:", proj.estimatedDeliveryDate || "N/A", ""]);
+  form1Rows.push([
+    "7. Notes / Scope:",
+    proj.notes || "Complete First Article Inspection Package",
+    "",
+    "8. Organization Name / Supplier:",
+    drawings[0]?.metadata?.supplier || "-",
+    "",
+  ]);
+  form1Rows.push([]);
+  form1Rows.push(["INDEX OF SUB-ASSEMBLIES & DETAIL PARTS"]);
+  form1Rows.push(["Item #", "Drawing / Part Number", "Part Description", "Revision", "Char Count", "Result", "FAI Reference"]);
+
+  drawings.forEach((drawing, idx) => {
+    const meta = drawing.metadata || {};
+    const chars = Array.isArray(drawing.characteristics) ? drawing.characteristics : [];
+    const drawStatus = overallStatus(chars, validSampleCount);
+    form1Rows.push([
+      idx + 1,
+      meta.drawingNo || drawing.name || `Drawing ${idx + 1}`,
+      meta.description || "-",
+      meta.revision || "-",
+      chars.length,
+      drawStatus,
+      meta.faiReportNo || (meta.drawingNo ? `${meta.drawingNo}-FAI-01` : `FAI-0${idx + 1}`),
+    ]);
+  });
+
+  form1Rows.push([]);
+  form1Rows.push(["APPROVAL & DISPOSITION"]);
+  form1Rows.push([
+    "Project Overall Disposition:",
+    projStatus,
+    "",
+    "Inspection Date:",
+    new Date().toISOString().split("T")[0],
+    "",
+  ]);
+  form1Rows.push([
+    "Evaluated By:",
+    proj.owner || "Quality Assurance Inspector",
+    "",
+    "Customer Conformance Status:",
+    projStatus === "FAIL" ? "REJECTED" : (projStatus === "PASS" ? "ACCEPTED" : "PENDING"),
+    "",
+  ]);
+
+  const form1Sheet = XLSX.utils.aoa_to_sheet(form1Rows);
+  form1Sheet["!cols"] = [
+    { wch: 8 },
+    { wch: 28 },
+    { wch: 32 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 12 },
+    { wch: 24 },
+  ];
+  const form1Name = sanitizeSheetName("AS9102 Form 1", existingSheetNames);
+  XLSX.utils.book_append_sheet(workbook, form1Sheet, form1Name);
+
+  // 2. AS9102 Form 2 (Product Process Accountability)
+  const form2Rows = [];
+  form2Rows.push(["AS9102 REV C - FORM 2: PRODUCT PROCESS ACCOUNTABILITY & SPECIAL PROCESSES"]);
+  form2Rows.push([]);
+  form2Rows.push(["Project / Assembly Name:", proj.name || "-", "", "Project Code:", proj.code || "-", ""]);
+  form2Rows.push([
+    "FAI Package #:",
+    proj.code ? `${proj.code}-FAI-PKG` : "FAI-PKG-01",
+    "",
+    "Overall Disposition:",
+    projStatus,
+    "",
+  ]);
+  form2Rows.push([]);
+  form2Rows.push([
+    "Item #",
+    "Drawing / Part Ref",
+    "Process / Material Name",
+    "Specification / Standard",
+    "Supplier / Source Code",
+    "Customer Approval",
+    "Compliance Status",
+  ]);
+
+  let procIndex = 1;
+  drawings.forEach((drawing) => {
+    const meta = drawing.metadata || {};
+    const partRef = meta.drawingNo || drawing.name || "Drawing";
+    const chars = Array.isArray(drawing.characteristics) ? drawing.characteristics : [];
+    const drawStatus = overallStatus(chars, validSampleCount);
+
+    form2Rows.push([
+      procIndex++,
+      partRef,
+      "Raw Material",
+      meta.material || "As per Drawing Specification",
+      meta.supplier || "-",
+      "Verified",
+      "CONFORMING",
+    ]);
+
+    form2Rows.push([
+      procIndex++,
+      partRef,
+      "Surface Finish / Coating",
+      meta.finish || "As per Drawing Callout",
+      meta.supplier || "-",
+      "Verified",
+      "CONFORMING",
+    ]);
+
+    form2Rows.push([
+      procIndex++,
+      partRef,
+      "Dimensional & Visual Inspection",
+      "AS9102 Characteristic Accountability",
+      meta.supplier || "-",
+      "Verified",
+      drawStatus === "FAIL" ? "NON-CONFORMING" : (drawStatus === "PASS" ? "CONFORMING" : "OPEN"),
+    ]);
+  });
+
+  const form2Sheet = XLSX.utils.aoa_to_sheet(form2Rows);
+  form2Sheet["!cols"] = [
+    { wch: 8 },
+    { wch: 22 },
+    { wch: 30 },
+    { wch: 34 },
+    { wch: 20 },
+    { wch: 20 },
+    { wch: 18 },
+  ];
+  const form2Name = sanitizeSheetName("AS9102 Form 2", existingSheetNames);
+  XLSX.utils.book_append_sheet(workbook, form2Sheet, form2Name);
+
+  // 3. Consolidated Master "All Characteristics" Sheet
+  const sampleHeaders = Array.from({ length: validSampleCount }, (_, i) => `#${i + 1}`);
+  const allCharsRows = [];
+  allCharsRows.push(["CONSOLIDATED PROJECT CHARACTERISTICS (ALL DRAWINGS)"]);
+  allCharsRows.push([]);
+  allCharsRows.push(["Project:", proj.name || "-", "", "", "Total Parts:", drawings.length]);
+  allCharsRows.push(["Project Code:", proj.code || "-", "", "", "Overall Status:", projStatus]);
+  allCharsRows.push([]);
+  allCharsRows.push([
+    "Drawing / Part",
+    "ID #",
+    "Type",
+    "Unit",
+    "Nominal",
+    "Tolerance",
+    "USL",
+    "LSL",
+    ...sampleHeaders,
+    "MIN",
+    "MAX",
+    "Method",
+    "Status",
+    "Notes",
+  ]);
+
+  drawings.forEach((drawing) => {
+    const chars = Array.isArray(drawing.characteristics) ? drawing.characteristics : [];
+    const partLabel = drawing.metadata?.drawingNo || drawing.name || "Drawing";
+
+    const exportRows = chars.reduce(
+      (items, item) =>
+        (item.quantity || 1) > 1 && !item.instancesExpanded
+          ? resizeOccurrences(items, item.id, item.quantity)
+          : items,
+      chars,
+    );
+
+    exportRows
+      .slice()
+      .sort(compareOccurrences)
+      .forEach((item) => {
+        const { usl, lsl } = getLimits(item);
+        const values = Array.from({ length: validSampleCount }, (_, index) => item.samples?.[index] ?? "");
+        const numericValues = values.map((v) => parseNumber(v, item.unit)).filter((v) => v !== null);
+        const rowNotes = item.dual && !item.notes?.includes("[Dual:")
+          ? [item.notes, `[Dual: ${item.dual.nominal}${item.dual.tolerance ? " " + item.dual.tolerance : ""}${item.dual.unit ? " " + item.dual.unit : ""}]`].filter(Boolean).join(" ")
+          : (item.notes || "");
+
+        allCharsRows.push([
+          partLabel,
+          balloonLabel(item),
+          item.type,
+          item.unit,
+          item.nominal,
+          item.tolerance,
+          usl,
+          lsl,
+          ...values,
+          numericValues.length ? Math.min(...numericValues) : "",
+          numericValues.length ? Math.max(...numericValues) : "",
+          item.method,
+          getStatus(item, validSampleCount),
+          rowNotes,
+        ]);
+      });
+  });
+
+  const allCharsSheet = XLSX.utils.aoa_to_sheet(allCharsRows);
+  allCharsSheet["!cols"] = [
+    { wch: 22 },
+    { wch: 8 },
+    { wch: 12 },
+    { wch: 8 },
+    { wch: 12 },
+    { wch: 14 },
+    { wch: 10 },
+    { wch: 10 },
+    ...Array.from({ length: validSampleCount }, () => ({ wch: 10 })),
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 36 },
+  ];
+  const allCharsName = sanitizeSheetName("All Characteristics", existingSheetNames);
+  XLSX.utils.book_append_sheet(workbook, allCharsSheet, allCharsName);
+
+  // 4. Dedicated Form 3 Characteristic Sheets per Drawing
+  drawings.forEach((drawing, idx) => {
+    const chars = Array.isArray(drawing.characteristics) ? drawing.characteristics : [];
+    const meta = drawing.metadata || {};
+    const partNo = meta.drawingNo || drawing.name || `Part ${idx + 1}`;
+
+    const { worksheet: drawSheet } = buildInspectionWorkbook({
+      metadata: meta,
+      characteristics: chars,
+      sampleCount: validSampleCount,
+      options: { includeAs9102Forms: false },
+    });
+
+    const sheetName = sanitizeSheetName(`Form 3 - ${partNo}`, existingSheetNames);
+    XLSX.utils.book_append_sheet(workbook, drawSheet, sheetName);
+  });
+
+  return { workbook, form1Rows, form2Rows, allCharsRows, projectStatus: projStatus };
+}
+
+export function exportBatchInspectionWorkbook({ project, drawings = [], sampleCount = 1, options = {}, fileName = null }) {
+  const { workbook } = buildBatchInspectionWorkbook({ project, drawings, sampleCount, options });
+  const projName = project?.name || "Project";
+  const cleanName = projName.replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, "_");
+  const defaultFileName = fileName || `${cleanName}_Complete_FAI_Report.xlsx`;
+  XLSX.writeFile(workbook, defaultFileName);
+}
+
 function round(value, decimals = 6) {
   const factor = 10 ** decimals;
   return Math.round((value + Number.EPSILON) * factor) / factor;

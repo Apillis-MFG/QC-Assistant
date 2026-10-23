@@ -29,6 +29,7 @@ import {
   exportBalloonedPdf,
   exportBatchBalloonedPdf,
   exportInspectionWorkbook,
+  exportBatchInspectionWorkbook,
   overallStatus,
 } from "./lib/exporters.js";
 import {
@@ -2387,6 +2388,54 @@ export default function App() {
     [balloonSettings],
   );
 
+  const exportAllProjectExcel = useCallback(
+    async (targetProject, targetDrawings, activeState = null) => {
+      if (!targetProject || !targetDrawings || !targetDrawings.length) {
+        setMessage("No drawings found to export.");
+        return;
+      }
+      try {
+        setMessage("Preparing multi-drawing FAI Excel report...");
+        const loader = targetProject.kind === "cloud" ? supabaseStore.loadDrawing : loadDrawing;
+        const fullDrawings = [];
+
+        for (const d of targetDrawings) {
+          if (activeState && d.id === activeState.activeDrawingId) {
+            fullDrawings.push({
+              id: d.id,
+              name: d.name,
+              fileName: activeState.pdfName || d.name,
+              metadata: activeState.metadata || d.metadata,
+              characteristics: activeState.characteristics,
+              sampleCount: activeState.sampleCount || sampleCount,
+            });
+          } else {
+            const loaded = await loader(d.id);
+            if (loaded) {
+              fullDrawings.push(loaded);
+            }
+          }
+        }
+
+        const projectName = targetProject.name || "Project";
+        const cleanName = projectName.replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, "_");
+        const exportFileName = `${cleanName}_Complete_FAI_Report.xlsx`;
+
+        exportBatchInspectionWorkbook({
+          project: targetProject,
+          drawings: fullDrawings,
+          sampleCount,
+          fileName: exportFileName,
+        });
+
+        setMessage(`Exported complete multi-drawing FAI workbook (${fullDrawings.length} drawing${fullDrawings.length === 1 ? "" : "s"}).`);
+      } catch (error) {
+        setMessage(error.message);
+      }
+    },
+    [sampleCount],
+  );
+
   const beginPanelResize = useCallback((event, axis) => {
     if (layoutMode !== "split-v" && layoutMode !== "split-h") return;
     const metrics = getContentMetrics();
@@ -2559,6 +2608,7 @@ export default function App() {
       onRenameDrawing={handleOpenDrawingDialog}
       onDeleteDrawing={handleDetailDeleteDrawing}
       onExportAllDrawingsPdf={() => exportAllProjectDrawings(detailProject, detailDrawings)}
+      onExportAllDrawingsExcel={() => exportAllProjectExcel(detailProject, detailDrawings)}
       drawingDialog={drawingDialog}
       onDrawingDialogChange={handleDrawingDialogChange}
       onDrawingDialogSubmit={handleDrawingDialogSubmit}
@@ -2711,6 +2761,24 @@ export default function App() {
                 <Save size={16} />
                 Excel
               </button>
+              {drawings.length > 1 ? (
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() =>
+                    exportAllProjectExcel(activeProject, drawings, {
+                      activeDrawingId,
+                      characteristics,
+                      metadata,
+                      sampleCount,
+                    })
+                  }
+                  title="Export all drawings in this project as a consolidated AS9102 FAI Excel workbook"
+                >
+                  <Save size={16} />
+                  All Excel ({drawings.length})
+                </button>
+              ) : null}
             </div>
           </div>
 
