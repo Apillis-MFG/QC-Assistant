@@ -229,3 +229,4 @@ assert.equal(transparentImg[3], 255);
 assert.ok(Math.abs(transparentImg[4] - 128) <= 2);
 
 console.log("PASS: 100% OCR preprocessing and contrast enhancement verification checks passed successfully!");
+
