@@ -18,6 +18,9 @@ import {
   Table2,
   TextSelect,
   Trash2,
+  Sparkles,
+  CheckSquare,
+  RotateCcw,
 } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -61,6 +64,7 @@ import {
   formatDate, setMetadataValue, mapTextItem, metadataLabel, fieldLabel,
   getNormalizedPoint, normalizeRect, getDefaultBalloonPosition, cropCanvasArea, clamp,
   parseDimension, getDimensionCaptureError, findNearestTextDimension, findDimensionAtPoint, findTextItemAtPoint, getTextItemBounds,
+  computeAutoFillSampleUpdates,
 } from "./lib/utils.js";
 import {
   getEmbeddedAutoBalloonCandidates, getOcrAutoBalloonCandidates, buildAutoBalloonCandidates,
@@ -1337,6 +1341,45 @@ export default function App() {
       ),
     );
   }, []);
+
+  const updateBatchSamples = useCallback((updates) => {
+    if (!updates || !Object.keys(updates).length) return;
+    setCharacteristics((items) =>
+      items.map((item) => {
+        const itemUpdates = updates[item.id];
+        if (!itemUpdates) return item;
+        return {
+          ...item,
+          samples: {
+            ...item.samples,
+            ...itemUpdates,
+          },
+        };
+      }),
+    );
+  }, []);
+
+  const autoFillSamples = useCallback((mode = "nominal", targetId = null) => {
+    const updates = computeAutoFillSampleUpdates(characteristics, sampleCount, targetId, mode);
+    if (!Object.keys(updates).length) {
+      setMessage("No empty samples to auto-fill.");
+      return;
+    }
+    updateBatchSamples(updates);
+    const count = Object.values(updates).reduce((acc, row) => acc + Object.keys(row).length, 0);
+    setMessage(`Auto-filled ${count} sample measurement${count === 1 ? "" : "s"}.`);
+  }, [characteristics, sampleCount, updateBatchSamples]);
+
+  const clearAllSamples = useCallback(() => {
+    if (!characteristics.some((item) => Object.keys(item.samples || {}).length > 0)) {
+      setMessage("Samples are already empty.");
+      return;
+    }
+    setCharacteristics((items) =>
+      items.map((item) => ({ ...item, samples: {} }))
+    );
+    setMessage("Cleared all sample measurements.");
+  }, [characteristics]);
 
   const updatePosition = useCallback((id, clientX, clientY, point = "balloon") => {
     const rect = overlayRef.current?.getBoundingClientRect();
@@ -2664,6 +2707,9 @@ export default function App() {
           onSelect={selectCharacteristic}
           onChange={updateCharacteristic}
           onSampleChange={updateSample}
+          onBatchSampleChange={updateBatchSamples}
+          onAutoFill={autoFillSamples}
+          onClearSamples={clearAllSamples}
           onSampleCountChange={setSampleCount}
           balloonDiameter={balloonSettings.diameter}
           showLeaderLine={balloonSettings.showLeaderLine}
@@ -2942,6 +2988,8 @@ export default function App() {
                   onChange={(patch) => updateCharacteristic(selected.id, patch)}
                   onReassign={(value) => reassignBalloonNo(selected.id, value)}
                   onSampleChange={(index, value) => updateSample(selected.id, index, value)}
+                  onBatchSampleChange={updateBatchSamples}
+                  onAutoFillSingle={(id) => autoFillSamples("nominal", id)}
                 />
               ) : (
                 <p className="muted">Select a balloon or add a new one to edit its inspection requirement.</p>
@@ -3013,15 +3061,48 @@ export default function App() {
                 <h2>QC / FAI Characteristics</h2>
                 <p>{characteristics.length} linked requirements</p>
               </div>
-              <button
-                className="button secondary"
-                onClick={clearAllBalloons}
-                disabled={!characteristics.length}
-                title="Clear all balloons from drawing and table"
-              >
-                <Trash2 size={16} />
-                Clear All Balloons
-              </button>
+              <div className="table-header-actions">
+                <button
+                  type="button"
+                  className="small-button secondary"
+                  onClick={() => autoFillSamples("nominal")}
+                  disabled={!characteristics.length}
+                  title="Auto-fill empty sample cells with nominal values (or OK for visual/notes)"
+                >
+                  <Sparkles size={13} />
+                  Fill Nominals
+                </button>
+                <button
+                  type="button"
+                  className="small-button secondary"
+                  onClick={() => autoFillSamples("visuals-ok")}
+                  disabled={!characteristics.length}
+                  title="Auto-fill empty sample cells for visual and note requirements with OK"
+                >
+                  <CheckSquare size={13} />
+                  Fill Visuals OK
+                </button>
+                <button
+                  type="button"
+                  className="small-button secondary"
+                  onClick={clearAllSamples}
+                  disabled={!characteristics.some((item) => Object.keys(item.samples || {}).length > 0)}
+                  title="Clear all recorded sample measurements"
+                >
+                  <RotateCcw size={13} />
+                  Clear Samples
+                </button>
+                <button
+                  type="button"
+                  className="small-button secondary danger"
+                  onClick={clearAllBalloons}
+                  disabled={!characteristics.length}
+                  title="Clear all balloons from drawing and table"
+                >
+                  <Trash2 size={13} />
+                  Clear All
+                </button>
+              </div>
             </div>
             <CharacteristicTable
               characteristics={characteristics}
@@ -3031,6 +3112,7 @@ export default function App() {
               onChange={updateCharacteristic}
               onReassign={reassignBalloonNo}
               onSampleChange={updateSample}
+              onBatchSampleChange={updateBatchSamples}
               onDelete={deleteCharacteristic}
             />
           </section>

@@ -914,3 +914,146 @@ export function cropCanvasArea(canvas, rect, options = {}) {
     preprocessResult,
   };
 }
+
+/**
+ * Parse clipboard text into a 2D matrix of strings.
+ * Handles Excel TSV, CSV, and multi-line text.
+ *
+ * @param {string} text Raw clipboard text
+ * @returns {string[][]} 2D array of trimmed cell values
+ */
+export function parseClipboardGrid(text) {
+  if (!text || typeof text !== "string") return [];
+  const raw = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!raw) return [];
+
+  const lines = raw.split("\n");
+  const hasTabs = lines.some((line) => line.includes("\t"));
+  const hasCommas = !hasTabs && lines.some((line) => line.includes(","));
+
+  const rows = lines.map((line) => {
+    let cells;
+    if (hasTabs) {
+      cells = line.split("\t");
+    } else if (hasCommas) {
+      cells = line.split(",");
+    } else {
+      cells = [line];
+    }
+    return cells.map((cell) => {
+      let s = cell.trim();
+      if (s.startsWith('"') && s.endsWith('"') && s.length >= 2) {
+        s = s.slice(1, -1).trim();
+      }
+      return s;
+    });
+  });
+
+  // Filter out trailing empty rows
+  while (rows.length > 0 && rows[rows.length - 1].every((c) => c === "")) {
+    rows.pop();
+  }
+
+  return rows;
+}
+
+/**
+ * Compute the batch sample updates from pasting a 2D grid of values into the table.
+ *
+ * @param {Array} sortedCharacteristics List of characteristics in current display order
+ * @param {string} startCharacteristicId ID of the characteristic cell where paste occurred
+ * @param {number} startSampleIndex Sample column index (0-based) where paste occurred
+ * @param {number} sampleCount Maximum visible sample count in the table
+ * @param {string[][]} grid 2D array of values
+ * @returns {Record<string, Record<number, string>>} Updates map: { [id]: { [sampleIndex]: value } }
+ */
+export function computePastedSampleUpdates(
+  sortedCharacteristics,
+  startCharacteristicId,
+  startSampleIndex,
+  sampleCount,
+  grid,
+) {
+  if (!Array.isArray(sortedCharacteristics) || !sortedCharacteristics.length) return {};
+  if (!Array.isArray(grid) || !grid.length) return {};
+
+  const startIndex = sortedCharacteristics.findIndex((c) => c.id === startCharacteristicId);
+  if (startIndex === -1) return {};
+
+  const maxCols = Math.max(1, Number(sampleCount) || 1);
+  const updates = {};
+
+  for (let r = 0; r < grid.length; r++) {
+    const charIndex = startIndex + r;
+    if (charIndex >= sortedCharacteristics.length) break;
+
+    const char = sortedCharacteristics[charIndex];
+    const rowValues = grid[r];
+
+    for (let c = 0; c < rowValues.length; c++) {
+      const sampleIdx = startSampleIndex + c;
+      if (sampleIdx >= maxCols) break;
+
+      const val = rowValues[c];
+      if (val !== undefined) {
+        if (!updates[char.id]) updates[char.id] = {};
+        updates[char.id][sampleIdx] = val;
+      }
+    }
+  }
+
+  return updates;
+}
+
+/**
+ * Generate sample updates to auto-fill characteristics.
+ * If mode is "nominal", fills dimension/GDT with nominal and note/visual with "OK".
+ * If mode is "visuals-ok", fills only note/visual characteristics with "OK".
+ *
+ * @param {Array} characteristics
+ * @param {number} sampleCount
+ * @param {string} [targetId] Optional ID to fill only one characteristic
+ * @param {"nominal" | "visuals-ok"} [mode="nominal"]
+ * @param {boolean} [overwrite=false] Whether to overwrite existing measurements
+ * @returns {Record<string, Record<number, string>>}
+ */
+export function computeAutoFillSampleUpdates(
+  characteristics,
+  sampleCount,
+  targetId = null,
+  mode = "nominal",
+  overwrite = false,
+) {
+  if (!Array.isArray(characteristics) || !characteristics.length) return {};
+  const validCount = Math.max(1, Number(sampleCount) || 1);
+
+  const updates = {};
+  const targets = targetId
+    ? characteristics.filter((c) => c.id === targetId)
+    : characteristics;
+
+  targets.forEach((char) => {
+    const isVisualOrNote = char.type === "note" || char.type === "visual";
+    if (mode === "visuals-ok" && !isVisualOrNote) return;
+
+    let fillVal;
+    if (isVisualOrNote) {
+      fillVal = "OK";
+    } else {
+      fillVal = char.nominal !== null && char.nominal !== undefined && String(char.nominal).trim() !== ""
+        ? String(char.nominal).trim()
+        : "";
+    }
+    if (!fillVal) return;
+
+    for (let s = 0; s < validCount; s++) {
+      const existing = char.samples?.[s];
+      if (overwrite || existing === undefined || existing === "") {
+        if (!updates[char.id]) updates[char.id] = {};
+        updates[char.id][s] = fillVal;
+      }
+    }
+  });
+
+  return updates;
+}

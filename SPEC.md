@@ -504,6 +504,56 @@ Acceptance:
 - `Delete` removes selected requirements.
 - 100% of offline verification tests and production build pass.
 
+### P1-5: Batch Sample Auto-Fill & Clipboard Pasting
+
+Epic:
+
+```text
+Activation: First Session
+```
+
+Outcome:
+
+```text
+QC inspectors can paste multi-cell measurement grids directly from Excel, Google Sheets, or CSV
+into any sample cell in the characteristic table or balloon inspector, and use one-click auto-fill
+actions for nominal baseline initialization and visual requirement sign-off.
+```
+
+Scope:
+
+- Add `parseClipboardGrid(text)` in `src/lib/utils.js` supporting TSV (Excel/Sheets), CSV, and multi-line matrices.
+- Add `computePastedSampleUpdates(sorted, charId, sampleIdx, count, grid)` with 2D row/column boundary clipping.
+- Add `computeAutoFillSampleUpdates(characteristics, sampleCount, targetId, mode, overwrite)` supporting `nominal` and `visuals-ok` modes.
+- Support multi-cell pasting across table rows/columns in `CharacteristicRow` and `CharacteristicTable`.
+- Support multi-cell pasting across sample slots in `BalloonEditor`.
+- Add quick action buttons in `table-header` and `MeasurementWorkspace`: "Fill Nominals", "Fill Visuals OK", and "Clear Samples".
+- Add "Fill Nominal / OK" quick action in `BalloonEditor`.
+- Atomic state batch updates in `src/App.jsx` (`updateBatchSamples`).
+- Deterministic verification tests in `scripts/verify-batch-samples.mjs`.
+
+Out:
+
+- No native clipboard reading APIs requiring elevated browser permissions (`navigator.clipboard.readText`); uses standard `paste` event data.
+- No third-party spreadsheet or grid libraries.
+
+Likely files:
+
+- `src/lib/utils.js`
+- `src/App.jsx`
+- `src/components/panels.jsx`
+- `src/styles.css`
+- `scripts/verify-batch-samples.mjs`
+
+Acceptance:
+
+- Pasting 1D horizontal, 1D vertical, or 2D matrix clipboard data into any table sample cell maps sequentially across rows and columns.
+- Single-cell clipboard values paste normally without interception.
+- "Fill Nominals" populates empty sample cells with nominal values for dimensions and "OK" for visual/note requirements.
+- "Fill Visuals OK" sets "OK" for all visual and note requirements without altering dimension values.
+- "Clear Samples" resets recorded measurements while preserving balloon geometry and requirements.
+- 100% of offline verification test suites and production build pass cleanly.
+
 ### P2-1: Solid Arrowhead Terminations on Balloon Leader Lines
 
 Epic:

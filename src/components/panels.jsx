@@ -1,9 +1,9 @@
 import { balloonLabel, compareOccurrences, MAX_OCCURRENCE_QUANTITY } from "../lib/occurrences.js";
-import { memo, useMemo, useRef } from "react";
-import { X, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft } from "lucide-react";
+import { memo, useMemo, useRef, useCallback } from "react";
+import { X, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft, Sparkles, CheckSquare } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
 import { methods, types, APP_VERSION, getDefaultUnit, normalizeUnitSystem, CHARACTERISTIC_UNITS, hasCharacteristicUnit } from "../lib/constants.js";
-import { formatBytes, formatDate } from "../lib/utils.js";
+import { formatBytes, formatDate, parseClipboardGrid, computePastedSampleUpdates } from "../lib/utils.js";
 import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer, Field, HelpMenu } from "./widgets.jsx";
 import { BALLOON_FONT_FAMILIES } from "../lib/balloonSettings.js";
 
@@ -845,6 +845,9 @@ export function MeasurementWorkspace({
   onSelect,
   onChange,
   onSampleChange,
+  onBatchSampleChange,
+  onAutoFill,
+  onClearSamples,
   onSampleCountChange,
   balloonDiameter = 24,
   showLeaderLine = true,
@@ -941,6 +944,38 @@ export function MeasurementWorkspace({
               />
             </div>
           </label>
+          <div className="measurement-actions">
+            <button
+              type="button"
+              className="small-button secondary"
+              onClick={() => onAutoFill?.("nominal")}
+              disabled={!characteristics.length}
+              title="Auto-fill empty sample cells with nominal values (or OK for visual/notes)"
+            >
+              <Sparkles size={13} />
+              Fill Nominals
+            </button>
+            <button
+              type="button"
+              className="small-button secondary"
+              onClick={() => onAutoFill?.("visuals-ok")}
+              disabled={!characteristics.length}
+              title="Auto-fill empty sample cells for visual and note requirements with OK"
+            >
+              <CheckSquare size={13} />
+              Fill Visuals OK
+            </button>
+            <button
+              type="button"
+              className="small-button secondary"
+              onClick={() => onClearSamples?.()}
+              disabled={!characteristics.some((item) => Object.keys(item.samples || {}).length > 0)}
+              title="Clear all recorded sample measurements"
+            >
+              <RotateCcw size={13} />
+              Clear Samples
+            </button>
+          </div>
           <span className="mode-chip">Balloon geometry locked</span>
         </div>
 
@@ -953,6 +988,7 @@ export function MeasurementWorkspace({
           onSelect={onSelect}
           onChange={onChange}
           onSampleChange={onSampleChange}
+          onBatchSampleChange={onBatchSampleChange}
         />
 
         <div className="message">{message}</div>
@@ -1060,8 +1096,43 @@ function NominalInput({ value, disabled, onChange }) {
   );
 }
 
-export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampleChange, onQuantity, onResume, cloud, hasUnplaced }) {
+export function BalloonEditor({
+  item,
+  sampleCount,
+  onChange,
+  onReassign,
+  onSampleChange,
+  onBatchSampleChange,
+  onAutoFillSingle,
+  onQuantity,
+  onResume,
+  cloud,
+  hasUnplaced,
+}) {
   const { usl, lsl } = getLimits(item);
+
+  const handleSamplePaste = (event, sampleIndex) => {
+    const clipboardData = event.clipboardData || window.clipboardData;
+    if (!clipboardData) return;
+    const text = clipboardData.getData("text");
+    if (!text) return;
+    const grid = parseClipboardGrid(text);
+    if (grid.length > 1 || (grid[0] && grid[0].length > 1)) {
+      event.preventDefault();
+      const flat = grid.flat();
+      const updates = {};
+      flat.forEach((val, offset) => {
+        const targetIdx = sampleIndex + offset;
+        if (targetIdx < sampleCount) {
+          updates[targetIdx] = val;
+        }
+      });
+      if (Object.keys(updates).length > 0) {
+        onBatchSampleChange?.({ [item.id]: updates });
+      }
+    }
+  };
+
   return (
     <div className="editor-grid">
       <form className="span-2" key={`${item.groupId || item.id}-${item.quantity || 1}`} onSubmit={(event) => {
@@ -1126,11 +1197,28 @@ export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampl
         Notes
         <textarea value={item.notes} onChange={(event) => onChange({ notes: event.target.value })} />
       </label>
+      <div className="sample-stack-header span-2">
+        <span>Sample Measurements</span>
+        <button
+          type="button"
+          className="small-button secondary"
+          onClick={() => onAutoFillSingle?.(item.id)}
+          title="Fill empty samples for this balloon with nominal value (or OK for visual/notes)"
+        >
+          <Sparkles size={12} />
+          Fill {item.type === "note" || item.type === "visual" ? "OK" : "Nominal"}
+        </button>
+      </div>
       <div className="sample-stack span-2">
         {Array.from({ length: sampleCount }, (_, index) => (
           <label key={index}>
             #{index + 1}
-            <input value={item.samples[index] ?? ""} onChange={(event) => onSampleChange(index, event.target.value)} placeholder={item.type === "dimension" ? "0.000" : "OK"} />
+            <input
+              value={item.samples[index] ?? ""}
+              onChange={(event) => onSampleChange(index, event.target.value)}
+              onPaste={(event) => handleSamplePaste(event, index)}
+              placeholder={item.type === "dimension" ? "0.000" : "OK"}
+            />
           </label>
         ))}
       </div>
@@ -1147,11 +1235,25 @@ const CharacteristicRow = memo(function CharacteristicRow({
   onChange,
   onReassign,
   onSampleChange,
+  onBatchPaste,
   onDelete,
 }) {
   const { usl, lsl } = getLimits(item);
   const status = getStatus(item, sampleCount);
   const toleranceParts = parseToleranceParts(item.tolerance);
+
+  const handlePaste = (event, sampleIndex) => {
+    const clipboardData = event.clipboardData || window.clipboardData;
+    if (!clipboardData) return;
+    const text = clipboardData.getData("text");
+    if (!text) return;
+    const grid = parseClipboardGrid(text);
+    if (grid.length > 1 || (grid[0] && grid[0].length > 1)) {
+      event.preventDefault();
+      onBatchPaste?.(item.id, sampleIndex, grid);
+    }
+  };
+
   return (
     <tr
       className={selectedId === item.id ? "row-selected" : ""}
@@ -1209,6 +1311,7 @@ const CharacteristicRow = memo(function CharacteristicRow({
           <input
             value={item.samples[index] ?? ""}
             onChange={(event) => onSampleChange(item.id, index, event.target.value)}
+            onPaste={(event) => handlePaste(event, index)}
             placeholder={readOnly ? (item.type === "dimension" ? "0.000" : "OK") : undefined}
           />
         </td>
@@ -1250,12 +1353,25 @@ export function CharacteristicTable({
   onChange,
   onReassign,
   onSampleChange,
+  onBatchSampleChange,
   onDelete,
 }) {
   const sorted = useMemo(
     () => characteristics.slice().sort(compareOccurrences),
     [characteristics],
   );
+
+  const handleBatchPaste = useCallback((charId, sampleIndex, grid) => {
+    if (!onBatchSampleChange) return;
+    const updates = computePastedSampleUpdates(
+      sorted,
+      charId,
+      sampleIndex,
+      sampleCount,
+      grid,
+    );
+    onBatchSampleChange(updates);
+  }, [sorted, sampleCount, onBatchSampleChange]);
 
   if (readOnly && !activeDrawingId) {
     return (
@@ -1307,6 +1423,7 @@ export function CharacteristicTable({
               onChange={onChange}
               onReassign={onReassign}
               onSampleChange={onSampleChange}
+              onBatchPaste={handleBatchPaste}
               onDelete={onDelete}
             />
           ))}
