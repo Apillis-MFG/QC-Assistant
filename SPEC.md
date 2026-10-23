@@ -287,6 +287,47 @@ Acceptance:
 - QC table scrolls horizontally without affecting page scroll.
 - Inspector panel is reachable without horizontal scroll on iPad-width screens.
 
+### P1-3: OCR Preprocessing & Contrast Enhancement for Faint Scans and Inverted Title Blocks
+
+Epic:
+
+```text
+Activation: First Session
+```
+
+Outcome:
+
+```text
+OCR text capture and Auto Balloon detection reliably extract dimensions and metadata
+from faint pencil markings, low-contrast scans, and inverted (white-on-dark) CAD title blocks.
+```
+
+Scope:
+
+- Client-side canvas preprocessing: perimeter-based dark background detection and RGB inversion.
+- Percentile-based contrast normalization (stretching p2..p98 luminance to full 0..255 dynamic range).
+- Local adaptive binarization (Bradley-Roth integral image) to eliminate shadows and lighting gradients.
+- Automated pipeline integrated into `cropCanvasArea` in `src/lib/utils.js` and `src/App.jsx`.
+- Comprehensive offline test suite in `scripts/verify-ocr-preprocessing.mjs`.
+
+Out:
+
+- No new external/npm dependencies.
+- No remote OCR or cloud services.
+
+Likely files:
+
+- `src/lib/ocrPreprocessing.js`
+- `src/lib/utils.js`
+- `scripts/verify-ocr-preprocessing.mjs`
+
+Acceptance:
+
+- Title blocks with dark backgrounds are accurately detected and inverted to black text on white.
+- Faint pencil markings (narrow dynamic range) are contrast-stretched to deep black on pure white.
+- Uneven shadows and lighting gradients are eliminated via Bradley-Roth local adaptive thresholding.
+- Node offline verification suite and production build pass with 100% success.
+
 ## Status Rules
 
 - Backlog: not selected for current sprint

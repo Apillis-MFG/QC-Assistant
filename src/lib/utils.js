@@ -1,6 +1,31 @@
 import { BALLOON_OFFSET, BALLOON_MARGIN, normalizeUnitSystem } from "./constants.js";
 import { PROJECT_LIMITS } from "./projectStore.js";
 import { isValidOccurrenceQuantity, MAX_OCCURRENCE_QUANTITY } from "./occurrences.js";
+import {
+  preprocessImageData,
+  calculateLuminance,
+  detectDarkBackground,
+  invertImageData,
+  computeLuminanceHistogram,
+  calculatePercentiles,
+  stretchContrast,
+  applyAdaptiveThreshold,
+  calculateOtsuThreshold,
+  applyOtsuThreshold,
+} from "./ocrPreprocessing.js";
+
+export {
+  preprocessImageData,
+  calculateLuminance,
+  detectDarkBackground,
+  invertImageData,
+  computeLuminanceHistogram,
+  calculatePercentiles,
+  stretchContrast,
+  applyAdaptiveThreshold,
+  calculateOtsuThreshold,
+  applyOtsuThreshold,
+};
 
 export function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -393,16 +418,16 @@ export function findTextItemAtPoint(point, textItems, canvasSize, padding = 8) {
   return hits[0]?.item ?? null;
 }
 
-export function cropCanvasArea(canvas, rect) {
+export function cropCanvasArea(canvas, rect, options = {}) {
   const sourceX = Math.floor(rect.x * canvas.width);
   const sourceY = Math.floor(rect.y * canvas.height);
   const sourceWidth = Math.max(1, Math.floor(rect.width * canvas.width));
   const sourceHeight = Math.max(1, Math.floor(rect.height * canvas.height));
-  const scale = 2;
+  const scale = options.scale ?? 2;
   const output = document.createElement("canvas");
   output.width = sourceWidth * scale;
   output.height = sourceHeight * scale;
-  const context = output.getContext("2d");
+  const context = output.getContext("2d", { willReadFrequently: true });
 
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, output.width, output.height);
@@ -419,9 +444,21 @@ export function cropCanvasArea(canvas, rect) {
     output.height,
   );
 
+  let preprocessResult = null;
+  if (options.preprocess !== false) {
+    try {
+      const imgData = context.getImageData(0, 0, output.width, output.height);
+      preprocessResult = preprocessImageData(imgData, options);
+      context.putImageData(imgData, 0, 0);
+    } catch {
+      // Fallback gracefully if getImageData is not supported in the environment
+    }
+  }
+
   return {
     dataUrl: output.toDataURL("image/png"),
     width: output.width,
     height: output.height,
+    preprocessResult,
   };
 }

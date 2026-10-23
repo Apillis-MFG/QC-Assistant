@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node scripts/verify-inspection-math.mjs && node scripts/verify-unit-parsing.mjs && node scripts/verify-repeated-dimensions.mjs && node scripts/verify-excel-export.mjs && node scripts/verify-pdf-export.mjs && node scripts/verify-text-capture.mjs && node scripts/verify-responsive-layout.mjs"
+    "test": "node scripts/verify-inspection-math.mjs && node scripts/verify-unit-parsing.mjs && node scripts/verify-repeated-dimensions.mjs && node scripts/verify-excel-export.mjs && node scripts/verify-pdf-export.mjs && node scripts/verify-text-capture.mjs && node scripts/verify-responsive-layout.mjs && node scripts/verify-ocr-preprocessing.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",
