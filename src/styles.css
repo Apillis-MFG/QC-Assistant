@@ -745,6 +745,13 @@ kbd {
   display: none;
 }
 
+.project-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .project-action {
   display: inline-flex;
   align-items: center;
@@ -1649,6 +1656,25 @@ textarea:focus {
   stroke-width: 1.6;
 }
 
+.leader-arrow {
+  fill: var(--accent);
+  stroke: var(--accent);
+  stroke-width: 0.5;
+  stroke-linejoin: round;
+}
+
+.leader-group.selected .leader-arrow,
+.leader-arrow.selected {
+  stroke-width: 1;
+}
+
+.auto-balloon-leader-arrow {
+  fill: var(--accent);
+  stroke: var(--accent);
+  stroke-width: 0.5;
+  stroke-linejoin: round;
+}
+
 .pending-target,
 .target-handle {
   position: absolute;
@@ -2071,6 +2097,25 @@ textarea:focus {
   align-items: center;
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
+  gap: 12px;
+}
+
+.table-header-actions,
+.measurement-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sample-stack-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
 }
 
 .table-header p {

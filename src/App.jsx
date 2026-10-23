@@ -18,13 +18,18 @@ import {
   Table2,
   TextSelect,
   Trash2,
+  Sparkles,
+  CheckSquare,
+  RotateCcw,
 } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { demoCharacteristics } from "./lib/sampleData.js";
 import {
   exportBalloonedPdf,
+  exportBatchBalloonedPdf,
   exportInspectionWorkbook,
+  exportBatchInspectionWorkbook,
   overallStatus,
 } from "./lib/exporters.js";
 import {
@@ -61,6 +66,7 @@ import {
   formatDate, setMetadataValue, mapTextItem, metadataLabel, fieldLabel,
   getNormalizedPoint, normalizeRect, getDefaultBalloonPosition, cropCanvasArea, clamp,
   parseDimension, getDimensionCaptureError, findNearestTextDimension, findDimensionAtPoint, findTextItemAtPoint, getTextItemBounds,
+  computeAutoFillSampleUpdates,
 } from "./lib/utils.js";
 import {
   getEmbeddedAutoBalloonCandidates, getOcrAutoBalloonCandidates, buildAutoBalloonCandidates,
@@ -146,6 +152,7 @@ function createCharacteristic({ balloonNo, x = 0.5, y = 0.5, targetX = x, target
     tolerance: seed.tolerance ?? "",
     method: seed.method ?? TYPE_DEFAULT_METHOD[seed.type ?? "dimension"] ?? "DC",
     notes: seed.notes ?? "",
+    dual: seed.dual ?? null,
     samples: seed.samples ?? {},
   };
 }
@@ -242,7 +249,7 @@ export default function App() {
   const placementNext = useMemo(() => placementGroupId
     ? characteristics.filter((item) => (item.groupId || item.id) === placementGroupId && item.isPlaced === false)
       .sort((a, b) => a.occurrenceIndex - b.occurrenceIndex)[0] || null : null,
-  [characteristics, placementGroupId]);
+    [characteristics, placementGroupId]);
 
   const projectStatus = useMemo(() => overallStatus(characteristics, sampleCount), [characteristics, sampleCount]);
 
@@ -649,71 +656,6 @@ export default function App() {
     setMode("select");
     setMessage("Edit mode: add balloons, capture drawing text, and refine requirement setup.");
   }, []);
-
-  const isWorkspaceRoute = /^\/projects\/[^/]+\/drawings(\/|$)/.test(location.pathname);
-
-  useEffect(() => {
-    const handleShortcut = (event) => {
-      if (!isWorkspaceRoute) return;
-      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
-      const target = event.target;
-      const tagName = target?.tagName?.toLowerCase();
-      const isTyping =
-        tagName === "input" ||
-        tagName === "textarea" ||
-        tagName === "select" ||
-        target?.isContentEditable;
-      if (isTyping) return;
-
-      const key = event.key.toLowerCase();
-      if (key === "escape") {
-        if (placementGroupId) {
-          setMode("select");
-          setMessage("Placement paused. Select a requirement and resume placement to continue.");
-        }
-        setPlacementGroupId(null);
-        if (toleranceTableOpen) {
-          event.preventDefault();
-          setToleranceTableOpen(false);
-          return;
-        }
-        if (editingBalloonId || ocrRect || autoBalloonRect || autoBalloonReviewOpen || pendingTarget) {
-          event.preventDefault();
-          setEditingBalloonId(null);
-          setPendingTarget(null);
-          setOcrRect(null);
-          setAutoBalloonRect(null);
-          setAutoBalloonCandidates([]);
-          setAutoBalloonReviewOpen(false);
-        }
-        return;
-      }
-      if (toleranceTableOpen) return;
-      if (workspaceMode === "measurement") return;
-
-      const shortcutModes = {
-        b: "balloon",
-        v: "select",
-        h: "pan",
-        t: "text",
-        a: "autoBalloon",
-      };
-      if (shortcutModes[key]) {
-        event.preventDefault();
-        switchMode(shortcutModes[key]);
-        return;
-      }
-
-      if (key === "e" && selected?.page === pageNumber) {
-        event.preventDefault();
-        setEditingBalloonId(selected.id);
-        setMessage(`Editing balloon ${balloonLabel(selected)}.`);
-      }
-    };
-
-    window.addEventListener("keydown", handleShortcut);
-    return () => window.removeEventListener("keydown", handleShortcut);
-  }, [placementGroupId, autoBalloonRect, autoBalloonReviewOpen, editingBalloonId, isWorkspaceRoute, toleranceTableOpen, ocrRect, pageNumber, pendingTarget, selected, switchMode, workspaceMode]);
 
   const persistActiveDrawing = useCallback((reason = "auto") => {
     const save = async () => {
@@ -1177,19 +1119,28 @@ export default function App() {
         // Snap target to the center of the highlight so the leader points exactly at the text.
         const target = hit
           ? {
-              x: clamp((hit.left + hit.width / 2) / canvasSize.width, 0, 1),
-              y: clamp((hit.top + hit.height / 2) / canvasSize.height, 0, 1),
-            }
+            x: clamp((hit.left + hit.width / 2) / canvasSize.width, 0, 1),
+            y: clamp((hit.top + hit.height / 2) / canvasSize.height, 0, 1),
+          }
           : point;
 
         const resolvedSeed = hit
-          ? { nominal: hit.nominal, quantity: hit.quantity, tolerance: hit.tolerance, ...(hit.unit ? { unit: hit.unit } : {}) }
+          ? {
+            nominal: hit.nominal,
+            quantity: hit.quantity,
+            tolerance: hit.tolerance,
+            ...(hit.unit ? { unit: hit.unit } : {}),
+            ...(hit.dual ? { dual: hit.dual } : {}),
+          }
           : (() => {
-              const dim = findNearestTextDimension(point, textItems, canvasSize);
-              return dim
-                ? { ...dim, tolerance: applyGeneralTolerance(dim.nominal, dim.tolerance, dim.unit === "°" ? resolvedTolerances.angle : resolvedTolerances.linear) }
-                : {};
-            })();
+            const dim = findNearestTextDimension(point, textItems, canvasSize);
+            return dim
+              ? {
+                ...dim,
+                tolerance: applyGeneralTolerance(dim.nominal, dim.tolerance, dim.unit === "°" ? resolvedTolerances.angle : resolvedTolerances.linear),
+              }
+              : {};
+          })();
 
         if (resolvedSeed.captureError) {
           setMessage(resolvedSeed.captureError);
@@ -1392,6 +1343,45 @@ export default function App() {
       ),
     );
   }, []);
+
+  const updateBatchSamples = useCallback((updates) => {
+    if (!updates || !Object.keys(updates).length) return;
+    setCharacteristics((items) =>
+      items.map((item) => {
+        const itemUpdates = updates[item.id];
+        if (!itemUpdates) return item;
+        return {
+          ...item,
+          samples: {
+            ...item.samples,
+            ...itemUpdates,
+          },
+        };
+      }),
+    );
+  }, []);
+
+  const autoFillSamples = useCallback((mode = "nominal", targetId = null) => {
+    const updates = computeAutoFillSampleUpdates(characteristics, sampleCount, targetId, mode);
+    if (!Object.keys(updates).length) {
+      setMessage("No empty samples to auto-fill.");
+      return;
+    }
+    updateBatchSamples(updates);
+    const count = Object.values(updates).reduce((acc, row) => acc + Object.keys(row).length, 0);
+    setMessage(`Auto-filled ${count} sample measurement${count === 1 ? "" : "s"}.`);
+  }, [characteristics, sampleCount, updateBatchSamples]);
+
+  const clearAllSamples = useCallback(() => {
+    if (!characteristics.some((item) => Object.keys(item.samples || {}).length > 0)) {
+      setMessage("Samples are already empty.");
+      return;
+    }
+    setCharacteristics((items) =>
+      items.map((item) => ({ ...item, samples: {} }))
+    );
+    setMessage("Cleared all sample measurements.");
+  }, [characteristics]);
 
   const updatePosition = useCallback((id, clientX, clientY, point = "balloon") => {
     const rect = overlayRef.current?.getBoundingClientRect();
@@ -2130,6 +2120,184 @@ export default function App() {
     deleteCharacteristic(selectedId);
   }, [deleteCharacteristic, selectedId]);
 
+  const isWorkspaceRoute = /^\/projects\/[^/]+\/drawings(\/|$)/.test(location.pathname);
+
+  useEffect(() => {
+    const handleShortcut = (event) => {
+      if (!isWorkspaceRoute) return;
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping =
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select" ||
+        target?.isContentEditable;
+      if (isTyping) return;
+
+      const key = event.key;
+      const lowerKey = key.toLowerCase();
+
+      // 1. Escape: cancel active tool states, placement, dialogs, review panels
+      if (lowerKey === "escape") {
+        if (placementGroupId) {
+          setMode("select");
+          setMessage("Placement paused. Select a requirement and resume placement to continue.");
+        }
+        setPlacementGroupId(null);
+        if (toleranceTableOpen) {
+          event.preventDefault();
+          setToleranceTableOpen(false);
+          return;
+        }
+        if (editingBalloonId || ocrRect || autoBalloonRect || autoBalloonReviewOpen || pendingTarget) {
+          event.preventDefault();
+          setEditingBalloonId(null);
+          setPendingTarget(null);
+          setOcrRect(null);
+          setAutoBalloonRect(null);
+          setAutoBalloonCandidates([]);
+          setAutoBalloonReviewOpen(false);
+        }
+        return;
+      }
+
+      // If tolerance table modal is open, don't trigger workspace shortcuts
+      if (toleranceTableOpen) return;
+
+      // 2. Enter: confirm pending candidate review or finish balloon edit
+      if (lowerKey === "enter") {
+        if (autoBalloonReviewOpen && autoBalloonCandidates.length > 0) {
+          event.preventDefault();
+          commitAutoBalloonCandidates();
+          return;
+        }
+        if (editingBalloonId) {
+          event.preventDefault();
+          setEditingBalloonId(null);
+          setMessage("Finished balloon editing.");
+          return;
+        }
+      }
+
+      if (workspaceMode === "measurement") return;
+
+      // 3. Delete / Backspace: delete selected requirement
+      if (key === "Delete" || key === "Backspace") {
+        if (selectedId && !editingBalloonId) {
+          event.preventDefault();
+          deleteSelected();
+          return;
+        }
+      }
+
+      // 4. Primary Tool Shortcuts
+      const shortcutModes = {
+        b: "balloon",
+        v: "select",
+        h: "pan",
+        t: "text",
+        a: "autoBalloon",
+      };
+      if (shortcutModes[lowerKey]) {
+        event.preventDefault();
+        switchMode(shortcutModes[lowerKey]);
+        return;
+      }
+
+      // 5. Edit Selected Balloon
+      if (lowerKey === "e" && selected?.page === pageNumber) {
+        event.preventDefault();
+        setEditingBalloonId(selected.id);
+        setMessage(`Editing balloon ${balloonLabel(selected)}.`);
+        return;
+      }
+
+      // 6. 'd': Cycle requirement type (dimension -> gdt -> note -> visual)
+      if (lowerKey === "d" && selected) {
+        event.preventDefault();
+        const currentType = selected.type || "dimension";
+        const currentIndex = types.indexOf(currentType);
+        const nextType = types[(currentIndex + 1) % types.length];
+        const nextMethod = TYPE_DEFAULT_METHOD[nextType] || selected.method || "DC";
+        updateCharacteristic(selected.id, {
+          type: nextType,
+          method: nextMethod,
+          ...(hasCharacteristicUnit(nextType) ? {} : { unit: "" }),
+        });
+        setMessage(`Changed ${balloonLabel(selected)} type to ${nextType}.`);
+        return;
+      }
+
+      // 7. ArrowUp / ArrowDown (or k / j): Navigate characteristic selection in table
+      if (key === "ArrowDown" || lowerKey === "j") {
+        if (characteristics.length > 0) {
+          event.preventDefault();
+          const currentIndex = characteristics.findIndex((c) => c.id === selectedId);
+          const nextIndex = currentIndex < characteristics.length - 1 ? currentIndex + 1 : 0;
+          setSelectedId(characteristics[nextIndex].id);
+          setMessage(`Selected characteristic #${balloonLabel(characteristics[nextIndex])}.`);
+          return;
+        }
+      }
+      if (key === "ArrowUp" || lowerKey === "k") {
+        if (characteristics.length > 0) {
+          event.preventDefault();
+          const currentIndex = characteristics.findIndex((c) => c.id === selectedId);
+          const prevIndex = currentIndex > 0 ? currentIndex - 1 : characteristics.length - 1;
+          setSelectedId(characteristics[prevIndex].id);
+          setMessage(`Selected characteristic #${balloonLabel(characteristics[prevIndex])}.`);
+          return;
+        }
+      }
+
+      // 8. Number keys 1-9: Quick set balloon number for selected requirement
+      if (/^[1-9]$/.test(key) && selected && !editingBalloonId) {
+        event.preventDefault();
+        const newNo = Number(key);
+        updateCharacteristic(selected.id, { balloonNo: newNo });
+        setMessage(`Set balloon number to ${newNo}.`);
+        return;
+      }
+
+      // 9. Zoom Shortcuts: '+' or '=' to zoom in, '-' to zoom out
+      if (key === "+" || key === "=") {
+        event.preventDefault();
+        zoomIn();
+        return;
+      }
+      if (key === "-") {
+        event.preventDefault();
+        zoomOut();
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [
+    autoBalloonCandidates,
+    autoBalloonRect,
+    autoBalloonReviewOpen,
+    characteristics,
+    commitAutoBalloonCandidates,
+    deleteSelected,
+    editingBalloonId,
+    isWorkspaceRoute,
+    ocrRect,
+    pageNumber,
+    pendingTarget,
+    placementGroupId,
+    selected,
+    selectedId,
+    switchMode,
+    toleranceTableOpen,
+    updateCharacteristic,
+    workspaceMode,
+    zoomIn,
+    zoomOut,
+  ]);
+
   const exportPdf = useCallback(async () => {
     try {
       await exportBalloonedPdf({
@@ -2165,6 +2333,108 @@ export default function App() {
       setMessage(error.message);
     }
   }, [characteristics, metadata, sampleCount]);
+
+  const exportAllProjectDrawings = useCallback(
+    async (targetProject, targetDrawings, activeState = null) => {
+      if (!targetProject || !targetDrawings || !targetDrawings.length) {
+        setMessage("No drawings found to export.");
+        return;
+      }
+      try {
+        setMessage("Preparing multi-drawing PDF export...");
+        const loader = targetProject.kind === "cloud" ? supabaseStore.loadDrawing : loadDrawing;
+        const fullDrawings = [];
+
+        for (const d of targetDrawings) {
+          if (activeState && d.id === activeState.activeDrawingId) {
+            fullDrawings.push({
+              id: d.id,
+              name: d.name,
+              fileName: activeState.pdfName || d.name,
+              pdfBytes: activeState.pdfBytes,
+              characteristics: activeState.characteristics,
+            });
+          } else {
+            const loaded = await loader(d.id);
+            if (loaded && loaded.pdfBytes) {
+              fullDrawings.push(loaded);
+            }
+          }
+        }
+
+        if (!fullDrawings.length) {
+          throw new Error("None of the drawings in this project have uploaded PDF files.");
+        }
+
+        const projectName = targetProject.name || "Project";
+        const cleanName = projectName.replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, "_");
+        const exportFileName = `${cleanName}_All_Drawings_Ballooned.pdf`;
+
+        await exportBatchBalloonedPdf({
+          drawings: fullDrawings,
+          fileName: exportFileName,
+          showLeaderLine: balloonSettings.showLeaderLine,
+          fontColor: balloonSettings.fontColor,
+          fontFamily: balloonSettings.fontFamily,
+          fontSize: balloonSettings.fontSize,
+          diameter: balloonSettings.diameter,
+        });
+
+        setMessage(`Exported complete multi-drawing PDF package (${fullDrawings.length} drawing${fullDrawings.length === 1 ? "" : "s"}).`);
+      } catch (error) {
+        setMessage(error.message);
+      }
+    },
+    [balloonSettings],
+  );
+
+  const exportAllProjectExcel = useCallback(
+    async (targetProject, targetDrawings, activeState = null) => {
+      if (!targetProject || !targetDrawings || !targetDrawings.length) {
+        setMessage("No drawings found to export.");
+        return;
+      }
+      try {
+        setMessage("Preparing multi-drawing FAI Excel report...");
+        const loader = targetProject.kind === "cloud" ? supabaseStore.loadDrawing : loadDrawing;
+        const fullDrawings = [];
+
+        for (const d of targetDrawings) {
+          if (activeState && d.id === activeState.activeDrawingId) {
+            fullDrawings.push({
+              id: d.id,
+              name: d.name,
+              fileName: activeState.pdfName || d.name,
+              metadata: activeState.metadata || d.metadata,
+              characteristics: activeState.characteristics,
+              sampleCount: activeState.sampleCount || sampleCount,
+            });
+          } else {
+            const loaded = await loader(d.id);
+            if (loaded) {
+              fullDrawings.push(loaded);
+            }
+          }
+        }
+
+        const projectName = targetProject.name || "Project";
+        const cleanName = projectName.replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, "_");
+        const exportFileName = `${cleanName}_Complete_FAI_Report.xlsx`;
+
+        exportBatchInspectionWorkbook({
+          project: targetProject,
+          drawings: fullDrawings,
+          sampleCount,
+          fileName: exportFileName,
+        });
+
+        setMessage(`Exported complete multi-drawing FAI workbook (${fullDrawings.length} drawing${fullDrawings.length === 1 ? "" : "s"}).`);
+      } catch (error) {
+        setMessage(error.message);
+      }
+    },
+    [sampleCount],
+  );
 
   const beginPanelResize = useCallback((event, axis) => {
     if (layoutMode !== "split-v" && layoutMode !== "split-h") return;
@@ -2337,6 +2607,8 @@ export default function App() {
       onAddDrawing={handleDetailAddDrawing}
       onRenameDrawing={handleOpenDrawingDialog}
       onDeleteDrawing={handleDetailDeleteDrawing}
+      onExportAllDrawingsPdf={() => exportAllProjectDrawings(detailProject, detailDrawings)}
+      onExportAllDrawingsExcel={() => exportAllProjectExcel(detailProject, detailDrawings)}
       drawingDialog={drawingDialog}
       onDrawingDialogChange={handleDrawingDialogChange}
       onDrawingDialogSubmit={handleDrawingDialogSubmit}
@@ -2467,10 +2739,46 @@ export default function App() {
                 <Download size={16} />
                 PDF
               </button>
+              {drawings.length > 1 ? (
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() =>
+                    exportAllProjectDrawings(activeProject, drawings, {
+                      activeDrawingId,
+                      pdfBytes,
+                      characteristics,
+                      pdfName,
+                    })
+                  }
+                  title="Export all drawings in this project as a single merged ballooned PDF package"
+                >
+                  <Download size={16} />
+                  All PDFs ({drawings.length})
+                </button>
+              ) : null}
               <button className="button primary" onClick={exportExcel} disabled={!characteristics.length}>
                 <Save size={16} />
                 Excel
               </button>
+              {drawings.length > 1 ? (
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() =>
+                    exportAllProjectExcel(activeProject, drawings, {
+                      activeDrawingId,
+                      characteristics,
+                      metadata,
+                      sampleCount,
+                    })
+                  }
+                  title="Export all drawings in this project as a consolidated AS9102 FAI Excel workbook"
+                >
+                  <Save size={16} />
+                  All Excel ({drawings.length})
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -2541,378 +2849,417 @@ export default function App() {
           onSelect={selectCharacteristic}
           onChange={updateCharacteristic}
           onSampleChange={updateSample}
+          onBatchSampleChange={updateBatchSamples}
+          onAutoFill={autoFillSamples}
+          onClearSamples={clearAllSamples}
           onSampleCountChange={setSampleCount}
           balloonDiameter={balloonSettings.diameter}
           showLeaderLine={balloonSettings.showLeaderLine}
         />
       ) : (
-      <div ref={contentAreaRef} className="content-area" style={contentAreaStyle}>
+        <div ref={contentAreaRef} className="content-area" style={contentAreaStyle}>
 
-        <section ref={drawingPanelRef} className="drawing-panel">
-          <div className="panel-toolbar">
-            <div className="tool-group">
-              <ToolButton
-                active={mode === "select"}
-                title="Select (V)"
-                label="Select"
-                onClick={() => switchMode("select")}
-                icon={<MousePointer2 size={17} />}
-              />
-              <ToolButton
-                active={mode === "balloon"}
-                title="Add Balloon (B)"
-                label="Balloon"
-                onClick={() => switchMode("balloon")}
-                icon={<Circle size={17} />}
-              />
-              <ToolButton
-                active={mode === "autoBalloon"}
-                title="Review Balloon Candidates (A)"
-                label="Review"
-                onClick={() => switchMode("autoBalloon")}
-                icon={<ScanSearch size={17} />}
-              />
-              <ToolButton
-                active={mode === "text"}
-                title="Text Select (T)"
-                label="Text"
-                onClick={() => switchMode("text")}
-                icon={<TextSelect size={17} />}
-              />
-              <ToolButton
-                title="Pan Mode (H)"
-                label="Pan"
-                onClick={() => switchMode("pan")}
-                active={mode === "pan"}
-                icon={<Hand size={17} />}
-              />
-            </div>
-            <DrawingNavToolbar
-              zoom={zoom}
-              pageNumber={pageNumber}
-              pageCount={pageCount}
-              onZoomOut={zoomOut}
-              onZoomIn={zoomIn}
-              onPrevPage={prevPage}
-              onNextPage={nextPage}
-            />
-          </div>
-
-          <div
-            ref={scrollRef}
-            className={`canvas-scroll ${mode === "pan" ? "panning" : ""}`}
-            onPointerDown={beginPan}
-            onPointerMove={movePan}
-            onPointerUp={endPan}
-            onPointerCancel={endPan}
-          >
-            {!pdfDoc ? (
-              <PdfUploadPrompt
-                message="Then choose Balloon, click each dimension target, and drag balloons later to adjust leader placement."
-                onUpload={handlePdfUpload}
-              />
-            ) : (
-              <div
-                ref={overlayRef}
-                className={`pdf-stage ${mode === "balloon" || mode === "autoBalloon" ? "placing" : ""}`}
-                style={{ width: canvasSize.width, height: canvasSize.height }}
-                onClick={handleCanvasClick}
-                onPointerDown={beginTextAreaSelection}
-                onPointerMove={moveTextAreaSelection}
-                onPointerUp={endTextAreaSelection}
-                onPointerCancel={endTextAreaSelection}
-              >
-                <canvas ref={canvasRef} />
-                <DimensionHighlights
-                  candidates={dimensionCandidates}
+          <section ref={drawingPanelRef} className="drawing-panel">
+            <div className="panel-toolbar">
+              <div className="tool-group">
+                <ToolButton
+                  active={mode === "select"}
+                  title="Select (V)"
+                  label="Select"
+                  onClick={() => switchMode("select")}
+                  icon={<MousePointer2 size={17} />}
+                />
+                <ToolButton
                   active={mode === "balloon"}
+                  title="Add Balloon (B)"
+                  label="Balloon"
+                  onClick={() => switchMode("balloon")}
+                  icon={<Circle size={17} />}
                 />
-                <TextLayer
+                <ToolButton
+                  active={mode === "autoBalloon"}
+                  title="Review Balloon Candidates (A)"
+                  label="Review"
+                  onClick={() => switchMode("autoBalloon")}
+                  icon={<ScanSearch size={17} />}
+                />
+                <ToolButton
                   active={mode === "text"}
-                  items={textItems}
-                  onCapture={captureTextSelection}
+                  title="Text Select (T)"
+                  label="Text"
+                  onClick={() => switchMode("text")}
+                  icon={<TextSelect size={17} />}
                 />
-                <LeaderLayer
-                  balloons={currentPageBalloons}
-                  selectedId={selectedId}
-                  width={canvasSize.width}
-                  height={canvasSize.height}
-                  balloonDiameter={balloonSettings.diameter}
-                  visible={balloonSettings.showLeaderLine}
+                <ToolButton
+                  title="Pan Mode (H)"
+                  label="Pan"
+                  onClick={() => switchMode("pan")}
+                  active={mode === "pan"}
+                  icon={<Hand size={17} />}
                 />
-                {ocrRect ? (
-                  <div
-                    className="ocr-selection"
-                    style={{
-                      left: `${ocrRect.x * 100}%`,
-                      top: `${ocrRect.y * 100}%`,
-                      width: `${ocrRect.width * 100}%`,
-                      height: `${ocrRect.height * 100}%`,
-                    }}
-                  />
-                ) : null}
-                {autoBalloonRect ? (
-                  <div
-                    className="auto-balloon-selection"
-                    style={{
-                      left: `${autoBalloonRect.x * 100}%`,
-                      top: `${autoBalloonRect.y * 100}%`,
-                      width: `${autoBalloonRect.width * 100}%`,
-                      height: `${autoBalloonRect.height * 100}%`,
-                    }}
-                  />
-                ) : null}
-                <AutoBalloonPreview
-                  candidates={autoBalloonCandidates}
-                  width={canvasSize.width}
-                  height={canvasSize.height}
-                  showLeaderLine={balloonSettings.showLeaderLine}
-                />
-                {selected?.isPlaced !== false && selected?.page === pageNumber && balloonSettings.showLeaderLine ? (
-                  <button
-                    className="target-handle"
-                    style={{
-                      left: `${(selected.targetX ?? selected.x) * 100}%`,
-                      top: `${(selected.targetY ?? selected.y) * 100}%`,
-                    }}
-                    onPointerDown={(event) => beginTargetDrag(event, selected)}
-                    onPointerMove={moveBalloonDrag}
-                    onPointerUp={endBalloonDrag}
-                    onPointerCancel={endBalloonDrag}
-                    onClick={(event) => event.stopPropagation()}
-                    title={`Move target for balloon ${balloonLabel(selected)}`}
-                  />
-                ) : null}
-                {currentPageBalloons.map((item) => (
-                  <button
-                    key={item.id}
-                    className={`balloon ${balloonLabel(item).length > 3 ? "long-label" : ""} ${selectedId === item.id ? "selected" : ""}`}
-                    style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, "--balloon-label-length": balloonLabel(item).length }}
-                    onPointerDown={(event) => beginBalloonDrag(event, item)}
-                    onPointerMove={moveBalloonDrag}
-                    onPointerUp={endBalloonDrag}
-                    onPointerCancel={endBalloonDrag}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedId(item.id);
-                      setEditingBalloonId(null);
-                    }}
-                    onDoubleClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedId(item.id);
-                      setEditingBalloonId(item.id);
-                      setMessage(`Editing balloon ${balloonLabel(item)}.`);
-                    }}
-                    title={`Balloon ${balloonLabel(item)}`}
-                  >
-                    {balloonLabel(item)}
-                  </button>
-                ))}
-                {selected?.isPlaced !== false && selected?.page === pageNumber && editingBalloonId === selected.id ? (
-                  <div
-                    className="balloon-actions"
-                    style={{
-                      left: `${selected.x * 100}%`,
-                      top: `${selected.y * 100}%`,
-                    }}
-                    onClick={(event) => event.stopPropagation()}
-                    onPointerDown={(event) => event.stopPropagation()}
-                  >
-                    <input
-                      type="number"
-                      min="1"
-                      value={selected.balloonNo}
-                      aria-label="Reassign balloon number"
-                      onChange={(event) => reassignBalloonNo(selected.id, event.target.value)}
-                    />
-                    <button className="icon-button danger" onClick={deleteSelected} title="Delete selected balloon">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ) : null}
               </div>
-            )}
-          </div>
-        </section>
-
-        <ResizeHandle
-          axis="column"
-          onPointerDown={beginPanelResize}
-          onPointerMove={movePanelResize}
-          onPointerUp={endPanelResize}
-          onPointerCancel={endPanelResize}
-          onKeyDown={handlePanelResizeKey}
-          onDoubleClick={resetPanelResize}
-        />
-
-        <aside ref={inspectorRef} className="inspector">
-          <div className="inspector-section drawing-info-section">
-            <div className="section-title">
-              <h2>Drawing Info</h2>
-            </div>
-            <div className="drawing-info-fields">
-              <div className="drawing-info-field drawing-info-field-no">
-                <Field label="Drawing No" value={metadata.drawingNo} onChange={(value) => setMetadataValue(setMetadata, "drawingNo", value)} />
-              </div>
-              <div className="drawing-info-field drawing-info-field-rev">
-                <Field label="Rev" value={metadata.revision} onChange={(value) => setMetadataValue(setMetadata, "revision", value)} compact />
-              </div>
-              <div className="drawing-info-field drawing-info-field-desc">
-                <Field label="Description" value={metadata.description} onChange={(value) => setMetadataValue(setMetadata, "description", value)} wide />
-              </div>
-            </div>
-          </div>
-
-          <div className="inspector-section">
-            <div className="section-title">
-              <h2>Selected PDF Text</h2>
-            </div>
-            <div className="capture-panel">
-              <textarea
-                value={selectedText}
-                onChange={(event) => setSelectedText(event.target.value)}
-                placeholder="Use Text Select, then click embedded text or drag a box around visible text for OCR."
+              <DrawingNavToolbar
+                zoom={zoom}
+                pageNumber={pageNumber}
+                pageCount={pageCount}
+                onZoomOut={zoomOut}
+                onZoomIn={zoomIn}
+                onPrevPage={prevPage}
+                onNextPage={nextPage}
               />
-              <div className="capture-actions">
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("description")}>Description</button>
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("drawingNo")}>Drawing No</button>
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("revision")}>Rev</button>
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("nominal")}>Requirement</button>
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("tolerance")}>Tolerance</button>
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("notes")}>Notes</button>
-              </div>
-              {ocrBusy ? <p className="muted compact-note">OCR is reading the selected area...</p> : null}
             </div>
-          </div>
 
-          <div className="inspector-section">
-            <div className="section-title">
-              <h2>Review Candidates</h2>
-              {autoBalloonCandidates.length ? <span className="candidate-count">{autoBalloonCandidates.length}</span> : null}
-            </div>
-            <AutoBalloonReview
-              busy={autoBalloonBusy}
-              open={autoBalloonReviewOpen}
-              candidates={autoBalloonCandidates}
-              onRemove={removeAutoBalloonCandidate}
-              onCancel={cancelAutoBalloonReview}
-              onCommit={commitAutoBalloonCandidates}
-            />
-          </div>
-
-          <div className="inspector-section">
-            {placementNext ? <p className="muted" role="status">Place {balloonLabel(placementNext)}: click its target. {characteristics.filter((item) => sameRequirement(item, placementNext) && item.isPlaced === false).length} remain. Escape pauses.</p> : null}
-            <div className="section-title">
-              <h2>Selected Balloon</h2>
-              <button className="icon-button danger" disabled={!selectedId} onClick={deleteSelected} title="Delete selected">
-                <Trash2 size={16} />
-              </button>
-            </div>
-            {selected ? (
-              <BalloonEditor
-                item={selected}
-                sampleCount={sampleCount}
-                cloud={activeProject?.kind === "cloud"}
-                hasUnplaced={characteristics.some((item) => sameRequirement(item, selected) && item.isPlaced === false)}
-                onQuantity={applyQuantity}
-                onResume={resumePlacement}
-                onChange={(patch) => updateCharacteristic(selected.id, patch)}
-                onReassign={(value) => reassignBalloonNo(selected.id, value)}
-                onSampleChange={(index, value) => updateSample(selected.id, index, value)}
-              />
-            ) : (
-              <p className="muted">Select a balloon or add a new one to edit its inspection requirement.</p>
-            )}
-          </div>
-
-          <div className="inspector-section">
-            <div className="section-title">
-              <h2>Build Controls</h2>
-            </div>
-            <label className="stacked-label">
-              Samples
-              <div className="sample-count-row">
-                <select value={sampleCount} onChange={(event) => setSampleCount(Number(event.target.value))}>
-                  {[1, 3, 5, 10].map((count) => (
-                    <option key={count} value={count}>{count}</option>
-                  ))}
-                  {![1, 3, 5, 10].includes(sampleCount) && (
-                    <option value={sampleCount}>{sampleCount}</option>
-                  )}
-                </select>
-                <input
-                  type="number"
-                  min={1}
-                  className="sample-count-custom"
-                  placeholder="Custom"
-                  value={sampleCount}
-                  onChange={(event) => {
-                    const parsed = Math.max(1, Math.round(Number(event.target.value) || 1));
-                    setSampleCount(parsed);
-                  }}
-                />
-              </div>
-            </label>
-            <div className="split-actions">
-              <button className="button secondary" onClick={addManualRow} disabled={!activeDrawingId}>
-                <Plus size={16} />
-                Add Row
-              </button>
-              <button className="button secondary" onClick={loadDemoRows} disabled={!activeDrawingId}>
-                Demo Rows
-              </button>
-            </div>
-            <button
-              className="button secondary"
-              onClick={clearDrawingData}
-              disabled={!activeDrawingId || (!characteristics.length && !metadata.drawingNo)}
+            <div
+              ref={scrollRef}
+              className={`canvas-scroll ${mode === "pan" ? "panning" : ""}`}
+              onPointerDown={beginPan}
+              onPointerMove={movePan}
+              onPointerUp={endPan}
+              onPointerCancel={endPan}
             >
-              Clear Drawing Data
-            </button>
-          </div>
+              {!pdfDoc ? (
+                <PdfUploadPrompt
+                  message="Then choose Balloon, click each dimension target, and drag balloons later to adjust leader placement."
+                  onUpload={handlePdfUpload}
+                />
+              ) : (
+                <div
+                  ref={overlayRef}
+                  className={`pdf-stage ${mode === "balloon" || mode === "autoBalloon" ? "placing" : ""}`}
+                  style={{ width: canvasSize.width, height: canvasSize.height }}
+                  onClick={handleCanvasClick}
+                  onPointerDown={beginTextAreaSelection}
+                  onPointerMove={moveTextAreaSelection}
+                  onPointerUp={endTextAreaSelection}
+                  onPointerCancel={endTextAreaSelection}
+                >
+                  <canvas ref={canvasRef} />
+                  <DimensionHighlights
+                    candidates={dimensionCandidates}
+                    active={mode === "balloon"}
+                  />
+                  <TextLayer
+                    active={mode === "text"}
+                    items={textItems}
+                    onCapture={captureTextSelection}
+                  />
+                  <LeaderLayer
+                    balloons={currentPageBalloons}
+                    selectedId={selectedId}
+                    width={canvasSize.width}
+                    height={canvasSize.height}
+                    balloonDiameter={balloonSettings.diameter}
+                    visible={balloonSettings.showLeaderLine}
+                  />
+                  {ocrRect ? (
+                    <div
+                      className="ocr-selection"
+                      style={{
+                        left: `${ocrRect.x * 100}%`,
+                        top: `${ocrRect.y * 100}%`,
+                        width: `${ocrRect.width * 100}%`,
+                        height: `${ocrRect.height * 100}%`,
+                      }}
+                    />
+                  ) : null}
+                  {autoBalloonRect ? (
+                    <div
+                      className="auto-balloon-selection"
+                      style={{
+                        left: `${autoBalloonRect.x * 100}%`,
+                        top: `${autoBalloonRect.y * 100}%`,
+                        width: `${autoBalloonRect.width * 100}%`,
+                        height: `${autoBalloonRect.height * 100}%`,
+                      }}
+                    />
+                  ) : null}
+                  <AutoBalloonPreview
+                    candidates={autoBalloonCandidates}
+                    width={canvasSize.width}
+                    height={canvasSize.height}
+                    showLeaderLine={balloonSettings.showLeaderLine}
+                  />
+                  {selected?.isPlaced !== false && selected?.page === pageNumber && balloonSettings.showLeaderLine ? (
+                    <button
+                      className="target-handle"
+                      style={{
+                        left: `${(selected.targetX ?? selected.x) * 100}%`,
+                        top: `${(selected.targetY ?? selected.y) * 100}%`,
+                      }}
+                      onPointerDown={(event) => beginTargetDrag(event, selected)}
+                      onPointerMove={moveBalloonDrag}
+                      onPointerUp={endBalloonDrag}
+                      onPointerCancel={endBalloonDrag}
+                      onClick={(event) => event.stopPropagation()}
+                      title={`Move target for balloon ${balloonLabel(selected)}`}
+                    />
+                  ) : null}
+                  {currentPageBalloons.map((item) => (
+                    <button
+                      key={item.id}
+                      className={`balloon ${balloonLabel(item).length > 3 ? "long-label" : ""} ${selectedId === item.id ? "selected" : ""}`}
+                      style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, "--balloon-label-length": balloonLabel(item).length }}
+                      onPointerDown={(event) => beginBalloonDrag(event, item)}
+                      onPointerMove={moveBalloonDrag}
+                      onPointerUp={endBalloonDrag}
+                      onPointerCancel={endBalloonDrag}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedId(item.id);
+                        setEditingBalloonId(null);
+                      }}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedId(item.id);
+                        setEditingBalloonId(item.id);
+                        setMessage(`Editing balloon ${balloonLabel(item)}.`);
+                      }}
+                      title={`Balloon ${balloonLabel(item)}`}
+                    >
+                      {balloonLabel(item)}
+                    </button>
+                  ))}
+                  {selected?.isPlaced !== false && selected?.page === pageNumber && editingBalloonId === selected.id ? (
+                    <div
+                      className="balloon-actions"
+                      style={{
+                        left: `${selected.x * 100}%`,
+                        top: `${selected.y * 100}%`,
+                      }}
+                      onClick={(event) => event.stopPropagation()}
+                      onPointerDown={(event) => event.stopPropagation()}
+                    >
+                      <input
+                        type="number"
+                        min="1"
+                        value={selected.balloonNo}
+                        aria-label="Reassign balloon number"
+                        onChange={(event) => reassignBalloonNo(selected.id, event.target.value)}
+                      />
+                      <button className="icon-button danger" onClick={deleteSelected} title="Delete selected balloon">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </section>
 
-          <div className="message">{message}</div>
-        </aside>
+          <ResizeHandle
+            axis="column"
+            onPointerDown={beginPanelResize}
+            onPointerMove={movePanelResize}
+            onPointerUp={endPanelResize}
+            onPointerCancel={endPanelResize}
+            onKeyDown={handlePanelResizeKey}
+            onDoubleClick={resetPanelResize}
+          />
 
-        <ResizeHandle
-          axis="row"
-          onPointerDown={beginPanelResize}
-          onPointerMove={movePanelResize}
-          onPointerUp={endPanelResize}
-          onPointerCancel={endPanelResize}
-          onKeyDown={handlePanelResizeKey}
-          onDoubleClick={resetPanelResize}
-        />
+          <aside ref={inspectorRef} className="inspector">
+            <div className="inspector-section drawing-info-section">
+              <div className="section-title">
+                <h2>Drawing Info</h2>
+              </div>
+              <div className="drawing-info-fields">
+                <div className="drawing-info-field drawing-info-field-no">
+                  <Field label="Drawing No" value={metadata.drawingNo} onChange={(value) => setMetadataValue(setMetadata, "drawingNo", value)} />
+                </div>
+                <div className="drawing-info-field drawing-info-field-rev">
+                  <Field label="Rev" value={metadata.revision} onChange={(value) => setMetadataValue(setMetadata, "revision", value)} compact />
+                </div>
+                <div className="drawing-info-field drawing-info-field-desc">
+                  <Field label="Description" value={metadata.description} onChange={(value) => setMetadataValue(setMetadata, "description", value)} wide />
+                </div>
+              </div>
+            </div>
 
-        <section ref={tablePanelRef} className="table-panel">
-        <div className="table-header">
-          <div>
-            <h2>QC / FAI Characteristics</h2>
-            <p>{characteristics.length} linked requirements</p>
-          </div>
-          <button
-            className="button secondary"
-            onClick={clearAllBalloons}
-            disabled={!characteristics.length}
-            title="Clear all balloons from drawing and table"
-          >
-            <Trash2 size={16} />
-            Clear All Balloons
-          </button>
+            <div className="inspector-section">
+              <div className="section-title">
+                <h2>Selected PDF Text</h2>
+              </div>
+              <div className="capture-panel">
+                <textarea
+                  value={selectedText}
+                  onChange={(event) => setSelectedText(event.target.value)}
+                  placeholder="Use Text Select, then click embedded text or drag a box around visible text for OCR."
+                />
+                <div className="capture-actions">
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("description")}>Description</button>
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("drawingNo")}>Drawing No</button>
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("revision")}>Rev</button>
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("nominal")}>Requirement</button>
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("tolerance")}>Tolerance</button>
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("notes")}>Notes</button>
+                </div>
+                {ocrBusy ? <p className="muted compact-note">OCR is reading the selected area...</p> : null}
+              </div>
+            </div>
+
+            <div className="inspector-section">
+              <div className="section-title">
+                <h2>Review Candidates</h2>
+                {autoBalloonCandidates.length ? <span className="candidate-count">{autoBalloonCandidates.length}</span> : null}
+              </div>
+              <AutoBalloonReview
+                busy={autoBalloonBusy}
+                open={autoBalloonReviewOpen}
+                candidates={autoBalloonCandidates}
+                onRemove={removeAutoBalloonCandidate}
+                onCancel={cancelAutoBalloonReview}
+                onCommit={commitAutoBalloonCandidates}
+              />
+            </div>
+
+            <div className="inspector-section">
+              {placementNext ? <p className="muted" role="status">Place {balloonLabel(placementNext)}: click its target. {characteristics.filter((item) => sameRequirement(item, placementNext) && item.isPlaced === false).length} remain. Escape pauses.</p> : null}
+              <div className="section-title">
+                <h2>Selected Balloon</h2>
+                <button className="icon-button danger" disabled={!selectedId} onClick={deleteSelected} title="Delete selected">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+              {selected ? (
+                <BalloonEditor
+                  item={selected}
+                  sampleCount={sampleCount}
+                  cloud={activeProject?.kind === "cloud"}
+                  hasUnplaced={characteristics.some((item) => sameRequirement(item, selected) && item.isPlaced === false)}
+                  onQuantity={applyQuantity}
+                  onResume={resumePlacement}
+                  onChange={(patch) => updateCharacteristic(selected.id, patch)}
+                  onReassign={(value) => reassignBalloonNo(selected.id, value)}
+                  onSampleChange={(index, value) => updateSample(selected.id, index, value)}
+                  onBatchSampleChange={updateBatchSamples}
+                  onAutoFillSingle={(id) => autoFillSamples("nominal", id)}
+                />
+              ) : (
+                <p className="muted">Select a balloon or add a new one to edit its inspection requirement.</p>
+              )}
+            </div>
+
+            <div className="inspector-section">
+              <div className="section-title">
+                <h2>Build Controls</h2>
+              </div>
+              <label className="stacked-label">
+                Samples
+                <div className="sample-count-row">
+                  <select value={sampleCount} onChange={(event) => setSampleCount(Number(event.target.value))}>
+                    {[1, 3, 5, 10].map((count) => (
+                      <option key={count} value={count}>{count}</option>
+                    ))}
+                    {![1, 3, 5, 10].includes(sampleCount) && (
+                      <option value={sampleCount}>{sampleCount}</option>
+                    )}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    className="sample-count-custom"
+                    placeholder="Custom"
+                    value={sampleCount}
+                    onChange={(event) => {
+                      const parsed = Math.max(1, Math.round(Number(event.target.value) || 1));
+                      setSampleCount(parsed);
+                    }}
+                  />
+                </div>
+              </label>
+              <div className="split-actions">
+                <button className="button secondary" onClick={addManualRow} disabled={!activeDrawingId}>
+                  <Plus size={16} />
+                  Add Row
+                </button>
+                <button className="button secondary" onClick={loadDemoRows} disabled={!activeDrawingId}>
+                  Demo Rows
+                </button>
+              </div>
+              <button
+                className="button secondary"
+                onClick={clearDrawingData}
+                disabled={!activeDrawingId || (!characteristics.length && !metadata.drawingNo)}
+              >
+                Clear Drawing Data
+              </button>
+            </div>
+
+            <div className="message">{message}</div>
+          </aside>
+
+          <ResizeHandle
+            axis="row"
+            onPointerDown={beginPanelResize}
+            onPointerMove={movePanelResize}
+            onPointerUp={endPanelResize}
+            onPointerCancel={endPanelResize}
+            onKeyDown={handlePanelResizeKey}
+            onDoubleClick={resetPanelResize}
+          />
+
+          <section ref={tablePanelRef} className="table-panel">
+            <div className="table-header">
+              <div>
+                <h2>QC / FAI Characteristics</h2>
+                <p>{characteristics.length} linked requirements</p>
+              </div>
+              <div className="table-header-actions">
+                <button
+                  type="button"
+                  className="small-button secondary"
+                  onClick={() => autoFillSamples("nominal")}
+                  disabled={!characteristics.length}
+                  title="Auto-fill empty sample cells with nominal values (or OK for visual/notes)"
+                >
+                  <Sparkles size={13} />
+                  Fill Nominals
+                </button>
+                <button
+                  type="button"
+                  className="small-button secondary"
+                  onClick={() => autoFillSamples("visuals-ok")}
+                  disabled={!characteristics.length}
+                  title="Auto-fill empty sample cells for visual and note requirements with OK"
+                >
+                  <CheckSquare size={13} />
+                  Fill Visuals OK
+                </button>
+                <button
+                  type="button"
+                  className="small-button secondary"
+                  onClick={clearAllSamples}
+                  disabled={!characteristics.some((item) => Object.keys(item.samples || {}).length > 0)}
+                  title="Clear all recorded sample measurements"
+                >
+                  <RotateCcw size={13} />
+                  Clear Samples
+                </button>
+                <button
+                  type="button"
+                  className="small-button secondary danger"
+                  onClick={clearAllBalloons}
+                  disabled={!characteristics.length}
+                  title="Clear all balloons from drawing and table"
+                >
+                  <Trash2 size={13} />
+                  Clear All
+                </button>
+              </div>
+            </div>
+            <CharacteristicTable
+              characteristics={characteristics}
+              selectedId={selectedId}
+              sampleCount={sampleCount}
+              onSelect={selectCharacteristic}
+              onChange={updateCharacteristic}
+              onReassign={reassignBalloonNo}
+              onSampleChange={updateSample}
+              onBatchSampleChange={updateBatchSamples}
+              onDelete={deleteCharacteristic}
+            />
+          </section>
+
         </div>
-        <CharacteristicTable
-          characteristics={characteristics}
-          selectedId={selectedId}
-          sampleCount={sampleCount}
-          onSelect={selectCharacteristic}
-          onChange={updateCharacteristic}
-          onReassign={reassignBalloonNo}
-          onSampleChange={updateSample}
-          onDelete={deleteCharacteristic}
-        />
-      </section>
-
-      </div>
       )}
       <ToleranceTableDialog
         open={toleranceTableOpen}

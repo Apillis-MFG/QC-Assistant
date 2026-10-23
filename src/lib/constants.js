@@ -7,7 +7,7 @@ export function hasCharacteristicUnit(type) {
   return type !== "note" && type !== "visual";
 }
 export const CHARACTERISTIC_FIELDS = ["nominal", "tolerance", "notes"];
-export const APP_VERSION = "v0.8.1";
+export const APP_VERSION = "v0.9.1";
 
 export const PANEL_STORAGE_KEY = "qca_panel_sizes_v1";
 export const RESIZE_HANDLE_SIZE = 14;
@@ -22,7 +22,7 @@ export const AUTO_BALLOON_LEADER_RATIO = 0.5;
 export const AUTO_BALLOON_MIN_SPACING = 0.04;
 export const AUTO_BALLOON_MIN_CONFIDENCE = 45;
 export const AUTO_BALLOON_MAX_LABEL_LENGTH = 28;
-export const DRAWING_NUMBER_PATTERN = /(?:^|[\s(])(?:[+-]?(?:\d+(?:\.\d+)?|\.\d+)x?|[rm]\s*(?:\d+(?:\.\d+)?|\.\d+)|[øØ∅]\s*(?:\d+(?:\.\d+)?|\.\d+)|\+\/-\s*(?:\d+(?:\.\d+)?|\.\d+))(?:$|[\s),;:]|max|min)/i;
+export const DRAWING_NUMBER_PATTERN = /(?:^|[\s(])(?:[+-]?(?:\d+(?:\.\d+)?|\.\d+)x?|[rm]\s*(?:\d+(?:\.\d+)?|\.\d+)|[øØ∅]\s*(?:\d+(?:\.\d+)?|\.\d+)|\+\/-\s*(?:\d+(?:\.\d+)?|\.\d+))(?:$|[\s),;:°]|max|min)/i;
 
 export function normalizeUnitSystem(value) {
   return value === "inch" ? "inch" : "metric";
