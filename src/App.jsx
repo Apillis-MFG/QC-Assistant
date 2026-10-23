@@ -243,7 +243,7 @@ export default function App() {
   const placementNext = useMemo(() => placementGroupId
     ? characteristics.filter((item) => (item.groupId || item.id) === placementGroupId && item.isPlaced === false)
       .sort((a, b) => a.occurrenceIndex - b.occurrenceIndex)[0] || null : null,
-  [characteristics, placementGroupId]);
+    [characteristics, placementGroupId]);
 
   const projectStatus = useMemo(() => overallStatus(characteristics, sampleCount), [characteristics, sampleCount]);
 
@@ -1113,28 +1113,28 @@ export default function App() {
         // Snap target to the center of the highlight so the leader points exactly at the text.
         const target = hit
           ? {
-              x: clamp((hit.left + hit.width / 2) / canvasSize.width, 0, 1),
-              y: clamp((hit.top + hit.height / 2) / canvasSize.height, 0, 1),
-            }
+            x: clamp((hit.left + hit.width / 2) / canvasSize.width, 0, 1),
+            y: clamp((hit.top + hit.height / 2) / canvasSize.height, 0, 1),
+          }
           : point;
 
         const resolvedSeed = hit
           ? {
-              nominal: hit.nominal,
-              quantity: hit.quantity,
-              tolerance: hit.tolerance,
-              ...(hit.unit ? { unit: hit.unit } : {}),
-              ...(hit.dual ? { dual: hit.dual } : {}),
-            }
+            nominal: hit.nominal,
+            quantity: hit.quantity,
+            tolerance: hit.tolerance,
+            ...(hit.unit ? { unit: hit.unit } : {}),
+            ...(hit.dual ? { dual: hit.dual } : {}),
+          }
           : (() => {
-              const dim = findNearestTextDimension(point, textItems, canvasSize);
-              return dim
-                ? {
-                    ...dim,
-                    tolerance: applyGeneralTolerance(dim.nominal, dim.tolerance, dim.unit === "°" ? resolvedTolerances.angle : resolvedTolerances.linear),
-                  }
-                : {};
-            })();
+            const dim = findNearestTextDimension(point, textItems, canvasSize);
+            return dim
+              ? {
+                ...dim,
+                tolerance: applyGeneralTolerance(dim.nominal, dim.tolerance, dim.unit === "°" ? resolvedTolerances.angle : resolvedTolerances.linear),
+              }
+              : {};
+          })();
 
         if (resolvedSeed.captureError) {
           setMessage(resolvedSeed.captureError);
@@ -2669,373 +2669,373 @@ export default function App() {
           showLeaderLine={balloonSettings.showLeaderLine}
         />
       ) : (
-      <div ref={contentAreaRef} className="content-area" style={contentAreaStyle}>
+        <div ref={contentAreaRef} className="content-area" style={contentAreaStyle}>
 
-        <section ref={drawingPanelRef} className="drawing-panel">
-          <div className="panel-toolbar">
-            <div className="tool-group">
-              <ToolButton
-                active={mode === "select"}
-                title="Select (V)"
-                label="Select"
-                onClick={() => switchMode("select")}
-                icon={<MousePointer2 size={17} />}
-              />
-              <ToolButton
-                active={mode === "balloon"}
-                title="Add Balloon (B)"
-                label="Balloon"
-                onClick={() => switchMode("balloon")}
-                icon={<Circle size={17} />}
-              />
-              <ToolButton
-                active={mode === "autoBalloon"}
-                title="Review Balloon Candidates (A)"
-                label="Review"
-                onClick={() => switchMode("autoBalloon")}
-                icon={<ScanSearch size={17} />}
-              />
-              <ToolButton
-                active={mode === "text"}
-                title="Text Select (T)"
-                label="Text"
-                onClick={() => switchMode("text")}
-                icon={<TextSelect size={17} />}
-              />
-              <ToolButton
-                title="Pan Mode (H)"
-                label="Pan"
-                onClick={() => switchMode("pan")}
-                active={mode === "pan"}
-                icon={<Hand size={17} />}
-              />
-            </div>
-            <DrawingNavToolbar
-              zoom={zoom}
-              pageNumber={pageNumber}
-              pageCount={pageCount}
-              onZoomOut={zoomOut}
-              onZoomIn={zoomIn}
-              onPrevPage={prevPage}
-              onNextPage={nextPage}
-            />
-          </div>
-
-          <div
-            ref={scrollRef}
-            className={`canvas-scroll ${mode === "pan" ? "panning" : ""}`}
-            onPointerDown={beginPan}
-            onPointerMove={movePan}
-            onPointerUp={endPan}
-            onPointerCancel={endPan}
-          >
-            {!pdfDoc ? (
-              <PdfUploadPrompt
-                message="Then choose Balloon, click each dimension target, and drag balloons later to adjust leader placement."
-                onUpload={handlePdfUpload}
-              />
-            ) : (
-              <div
-                ref={overlayRef}
-                className={`pdf-stage ${mode === "balloon" || mode === "autoBalloon" ? "placing" : ""}`}
-                style={{ width: canvasSize.width, height: canvasSize.height }}
-                onClick={handleCanvasClick}
-                onPointerDown={beginTextAreaSelection}
-                onPointerMove={moveTextAreaSelection}
-                onPointerUp={endTextAreaSelection}
-                onPointerCancel={endTextAreaSelection}
-              >
-                <canvas ref={canvasRef} />
-                <DimensionHighlights
-                  candidates={dimensionCandidates}
+          <section ref={drawingPanelRef} className="drawing-panel">
+            <div className="panel-toolbar">
+              <div className="tool-group">
+                <ToolButton
+                  active={mode === "select"}
+                  title="Select (V)"
+                  label="Select"
+                  onClick={() => switchMode("select")}
+                  icon={<MousePointer2 size={17} />}
+                />
+                <ToolButton
                   active={mode === "balloon"}
+                  title="Add Balloon (B)"
+                  label="Balloon"
+                  onClick={() => switchMode("balloon")}
+                  icon={<Circle size={17} />}
                 />
-                <TextLayer
+                <ToolButton
+                  active={mode === "autoBalloon"}
+                  title="Review Balloon Candidates (A)"
+                  label="Review"
+                  onClick={() => switchMode("autoBalloon")}
+                  icon={<ScanSearch size={17} />}
+                />
+                <ToolButton
                   active={mode === "text"}
-                  items={textItems}
-                  onCapture={captureTextSelection}
+                  title="Text Select (T)"
+                  label="Text"
+                  onClick={() => switchMode("text")}
+                  icon={<TextSelect size={17} />}
                 />
-                <LeaderLayer
-                  balloons={currentPageBalloons}
-                  selectedId={selectedId}
-                  width={canvasSize.width}
-                  height={canvasSize.height}
-                  balloonDiameter={balloonSettings.diameter}
-                  visible={balloonSettings.showLeaderLine}
+                <ToolButton
+                  title="Pan Mode (H)"
+                  label="Pan"
+                  onClick={() => switchMode("pan")}
+                  active={mode === "pan"}
+                  icon={<Hand size={17} />}
                 />
-                {ocrRect ? (
-                  <div
-                    className="ocr-selection"
-                    style={{
-                      left: `${ocrRect.x * 100}%`,
-                      top: `${ocrRect.y * 100}%`,
-                      width: `${ocrRect.width * 100}%`,
-                      height: `${ocrRect.height * 100}%`,
-                    }}
-                  />
-                ) : null}
-                {autoBalloonRect ? (
-                  <div
-                    className="auto-balloon-selection"
-                    style={{
-                      left: `${autoBalloonRect.x * 100}%`,
-                      top: `${autoBalloonRect.y * 100}%`,
-                      width: `${autoBalloonRect.width * 100}%`,
-                      height: `${autoBalloonRect.height * 100}%`,
-                    }}
-                  />
-                ) : null}
-                <AutoBalloonPreview
-                  candidates={autoBalloonCandidates}
-                  width={canvasSize.width}
-                  height={canvasSize.height}
-                  showLeaderLine={balloonSettings.showLeaderLine}
-                />
-                {selected?.isPlaced !== false && selected?.page === pageNumber && balloonSettings.showLeaderLine ? (
-                  <button
-                    className="target-handle"
-                    style={{
-                      left: `${(selected.targetX ?? selected.x) * 100}%`,
-                      top: `${(selected.targetY ?? selected.y) * 100}%`,
-                    }}
-                    onPointerDown={(event) => beginTargetDrag(event, selected)}
-                    onPointerMove={moveBalloonDrag}
-                    onPointerUp={endBalloonDrag}
-                    onPointerCancel={endBalloonDrag}
-                    onClick={(event) => event.stopPropagation()}
-                    title={`Move target for balloon ${balloonLabel(selected)}`}
-                  />
-                ) : null}
-                {currentPageBalloons.map((item) => (
-                  <button
-                    key={item.id}
-                    className={`balloon ${balloonLabel(item).length > 3 ? "long-label" : ""} ${selectedId === item.id ? "selected" : ""}`}
-                    style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, "--balloon-label-length": balloonLabel(item).length }}
-                    onPointerDown={(event) => beginBalloonDrag(event, item)}
-                    onPointerMove={moveBalloonDrag}
-                    onPointerUp={endBalloonDrag}
-                    onPointerCancel={endBalloonDrag}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedId(item.id);
-                      setEditingBalloonId(null);
-                    }}
-                    onDoubleClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedId(item.id);
-                      setEditingBalloonId(item.id);
-                      setMessage(`Editing balloon ${balloonLabel(item)}.`);
-                    }}
-                    title={`Balloon ${balloonLabel(item)}`}
-                  >
-                    {balloonLabel(item)}
-                  </button>
-                ))}
-                {selected?.isPlaced !== false && selected?.page === pageNumber && editingBalloonId === selected.id ? (
-                  <div
-                    className="balloon-actions"
-                    style={{
-                      left: `${selected.x * 100}%`,
-                      top: `${selected.y * 100}%`,
-                    }}
-                    onClick={(event) => event.stopPropagation()}
-                    onPointerDown={(event) => event.stopPropagation()}
-                  >
-                    <input
-                      type="number"
-                      min="1"
-                      value={selected.balloonNo}
-                      aria-label="Reassign balloon number"
-                      onChange={(event) => reassignBalloonNo(selected.id, event.target.value)}
-                    />
-                    <button className="icon-button danger" onClick={deleteSelected} title="Delete selected balloon">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ) : null}
               </div>
-            )}
-          </div>
-        </section>
-
-        <ResizeHandle
-          axis="column"
-          onPointerDown={beginPanelResize}
-          onPointerMove={movePanelResize}
-          onPointerUp={endPanelResize}
-          onPointerCancel={endPanelResize}
-          onKeyDown={handlePanelResizeKey}
-          onDoubleClick={resetPanelResize}
-        />
-
-        <aside ref={inspectorRef} className="inspector">
-          <div className="inspector-section drawing-info-section">
-            <div className="section-title">
-              <h2>Drawing Info</h2>
-            </div>
-            <div className="drawing-info-fields">
-              <div className="drawing-info-field drawing-info-field-no">
-                <Field label="Drawing No" value={metadata.drawingNo} onChange={(value) => setMetadataValue(setMetadata, "drawingNo", value)} />
-              </div>
-              <div className="drawing-info-field drawing-info-field-rev">
-                <Field label="Rev" value={metadata.revision} onChange={(value) => setMetadataValue(setMetadata, "revision", value)} compact />
-              </div>
-              <div className="drawing-info-field drawing-info-field-desc">
-                <Field label="Description" value={metadata.description} onChange={(value) => setMetadataValue(setMetadata, "description", value)} wide />
-              </div>
-            </div>
-          </div>
-
-          <div className="inspector-section">
-            <div className="section-title">
-              <h2>Selected PDF Text</h2>
-            </div>
-            <div className="capture-panel">
-              <textarea
-                value={selectedText}
-                onChange={(event) => setSelectedText(event.target.value)}
-                placeholder="Use Text Select, then click embedded text or drag a box around visible text for OCR."
+              <DrawingNavToolbar
+                zoom={zoom}
+                pageNumber={pageNumber}
+                pageCount={pageCount}
+                onZoomOut={zoomOut}
+                onZoomIn={zoomIn}
+                onPrevPage={prevPage}
+                onNextPage={nextPage}
               />
-              <div className="capture-actions">
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("description")}>Description</button>
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("drawingNo")}>Drawing No</button>
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("revision")}>Rev</button>
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("nominal")}>Requirement</button>
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("tolerance")}>Tolerance</button>
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("notes")}>Notes</button>
-              </div>
-              {ocrBusy ? <p className="muted compact-note">OCR is reading the selected area...</p> : null}
             </div>
-          </div>
 
-          <div className="inspector-section">
-            <div className="section-title">
-              <h2>Review Candidates</h2>
-              {autoBalloonCandidates.length ? <span className="candidate-count">{autoBalloonCandidates.length}</span> : null}
-            </div>
-            <AutoBalloonReview
-              busy={autoBalloonBusy}
-              open={autoBalloonReviewOpen}
-              candidates={autoBalloonCandidates}
-              onRemove={removeAutoBalloonCandidate}
-              onCancel={cancelAutoBalloonReview}
-              onCommit={commitAutoBalloonCandidates}
-            />
-          </div>
-
-          <div className="inspector-section">
-            {placementNext ? <p className="muted" role="status">Place {balloonLabel(placementNext)}: click its target. {characteristics.filter((item) => sameRequirement(item, placementNext) && item.isPlaced === false).length} remain. Escape pauses.</p> : null}
-            <div className="section-title">
-              <h2>Selected Balloon</h2>
-              <button className="icon-button danger" disabled={!selectedId} onClick={deleteSelected} title="Delete selected">
-                <Trash2 size={16} />
-              </button>
-            </div>
-            {selected ? (
-              <BalloonEditor
-                item={selected}
-                sampleCount={sampleCount}
-                cloud={activeProject?.kind === "cloud"}
-                hasUnplaced={characteristics.some((item) => sameRequirement(item, selected) && item.isPlaced === false)}
-                onQuantity={applyQuantity}
-                onResume={resumePlacement}
-                onChange={(patch) => updateCharacteristic(selected.id, patch)}
-                onReassign={(value) => reassignBalloonNo(selected.id, value)}
-                onSampleChange={(index, value) => updateSample(selected.id, index, value)}
-              />
-            ) : (
-              <p className="muted">Select a balloon or add a new one to edit its inspection requirement.</p>
-            )}
-          </div>
-
-          <div className="inspector-section">
-            <div className="section-title">
-              <h2>Build Controls</h2>
-            </div>
-            <label className="stacked-label">
-              Samples
-              <div className="sample-count-row">
-                <select value={sampleCount} onChange={(event) => setSampleCount(Number(event.target.value))}>
-                  {[1, 3, 5, 10].map((count) => (
-                    <option key={count} value={count}>{count}</option>
-                  ))}
-                  {![1, 3, 5, 10].includes(sampleCount) && (
-                    <option value={sampleCount}>{sampleCount}</option>
-                  )}
-                </select>
-                <input
-                  type="number"
-                  min={1}
-                  className="sample-count-custom"
-                  placeholder="Custom"
-                  value={sampleCount}
-                  onChange={(event) => {
-                    const parsed = Math.max(1, Math.round(Number(event.target.value) || 1));
-                    setSampleCount(parsed);
-                  }}
-                />
-              </div>
-            </label>
-            <div className="split-actions">
-              <button className="button secondary" onClick={addManualRow} disabled={!activeDrawingId}>
-                <Plus size={16} />
-                Add Row
-              </button>
-              <button className="button secondary" onClick={loadDemoRows} disabled={!activeDrawingId}>
-                Demo Rows
-              </button>
-            </div>
-            <button
-              className="button secondary"
-              onClick={clearDrawingData}
-              disabled={!activeDrawingId || (!characteristics.length && !metadata.drawingNo)}
+            <div
+              ref={scrollRef}
+              className={`canvas-scroll ${mode === "pan" ? "panning" : ""}`}
+              onPointerDown={beginPan}
+              onPointerMove={movePan}
+              onPointerUp={endPan}
+              onPointerCancel={endPan}
             >
-              Clear Drawing Data
-            </button>
-          </div>
+              {!pdfDoc ? (
+                <PdfUploadPrompt
+                  message="Then choose Balloon, click each dimension target, and drag balloons later to adjust leader placement."
+                  onUpload={handlePdfUpload}
+                />
+              ) : (
+                <div
+                  ref={overlayRef}
+                  className={`pdf-stage ${mode === "balloon" || mode === "autoBalloon" ? "placing" : ""}`}
+                  style={{ width: canvasSize.width, height: canvasSize.height }}
+                  onClick={handleCanvasClick}
+                  onPointerDown={beginTextAreaSelection}
+                  onPointerMove={moveTextAreaSelection}
+                  onPointerUp={endTextAreaSelection}
+                  onPointerCancel={endTextAreaSelection}
+                >
+                  <canvas ref={canvasRef} />
+                  <DimensionHighlights
+                    candidates={dimensionCandidates}
+                    active={mode === "balloon"}
+                  />
+                  <TextLayer
+                    active={mode === "text"}
+                    items={textItems}
+                    onCapture={captureTextSelection}
+                  />
+                  <LeaderLayer
+                    balloons={currentPageBalloons}
+                    selectedId={selectedId}
+                    width={canvasSize.width}
+                    height={canvasSize.height}
+                    balloonDiameter={balloonSettings.diameter}
+                    visible={balloonSettings.showLeaderLine}
+                  />
+                  {ocrRect ? (
+                    <div
+                      className="ocr-selection"
+                      style={{
+                        left: `${ocrRect.x * 100}%`,
+                        top: `${ocrRect.y * 100}%`,
+                        width: `${ocrRect.width * 100}%`,
+                        height: `${ocrRect.height * 100}%`,
+                      }}
+                    />
+                  ) : null}
+                  {autoBalloonRect ? (
+                    <div
+                      className="auto-balloon-selection"
+                      style={{
+                        left: `${autoBalloonRect.x * 100}%`,
+                        top: `${autoBalloonRect.y * 100}%`,
+                        width: `${autoBalloonRect.width * 100}%`,
+                        height: `${autoBalloonRect.height * 100}%`,
+                      }}
+                    />
+                  ) : null}
+                  <AutoBalloonPreview
+                    candidates={autoBalloonCandidates}
+                    width={canvasSize.width}
+                    height={canvasSize.height}
+                    showLeaderLine={balloonSettings.showLeaderLine}
+                  />
+                  {selected?.isPlaced !== false && selected?.page === pageNumber && balloonSettings.showLeaderLine ? (
+                    <button
+                      className="target-handle"
+                      style={{
+                        left: `${(selected.targetX ?? selected.x) * 100}%`,
+                        top: `${(selected.targetY ?? selected.y) * 100}%`,
+                      }}
+                      onPointerDown={(event) => beginTargetDrag(event, selected)}
+                      onPointerMove={moveBalloonDrag}
+                      onPointerUp={endBalloonDrag}
+                      onPointerCancel={endBalloonDrag}
+                      onClick={(event) => event.stopPropagation()}
+                      title={`Move target for balloon ${balloonLabel(selected)}`}
+                    />
+                  ) : null}
+                  {currentPageBalloons.map((item) => (
+                    <button
+                      key={item.id}
+                      className={`balloon ${balloonLabel(item).length > 3 ? "long-label" : ""} ${selectedId === item.id ? "selected" : ""}`}
+                      style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, "--balloon-label-length": balloonLabel(item).length }}
+                      onPointerDown={(event) => beginBalloonDrag(event, item)}
+                      onPointerMove={moveBalloonDrag}
+                      onPointerUp={endBalloonDrag}
+                      onPointerCancel={endBalloonDrag}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedId(item.id);
+                        setEditingBalloonId(null);
+                      }}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedId(item.id);
+                        setEditingBalloonId(item.id);
+                        setMessage(`Editing balloon ${balloonLabel(item)}.`);
+                      }}
+                      title={`Balloon ${balloonLabel(item)}`}
+                    >
+                      {balloonLabel(item)}
+                    </button>
+                  ))}
+                  {selected?.isPlaced !== false && selected?.page === pageNumber && editingBalloonId === selected.id ? (
+                    <div
+                      className="balloon-actions"
+                      style={{
+                        left: `${selected.x * 100}%`,
+                        top: `${selected.y * 100}%`,
+                      }}
+                      onClick={(event) => event.stopPropagation()}
+                      onPointerDown={(event) => event.stopPropagation()}
+                    >
+                      <input
+                        type="number"
+                        min="1"
+                        value={selected.balloonNo}
+                        aria-label="Reassign balloon number"
+                        onChange={(event) => reassignBalloonNo(selected.id, event.target.value)}
+                      />
+                      <button className="icon-button danger" onClick={deleteSelected} title="Delete selected balloon">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </section>
 
-          <div className="message">{message}</div>
-        </aside>
+          <ResizeHandle
+            axis="column"
+            onPointerDown={beginPanelResize}
+            onPointerMove={movePanelResize}
+            onPointerUp={endPanelResize}
+            onPointerCancel={endPanelResize}
+            onKeyDown={handlePanelResizeKey}
+            onDoubleClick={resetPanelResize}
+          />
 
-        <ResizeHandle
-          axis="row"
-          onPointerDown={beginPanelResize}
-          onPointerMove={movePanelResize}
-          onPointerUp={endPanelResize}
-          onPointerCancel={endPanelResize}
-          onKeyDown={handlePanelResizeKey}
-          onDoubleClick={resetPanelResize}
-        />
+          <aside ref={inspectorRef} className="inspector">
+            <div className="inspector-section drawing-info-section">
+              <div className="section-title">
+                <h2>Drawing Info</h2>
+              </div>
+              <div className="drawing-info-fields">
+                <div className="drawing-info-field drawing-info-field-no">
+                  <Field label="Drawing No" value={metadata.drawingNo} onChange={(value) => setMetadataValue(setMetadata, "drawingNo", value)} />
+                </div>
+                <div className="drawing-info-field drawing-info-field-rev">
+                  <Field label="Rev" value={metadata.revision} onChange={(value) => setMetadataValue(setMetadata, "revision", value)} compact />
+                </div>
+                <div className="drawing-info-field drawing-info-field-desc">
+                  <Field label="Description" value={metadata.description} onChange={(value) => setMetadataValue(setMetadata, "description", value)} wide />
+                </div>
+              </div>
+            </div>
 
-        <section ref={tablePanelRef} className="table-panel">
-        <div className="table-header">
-          <div>
-            <h2>QC / FAI Characteristics</h2>
-            <p>{characteristics.length} linked requirements</p>
-          </div>
-          <button
-            className="button secondary"
-            onClick={clearAllBalloons}
-            disabled={!characteristics.length}
-            title="Clear all balloons from drawing and table"
-          >
-            <Trash2 size={16} />
-            Clear All Balloons
-          </button>
+            <div className="inspector-section">
+              <div className="section-title">
+                <h2>Selected PDF Text</h2>
+              </div>
+              <div className="capture-panel">
+                <textarea
+                  value={selectedText}
+                  onChange={(event) => setSelectedText(event.target.value)}
+                  placeholder="Use Text Select, then click embedded text or drag a box around visible text for OCR."
+                />
+                <div className="capture-actions">
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("description")}>Description</button>
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("drawingNo")}>Drawing No</button>
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("revision")}>Rev</button>
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("nominal")}>Requirement</button>
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("tolerance")}>Tolerance</button>
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("notes")}>Notes</button>
+                </div>
+                {ocrBusy ? <p className="muted compact-note">OCR is reading the selected area...</p> : null}
+              </div>
+            </div>
+
+            <div className="inspector-section">
+              <div className="section-title">
+                <h2>Review Candidates</h2>
+                {autoBalloonCandidates.length ? <span className="candidate-count">{autoBalloonCandidates.length}</span> : null}
+              </div>
+              <AutoBalloonReview
+                busy={autoBalloonBusy}
+                open={autoBalloonReviewOpen}
+                candidates={autoBalloonCandidates}
+                onRemove={removeAutoBalloonCandidate}
+                onCancel={cancelAutoBalloonReview}
+                onCommit={commitAutoBalloonCandidates}
+              />
+            </div>
+
+            <div className="inspector-section">
+              {placementNext ? <p className="muted" role="status">Place {balloonLabel(placementNext)}: click its target. {characteristics.filter((item) => sameRequirement(item, placementNext) && item.isPlaced === false).length} remain. Escape pauses.</p> : null}
+              <div className="section-title">
+                <h2>Selected Balloon</h2>
+                <button className="icon-button danger" disabled={!selectedId} onClick={deleteSelected} title="Delete selected">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+              {selected ? (
+                <BalloonEditor
+                  item={selected}
+                  sampleCount={sampleCount}
+                  cloud={activeProject?.kind === "cloud"}
+                  hasUnplaced={characteristics.some((item) => sameRequirement(item, selected) && item.isPlaced === false)}
+                  onQuantity={applyQuantity}
+                  onResume={resumePlacement}
+                  onChange={(patch) => updateCharacteristic(selected.id, patch)}
+                  onReassign={(value) => reassignBalloonNo(selected.id, value)}
+                  onSampleChange={(index, value) => updateSample(selected.id, index, value)}
+                />
+              ) : (
+                <p className="muted">Select a balloon or add a new one to edit its inspection requirement.</p>
+              )}
+            </div>
+
+            <div className="inspector-section">
+              <div className="section-title">
+                <h2>Build Controls</h2>
+              </div>
+              <label className="stacked-label">
+                Samples
+                <div className="sample-count-row">
+                  <select value={sampleCount} onChange={(event) => setSampleCount(Number(event.target.value))}>
+                    {[1, 3, 5, 10].map((count) => (
+                      <option key={count} value={count}>{count}</option>
+                    ))}
+                    {![1, 3, 5, 10].includes(sampleCount) && (
+                      <option value={sampleCount}>{sampleCount}</option>
+                    )}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    className="sample-count-custom"
+                    placeholder="Custom"
+                    value={sampleCount}
+                    onChange={(event) => {
+                      const parsed = Math.max(1, Math.round(Number(event.target.value) || 1));
+                      setSampleCount(parsed);
+                    }}
+                  />
+                </div>
+              </label>
+              <div className="split-actions">
+                <button className="button secondary" onClick={addManualRow} disabled={!activeDrawingId}>
+                  <Plus size={16} />
+                  Add Row
+                </button>
+                <button className="button secondary" onClick={loadDemoRows} disabled={!activeDrawingId}>
+                  Demo Rows
+                </button>
+              </div>
+              <button
+                className="button secondary"
+                onClick={clearDrawingData}
+                disabled={!activeDrawingId || (!characteristics.length && !metadata.drawingNo)}
+              >
+                Clear Drawing Data
+              </button>
+            </div>
+
+            <div className="message">{message}</div>
+          </aside>
+
+          <ResizeHandle
+            axis="row"
+            onPointerDown={beginPanelResize}
+            onPointerMove={movePanelResize}
+            onPointerUp={endPanelResize}
+            onPointerCancel={endPanelResize}
+            onKeyDown={handlePanelResizeKey}
+            onDoubleClick={resetPanelResize}
+          />
+
+          <section ref={tablePanelRef} className="table-panel">
+            <div className="table-header">
+              <div>
+                <h2>QC / FAI Characteristics</h2>
+                <p>{characteristics.length} linked requirements</p>
+              </div>
+              <button
+                className="button secondary"
+                onClick={clearAllBalloons}
+                disabled={!characteristics.length}
+                title="Clear all balloons from drawing and table"
+              >
+                <Trash2 size={16} />
+                Clear All Balloons
+              </button>
+            </div>
+            <CharacteristicTable
+              characteristics={characteristics}
+              selectedId={selectedId}
+              sampleCount={sampleCount}
+              onSelect={selectCharacteristic}
+              onChange={updateCharacteristic}
+              onReassign={reassignBalloonNo}
+              onSampleChange={updateSample}
+              onDelete={deleteCharacteristic}
+            />
+          </section>
+
         </div>
-        <CharacteristicTable
-          characteristics={characteristics}
-          selectedId={selectedId}
-          sampleCount={sampleCount}
-          onSelect={selectCharacteristic}
-          onChange={updateCharacteristic}
-          onReassign={reassignBalloonNo}
-          onSampleChange={updateSample}
-          onDelete={deleteCharacteristic}
-        />
-      </section>
-
-      </div>
       )}
       <ToleranceTableDialog
         open={toleranceTableOpen}
