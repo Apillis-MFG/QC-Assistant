@@ -2139,10 +2139,18 @@ export default function App() {
         tagName === "select" ||
         target?.isContentEditable;
       if (isTyping) {
-        if (lowerKey === "escape" && templateDialogOpen) {
-          event.preventDefault();
-          setTemplateDialogOpen(false);
-          setTemplateDialogProject(null);
+        if (lowerKey === "escape") {
+          if (templateDialogOpen) {
+            event.preventDefault();
+            setTemplateDialogOpen(false);
+            setTemplateDialogProject(null);
+            return;
+          }
+          if (toleranceTableOpen) {
+            event.preventDefault();
+            setToleranceTableOpen(false);
+            return;
+          }
         }
         return;
       }

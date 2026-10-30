@@ -7,7 +7,7 @@ export function hasCharacteristicUnit(type) {
   return type !== "note" && type !== "visual";
 }
 export const CHARACTERISTIC_FIELDS = ["nominal", "tolerance", "notes"];
-export const APP_VERSION = "v0.9.2";
+export const APP_VERSION = "v0.9.3";
 
 export const PANEL_STORAGE_KEY = "qca_panel_sizes_v1";
 export const RESIZE_HANDLE_SIZE = 14;

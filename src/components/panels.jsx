@@ -270,6 +270,14 @@ export function GuidePage({ onBack }) {
 }
 
 export function VersionHistoryPage({ onBack }) {
+  const releaseNotes093 = [
+    "Hardened customer Excel FAI template validation: automatically verifies target worksheet existence and prevents overwriting pre-existing formula cells.",
+    "Merged-cell collision protection: detects and rejects mapped inspection table cells intersecting merged ranges in the customer workbook.",
+    "Repeated-dimension capacity validation: template mapping checks table row capacity against expanded occurrence counts for multi-instance requirements.",
+    "Dual-dimension notes parity: custom template exports now retain and format bracketed dual callouts [Dual: ...] on characteristic notes.",
+    "Modal keyboard & cloud boundaries: Escape key dismisses the template dialog safely; cloud projects are guarded against inadvertent shadow IndexedDB writes.",
+  ];
+
   const releaseNotes092 = [
     "Added support for uploaded customer-specific blank Excel FAI templates (.xlsx).",
     "Interactive FAI Template Mapping dialog: upload blank customer workbooks, select worksheets, map header cells (A1 notation), define table bounds, and map characteristic/sample columns.",
@@ -359,6 +367,14 @@ export function VersionHistoryPage({ onBack }) {
 
       <section className="help-dialog dashboard-main" aria-labelledby="version-history-title">
         <div className="help-content">
+          <div className="release-note">
+            <h3>v0.9.3</h3>
+            <ul>
+              {releaseNotes093.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
           <div className="release-note">
             <h3>v0.9.2</h3>
             <ul>

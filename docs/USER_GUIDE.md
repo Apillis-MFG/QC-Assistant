@@ -1,6 +1,6 @@
 # QC Assistant — User's Guide
 
-*Drawing ballooning and inspection report builder. Version covered: v0.9.2.*
+*Drawing ballooning and inspection report builder. Version covered: v0.9.3.*
 
 QC Assistant turns an engineering drawing PDF into a submittable First Article Inspection (FAI) package: you balloon the dimensions on the drawing, enter measured samples, and export a ballooned PDF plus an Excel FAI workbook. Everything runs locally in your browser — there is no server, no account, and no upload of your drawing anywhere.
 
@@ -338,6 +338,8 @@ You can always reopen this reference in the app itself via the **Help** button (
 ## 13. Appendix: Version History
 
 Sourced from the in-app Help dialog's changelog.
+
+**v0.9.3** — Hardened customer Excel FAI template validation: automated verification of target worksheet existence, prevention of pre-existing formula cell overwrite, and detection of merged-cell collisions in inspection rows. Repeated-dimension capacity checks against expanded occurrence counts for multi-instance requirements. Dual-dimension note preservation (`[Dual: ...]`) in custom exports. Modal keyboard and cloud boundary persistence safeguards.
 
 **v0.9.2** — Added support for uploaded customer-specific blank Excel FAI templates (`.xlsx`). Interactive mapping dialog for header cells (A1 notation) and table column bounds with real-time validation and project persistence in IndexedDB. Added default export fallback action.
 
