@@ -220,6 +220,33 @@ export function validateTemplateConfig(template, currentCharacteristicCount = 0,
   registerCol("Notes", cols.notes);
   sampleCols.forEach((letter, idx) => registerCol(`Sample #${idx + 1}`, letter));
 
+  // Parse workbook if bytes are available to validate sheet existence, formulas, and merged cells
+  let workbook = null;
+  let targetSheet = null;
+  if (template.bytes) {
+    try {
+      workbook = XLSX.read(template.bytes, {
+        type: "array",
+        cellStyles: true,
+        cellFormula: true,
+      });
+    } catch {
+      errors.push("Failed to parse template workbook file data.");
+    }
+  }
+
+  if (workbook) {
+    const sheetNames = workbook.SheetNames || [];
+    if (template.worksheet && !sheetNames.includes(template.worksheet)) {
+      errors.push(`Target worksheet '${template.worksheet}' was not found in template workbook.`);
+    } else if (template.worksheet) {
+      targetSheet = workbook.Sheets[template.worksheet];
+    }
+  }
+
+  const merges = targetSheet?.["!merges"] || [];
+  const isMultiCell = (m) => m && (m.s.c !== m.e.c || m.s.r !== m.e.r);
+
   // Header cells validation and overlap with table rows
   const headerMap = new Map();
   const headers = template.headers || {};
@@ -243,6 +270,80 @@ export function validateTemplateConfig(template, currentCharacteristicCount = 0,
       errors.push(
         `Header field '${key}' at cell '${cleanAddr}' overlaps with table inspection rows (${startRow}–${endRow}).`,
       );
+    }
+
+    // Reject formula cell overwrite in headers
+    if (targetSheet && targetSheet[cleanAddr]?.f) {
+      errors.push(
+        `Header field '${key}' target cell '${cleanAddr}' contains an existing formula ('=${targetSheet[cleanAddr].f}'). Cannot overwrite formula cell.`,
+      );
+    }
+
+    // Reject interior merged cell target (must be top-left cell of merge)
+    if (targetSheet) {
+      for (const m of merges) {
+        if (isMultiCell(m) && decoded.c >= m.s.c && decoded.c <= m.e.c && decoded.r >= m.s.r && decoded.r <= m.e.r) {
+          if (decoded.c !== m.s.c || decoded.r !== m.s.r) {
+            errors.push(
+              `Header field '${key}' at cell '${cleanAddr}' is an interior cell of merged range '${XLSX.utils.encode_range(m)}'. Map to top-left cell '${XLSX.utils.encode_cell(m.s)}' instead.`,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  // Table rows inspection: formula overwrite and merged-cell collision checks
+  if (targetSheet && startRow > 0 && endRow >= startRow) {
+    const activeTableCols = [
+      cols.balloonNo,
+      cols.nominal,
+      cols.tolerance,
+      cols.usl,
+      cols.lsl,
+      cols.type,
+      cols.unit,
+      cols.method,
+      cols.min,
+      cols.max,
+      cols.status,
+      cols.notes,
+      ...(sampleCols || []),
+    ].filter((col) => col && isValidColumnLetter(col));
+
+    const reportedMerges = new Set();
+    const reportedFormulas = new Set();
+
+    for (let r = startRow; r <= endRow; r++) {
+      const rowIdx = r - 1; // 0-based row
+      for (const colLetter of activeTableCols) {
+        const cleanCol = colLetter.toUpperCase();
+        const colIdx = XLSX.utils.decode_col(cleanCol);
+        const cellRef = `${cleanCol}${r}`;
+
+        // Formula collision
+        const cell = targetSheet[cellRef];
+        if (cell && cell.f && !reportedFormulas.has(cellRef)) {
+          reportedFormulas.add(cellRef);
+          errors.push(
+            `Mapped table cell '${cellRef}' contains an existing formula ('=${cell.f}'). Cannot overwrite formula cell.`,
+          );
+        }
+
+        // Merged range collision
+        for (const m of merges) {
+          if (isMultiCell(m) && colIdx >= m.s.c && colIdx <= m.e.c && rowIdx >= m.s.r && rowIdx <= m.e.r) {
+            const mergeRef = XLSX.utils.encode_range(m);
+            const mergeKey = `${cleanCol}:${mergeRef}`;
+            if (!reportedMerges.has(mergeKey)) {
+              reportedMerges.add(mergeKey);
+              errors.push(
+                `Mapped table cell '${cellRef}' intersects merged range '${mergeRef}' in worksheet '${template.worksheet}'. Inspection table cells cannot be merged.`,
+              );
+            }
+          }
+        }
+      }
     }
   }
 
@@ -381,7 +482,10 @@ export function fillCustomTemplateWorkbook({ template, metadata = {}, characteri
     if (cols.unit) setCell(`${cols.unit}${rowNum}`, item.unit);
     if (cols.method) setCell(`${cols.method}${rowNum}`, item.method);
     if (cols.status) setCell(`${cols.status}${rowNum}`, itemStatus);
-    if (cols.notes) setCell(`${cols.notes}${rowNum}`, item.notes || "");
+    const rowNotes = item.dual && !item.notes?.includes("[Dual:")
+      ? [item.notes, `[Dual: ${item.dual.nominal}${item.dual.tolerance ? " " + item.dual.tolerance : ""}${item.dual.unit ? " " + item.dual.unit : ""}]`].filter(Boolean).join(" ")
+      : (item.notes || "");
+    if (cols.notes) setCell(`${cols.notes}${rowNum}`, rowNotes);
 
     // Numeric sample values for min/max
     const sampleValues = Array.from({ length: validSampleCount }, (_, sIdx) => item.samples?.[sIdx] ?? "");

@@ -2138,13 +2138,26 @@ export default function App() {
         tagName === "textarea" ||
         tagName === "select" ||
         target?.isContentEditable;
-      if (isTyping) return;
+      if (isTyping) {
+        if (lowerKey === "escape" && templateDialogOpen) {
+          event.preventDefault();
+          setTemplateDialogOpen(false);
+          setTemplateDialogProject(null);
+        }
+        return;
+      }
 
       const key = event.key;
       const lowerKey = key.toLowerCase();
 
       // 1. Escape: cancel active tool states, placement, dialogs, review panels
       if (lowerKey === "escape") {
+        if (templateDialogOpen) {
+          event.preventDefault();
+          setTemplateDialogOpen(false);
+          setTemplateDialogProject(null);
+          return;
+        }
         if (placementGroupId) {
           setMode("select");
           setMessage("Placement paused. Select a requirement and resume placement to continue.");
@@ -2167,8 +2180,8 @@ export default function App() {
         return;
       }
 
-      // If tolerance table modal is open, don't trigger workspace shortcuts
-      if (toleranceTableOpen) return;
+      // If tolerance table or template modal is open, don't trigger workspace shortcuts
+      if (toleranceTableOpen || templateDialogOpen) return;
 
       // 2. Enter: confirm pending candidate review or finish balloon edit
       if (lowerKey === "enter") {
@@ -2296,6 +2309,7 @@ export default function App() {
     selected,
     selectedId,
     switchMode,
+    templateDialogOpen,
     toleranceTableOpen,
     updateCharacteristic,
     workspaceMode,
@@ -2353,6 +2367,10 @@ export default function App() {
     async (templateDraft) => {
       const target = templateDialogProject || activeProject;
       if (!target) return;
+      if (target.kind === "cloud") {
+        setMessage("Custom Excel FAI templates are local-only; cloud template sync is not supported.");
+        return;
+      }
       try {
         const updatedProject = {
           ...target,
@@ -2375,6 +2393,10 @@ export default function App() {
     async () => {
       const target = templateDialogProject || activeProject;
       if (!target) return;
+      if (target.kind === "cloud") {
+        setMessage("Custom Excel FAI templates are local-only; cloud template sync is not supported.");
+        return;
+      }
       try {
         const updatedProject = {
           ...target,

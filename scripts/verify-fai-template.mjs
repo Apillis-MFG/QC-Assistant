@@ -265,4 +265,146 @@ const originalSheet = originalWb.Sheets["Customer FAI Form"];
 assert.equal(originalSheet["C2"]?.v, "PART-12345"); // Original value intact
 assert.equal(originalSheet["A6"]?.v || "", ""); // Empty in original
 
-console.log("PASS: 100% uploaded Excel FAI template engine and persistence checks passed successfully!");
+// --- 7. Hardening: Sheet Existence, Formula Guards, Merges & Dual-Dimensions (P1-8b) ---
+
+// 7a. Missing worksheet rejection
+const missingSheetTemplate = normalizeFaiTemplate({
+  ...rawTemplate,
+  worksheet: "NonExistentSheet",
+});
+const missingSheetRes = validateTemplateConfig(missingSheetTemplate, 1, 1);
+assert.equal(missingSheetRes.valid, false);
+assert.ok(missingSheetRes.errors.some((err) => err.includes("Target worksheet 'NonExistentSheet' was not found")));
+
+// 7b. Formula overwrite rejection in header and table
+const formulaWb = XLSX.utils.book_new();
+const formulaWs = XLSX.utils.aoa_to_sheet([
+  ["Title"],
+  ["Header", "Val", ""],
+  [],
+  ["BALLOON", "STATUS"],
+  ["", ""],
+  ["", ""],
+]);
+// Add a formula in header C2 and in table cell B5
+formulaWs["C2"] = { t: "s", v: "calc", f: "CONCATENATE(A1,B1)" };
+formulaWs["B5"] = { t: "s", v: "calc_status", f: "IF(A5>0,\"OK\",\"NG\")" };
+XLSX.utils.book_append_sheet(formulaWb, formulaWs, "Formulas");
+const formulaBytes = XLSX.write(formulaWb, { type: "array", bookType: "xlsx" });
+
+const formulaTemplate = normalizeFaiTemplate({
+  name: "Formulas.xlsx",
+  bytes: formulaBytes,
+  worksheet: "Formulas",
+  headers: { drawingNo: "C2" },
+  table: {
+    startRow: 5,
+    endRow: 6,
+    columns: { balloonNo: "A", status: "B" },
+  },
+});
+const formulaRes = validateTemplateConfig(formulaTemplate, 1, 1);
+assert.equal(formulaRes.valid, false);
+assert.ok(formulaRes.errors.some((err) => err.includes("Header field 'drawingNo' target cell 'C2' contains an existing formula")));
+assert.ok(formulaRes.errors.some((err) => err.includes("Mapped table cell 'B5' contains an existing formula")));
+
+// 7c. Merged-cell collision rejection in table inspection rows
+const mergeWb = XLSX.utils.book_new();
+const mergeWs = XLSX.utils.aoa_to_sheet([
+  ["Customer Form"],
+  ["", "Header Left", "Header Mid", "Header Right"],
+  [],
+  ["BALLOON", "TYPE", "STATUS"],
+  ["1", "Dim", "OK"],
+  ["Merged row block across columns", "", ""], // Row 6
+  ["3", "Dim", "OK"],
+]);
+// Merge row 6 columns A through C: A6:C6 (0-based: c: 0..2, r: 5..5)
+mergeWs["!merges"] = [
+  { s: { c: 0, r: 5 }, e: { c: 2, r: 5 } }, // A6:C6 table collision
+  { s: { c: 1, r: 1 }, e: { c: 3, r: 1 } }, // B2:D2 header merge
+];
+XLSX.utils.book_append_sheet(mergeWb, mergeWs, "Merges");
+const mergeBytes = XLSX.write(mergeWb, { type: "array", bookType: "xlsx" });
+
+const mergeTemplate = normalizeFaiTemplate({
+  name: "Merges.xlsx",
+  bytes: mergeBytes,
+  worksheet: "Merges",
+  headers: {
+    supplier: "B2", // Top-left of B2:D2 merge -> ALLOWED
+    description: "C2", // Interior cell of B2:D2 merge -> REJECTED
+  },
+  table: {
+    startRow: 5,
+    endRow: 7, // Includes row 6 which is merged!
+    columns: { balloonNo: "A", type: "B", status: "C" },
+  },
+});
+const mergeRes = validateTemplateConfig(mergeTemplate, 2, 1);
+assert.equal(mergeRes.valid, false);
+assert.ok(mergeRes.errors.some((err) => err.includes("intersects merged range 'A6:C6'")));
+assert.ok(mergeRes.errors.some((err) => err.includes("is an interior cell of merged range 'B2:D2'")));
+
+// 7d. Repeated-dimension capacity calculation (unexpanded quantity)
+const repeatedChars = [
+  { id: "c1", balloonNo: 1, quantity: 4, instancesExpanded: false }, // 4 rows
+  { id: "c2", balloonNo: 2, quantity: 1 }, // 1 row
+];
+const effectiveRowCount = repeatedChars.reduce(
+  (sum, item) => sum + ((item.quantity || 1) > 1 && !item.instancesExpanded ? item.quantity : 1),
+  0,
+);
+assert.equal(effectiveRowCount, 5); // 4 + 1 = 5
+
+// Small template with capacity = 3 (rows 6..8)
+const smallTemplate = normalizeFaiTemplate({
+  ...rawTemplate,
+  table: {
+    ...rawTemplate.table,
+    startRow: 6,
+    endRow: 8, // Capacity = 3
+  },
+});
+// Checking with effectiveRowCount (5) should fail capacity validation
+const capCheckRes = validateTemplateConfig(smallTemplate, effectiveRowCount, 1);
+assert.equal(capCheckRes.valid, false);
+assert.ok(capCheckRes.errors.some((err) => err.includes("Template table capacity (3 rows) is insufficient for current characteristics (5)")));
+
+// 7e. Dual dimension note preservation in custom template export
+const dualCharTemplate = normalizeFaiTemplate({
+  ...rawTemplate,
+  table: {
+    ...rawTemplate.table,
+    startRow: 6,
+    endRow: 7,
+  },
+});
+const dualChars = [
+  {
+    id: "char-dual",
+    balloonNo: 1,
+    type: "dimension",
+    nominal: "25.40",
+    tolerance: "±0.25",
+    unit: "MM",
+    method: "CALIPER",
+    samples: ["25.42"],
+    notes: "Critical bore",
+    dual: {
+      nominal: "1.000",
+      tolerance: "±0.010",
+      unit: "IN",
+    },
+  },
+];
+const dualFilled = fillCustomTemplateWorkbook({
+  template: dualCharTemplate,
+  metadata: { drawingNo: "DWG-DUAL" },
+  characteristics: dualChars,
+  sampleCount: 1,
+});
+const dualSheet = dualFilled.workbook.Sheets["Customer FAI Form"];
+assert.equal(dualSheet["N6"]?.v, "Critical bore [Dual: 1.000 ±0.010 IN]");
+
+console.log("PASS: 100% uploaded Excel FAI template engine, hardening, and persistence checks passed successfully!");

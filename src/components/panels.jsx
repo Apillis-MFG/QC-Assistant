@@ -2123,6 +2123,13 @@ export function FaiTemplateDialog({
     }
   };
 
+  const expandedCharCount = useMemo(() => {
+    return (characteristics || []).reduce(
+      (sum, item) => sum + ((item.quantity || 1) > 1 && !item.instancesExpanded ? item.quantity : 1),
+      0,
+    );
+  }, [characteristics]);
+
   const validation = useMemo(() => {
     if (!draft.bytes && !draft.byteLength) {
       return {
@@ -2132,8 +2139,8 @@ export function FaiTemplateDialog({
         capacity: 0,
       };
     }
-    return validateTemplateConfig(draft, characteristics.length, sampleCount);
-  }, [draft, characteristics.length, sampleCount]);
+    return validateTemplateConfig(draft, expandedCharCount, sampleCount);
+  }, [draft, expandedCharCount, sampleCount]);
 
   if (!open) return null;
 
@@ -2340,8 +2347,8 @@ export function FaiTemplateDialog({
           <div className="template-section">
             <div className="template-section-title">
               <span>Inspection Table Bounds</span>
-              <span className={`template-badge ${currentCapacity >= characteristics.length && currentCapacity > 0 ? "template-badge--active" : "template-badge--none"}`}>
-                Capacity: {currentCapacity} rows ({characteristics.length} active characteristics)
+              <span className={`template-badge ${currentCapacity >= expandedCharCount && currentCapacity > 0 ? "template-badge--active" : "template-badge--none"}`}>
+                Capacity: {currentCapacity} rows ({expandedCharCount} required {expandedCharCount === 1 ? "row" : "rows"})
               </span>
             </div>
             <div className="template-grid-2">

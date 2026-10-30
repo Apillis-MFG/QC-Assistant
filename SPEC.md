@@ -120,7 +120,7 @@ What could break inspection correctness, export fidelity, or drawing integrity?
 | P1-7 | Multi-Drawing FAI Report Rollup (Combined AS9102 Multi-Part Package) | Distribution: Report Quality | Done | v0.9.1 |
 | P1-8 | Uploaded Excel FAI Templates (Custom Customer Form Ingestion & UI Mapping) | Distribution: Report Quality | Done | v0.9.2 |
 | P2-1 | Solid Arrowhead Terminations on Balloon Leader Lines | Distribution: Report Quality | Done | v0.9.1 |
-| P1-8b | Custom Excel FAI Template Validation Hardening & Dual-Dimension Parity | Trust: Export Fidelity | Ready | v0.9.3 |
+| P1-8b | Custom Excel FAI Template Validation Hardening & Dual-Dimension Parity | Trust: Export Fidelity | Done | v0.9.3 |
 
 ---
 
@@ -129,7 +129,8 @@ What could break inspection correctness, export fidelity, or drawing integrity?
 Status:
 
 ```text
-Ready (v0.9.3)
+Done (shipped in v0.9.3)
+Verification: scripts/verify-fai-template.mjs (100% PASS)
 ```
 
 Epic:
@@ -175,12 +176,12 @@ Likely files:
 
 Acceptance:
 
-- [ ] Templates with merged cells in the mapped inspection range are rejected with an actionable error message.
-- [ ] Templates with pre-existing formulas in mapped target cells are rejected before writing.
-- [ ] Characteristics with unexpanded repeated quantities (e.g. `3X Ø10`) count all 3 instances against template capacity in `FaiTemplateDialog`.
-- [ ] Exported custom templates include dual-dimension bracketed notes when dual callouts exist.
-- [ ] `Escape` cleanly closes `FaiTemplateDialog` without firing underlying canvas shortcuts.
-- [ ] 100% of offline verification tests and `pnpm build` pass cleanly.
+- [x] Templates with merged cells in the mapped inspection range are rejected with an actionable error message.
+- [x] Templates with pre-existing formulas in mapped target cells are rejected before writing.
+- [x] Characteristics with unexpanded repeated quantities (e.g. `3X Ø10`) count all 3 instances against template capacity in `FaiTemplateDialog`.
+- [x] Exported custom templates include dual-dimension bracketed notes when dual callouts exist.
+- [x] `Escape` cleanly closes `FaiTemplateDialog` without firing underlying canvas shortcuts.
+- [x] 100% of offline verification tests and `pnpm build` pass cleanly.
 
 ---
 
