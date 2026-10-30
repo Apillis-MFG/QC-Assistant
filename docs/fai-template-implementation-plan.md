@@ -1,7 +1,7 @@
 # QC Assistant: uploaded Excel FAI template implementation plan
 
-Status: planned; feature implementation deferred.
-Prepared: 2026-10-08.
+Status: Implemented in v0.9.2 (2026-10-18); follow-up hardening planned in P1-8b.
+Prepared: 2026-10-08. Updated: 2026-10-30.
 Documentation tracking: [GitHub issue #27](https://github.com/Apillis-MFG/QC-Assistant/issues/27).
 
 ## Insight
@@ -171,4 +171,6 @@ Automatic mapping, AI template interpretation, Excel editing, dynamic row insert
 
 ## Risk / next
 
-The next development action is to collect representative blank templates and run the fidelity spike. The feature remains planned until that evidence supports a library and a concrete supported contract. Success means an engineer exports into an approved customer layout with correct complete inspection data, while the default local export continues to work.
+Phase 1 (Engine & Persistence, commit `9421f1c`) and Phase 2 (UI Mapping & Topbar Integration, commit `76d4eb2`) were merged into `develop` in release `v0.9.2`. Verified with 100% pass rate in `scripts/verify-fai-template.mjs` and clean production build.
+
+The next hardening slice (P1-8b) covers merge-cell conflict rejection, formula cell overwrite rejection, expanded occurrence capacity validation, and dual-dimension notes parity.

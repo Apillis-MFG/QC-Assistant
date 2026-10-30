@@ -1,6 +1,6 @@
 # QC Assistant — User's Guide
 
-*Drawing ballooning and inspection report builder. Version covered: v0.6.0.*
+*Drawing ballooning and inspection report builder. Version covered: v0.9.2.*
 
 QC Assistant turns an engineering drawing PDF into a submittable First Article Inspection (FAI) package: you balloon the dimensions on the drawing, enter measured samples, and export a ballooned PDF plus an Excel FAI workbook. Everything runs locally in your browser — there is no server, no account, and no upload of your drawing anywhere.
 
@@ -101,10 +101,10 @@ Rather than retyping values from the drawing, use the **Text Select** tool (`T`)
 ![Text Select tool active](assets/screenshots/11-text-select-active.png)
 
 - Click any **embedded PDF text** item (real text, not a raster scan) to capture it.
-- If the text isn't selectable (e.g. a scanned/rasterized drawing), **drag a rectangle** over it instead — QC Assistant runs on-device OCR (Tesseract.js) on that cropped region and drops the recognized text into the same box.
+- If the text isn't selectable (e.g. a scanned/rasterized drawing), **drag a rectangle** over it instead — QC Assistant runs on-device OCR (Tesseract.js) with adaptive contrast enhancement and perimeter-based inversion (handling faint scans and dark CAD title blocks) on that cropped region and drops the recognized text into the same box.
 - Once text is captured, click one of the buttons below it — **Description**, **Drawing No**, **Rev**, **Requirement**, **Tolerance**, or **Notes** — to push it into that field, or into the currently-selected balloon's requirement/tolerance/notes.
-
-This is the fastest way to fill in the drawing's title-block metadata (Drawing No, Rev, Description) and to seed a balloon's nominal/tolerance from the drawing's own callout text.
+- **Dual dimensions**: Dimensions containing bracketed secondary units (e.g. `25.40 [1.000] ±0.10 [±.004]`) automatically parse both primary and secondary values with units inferred from the $25.4$ metric/inch ratio.
+- **DMS angular callouts**: Angles in Degrees-Minutes-Seconds (e.g. `45° 30' ±15'`, `45° 30' 36"`) parse accurately into decimal degree limit envelopes while preserving DMS display.
 
 ---
 
@@ -114,10 +114,18 @@ Ballooning is how you turn a dimension on the drawing into a tracked inspection 
 
 1. Select the **Balloon** tool (`B`).
 2. Click on (or near) a dimension callout. QC Assistant snaps the balloon's leader target to the nearest recognized dimension text and pre-fills the nominal value and tolerance from it when it can parse them (e.g. `42.50 ±0.10`, `Ø12.00 +0.05/-0.02`, `90° ±0.5°`).
-3. The balloon is placed with a default offset and leader line; **drag the numbered circle or the leader target** independently to fine-tune placement.
-4. Balloons number sequentially as you place them (1, 2, 3, …). Deleting a balloon renumbers everything after it.
+3. The balloon is placed with a default offset, leader line, and a solid vector arrowhead pointing directly at the feature target; **drag the numbered circle or the leader target** independently to fine-tune placement.
+4. Balloons number sequentially as you place them (1, 2, 3, …).
 
-![Three balloons manually placed](assets/screenshots/08-balloons-placed.png)
+### Repeated Dimensions & Sub-Balloons
+
+When a drawing specifies repeated requirements (e.g. `3X Ø10 ±0.1`):
+
+1. QC Assistant detects the quantity prefix and sets **Quantity** to `3` in the inspector.
+2. Click **Create 3 instances** to expand the requirement into linked occurrences `5.1`, `5.2`, and `5.3`.
+3. The app enters guided placement: click the physical location for `5.2`, then `5.3`. Pressing `Escape` pauses placement; unplaced instances show a **Resume placement** action.
+4. All instances share the requirement definition (nominal, tolerance, unit, method), but keep independent sample measurements, notes, and balloon coordinates.
+5. In Excel exports, each occurrence occupies its own numbered row (`5.1`, `5.2`, `5.3`).
 
 - **Single-click** a balloon to select it (its details appear in "Selected Balloon" on the right).
 - **Double-click**, or press `E` while selected, opens a small popover to **reassign its number** or **delete** it.
@@ -175,6 +183,15 @@ Every balloon has a matching row in the **QC / FAI Characteristics** table. Colu
 | **Notes** | Free text (editable in Measurement mode too) |
 
 The table stays sorted by balloon number, and clicking a row selects that balloon on the drawing (and vice versa). In **Measurement mode** the same table renders read-only except for the sample columns and Notes — so the requirement definition can't drift while someone is taking measurements.
+
+### Batch Sample Auto-Fill & Clipboard Pasting
+
+To accelerate high-throughput data entry:
+
+- **Clipboard Pasting**: Copy any 1D row, 1D column, or 2D matrix of numbers from Excel, Google Sheets, or CSV, click any sample cell, and press `Ctrl+V` (or `Cmd+V`). QC Assistant automatically maps cells across rows and sample columns.
+- **Fill Nominals**: One-click action in the table header to populate empty sample cells with their nominal dimension values (and "OK" for visual/note requirements).
+- **Fill Visuals OK**: Sets "OK" for all visual and note requirements in one pass without altering numeric dimension measurements.
+- **Clear Samples**: Resets all recorded inspection measurements to empty while preserving drawing balloons and requirement definitions.
 
 ---
 
@@ -239,7 +256,10 @@ Open **Settings** (gear icon, top right) to adjust the toolbar and balloon appea
 
 - **Button style**: Icon + Text or Icon Only for the toolbar buttons.
 - **Balloon diameter** (16–48px) and **Number font size** (8–18px).
-- **Leader length**: scales the default offset used when placing a new balloon (0.25× – 3×).
+- **Balloon font color & family**: Choose font color (default Black) and font family (`Times New Roman`, `Arial`, or `Courier`).
+- **Leader line visibility**: Show or Hide leader lines. When hidden, balloons snap directly onto features without connecting lines.
+- **Leader line length**: Scales the default offset used when placing a new balloon (0.25× – 3×).
+- **Arrowheads**: Terminations render as solid vector arrowheads pointing directly at the dimension target across both the editor canvas and exported PDFs.
 
 Changes apply live (see the preview) and are saved automatically to your browser, independent of any project — they follow you across all projects and drawings.
 
@@ -247,14 +267,31 @@ Changes apply live (see the preview) and are saved automatically to your browser
 
 ## 10. Exporting
 
-Once your characteristics table has at least one row, the **PDF** and **Excel** buttons in the toolbar are enabled:
+Once your characteristics table has at least one row, export actions in the toolbar and project detail page are enabled:
 
 ![Export buttons enabled in the toolbar](assets/screenshots/16-export-toolbar.png)
 
-- **PDF** — downloads a copy of the original drawing PDF with a red circle, leader line, and bold balloon number drawn on top of each requirement's target location, on the correct page. Filename: `<drawing-file-name>_ballooned.pdf`.
-- **Excel** — downloads a formatted "QC FAI" workbook: a header block (drawing name/description, rev/supplier, sample count, overall pass/fail), then one row per characteristic (sorted by balloon number) with ID #, Type, Unit, Nominal, Tolerance, USL, LSL, every sample column, computed MIN/MAX of the numeric samples, Method, computed Status, and Notes — plus a footer legend explaining the Method abbreviations. Filename: `<drawing-no or "inspection">_QC_FAI.xlsx`.
+### Single-Drawing Exports
+- **PDF** — downloads a copy of the drawing with red numbered circles, leader lines, and solid arrowheads burned in on the correct pages. Filename: `<drawing-file-name>_ballooned.pdf`.
+- **Excel (Default AS9102 Rev C)** — downloads an audit-ready AS9102 Rev C workbook containing:
+  - **FAI Report (Form 3)**: Header metadata, characteristic rows sorted by balloon number, individual sample columns, MIN/MAX calculations, measurement methods, and equipment legend.
+  - **AS9102 Form 1**: Part Number Accountability block, part index, and disposition summary.
+  - **AS9102 Form 2**: Product Process Accountability covering raw material, special processes, general note workmanship, and characteristic verification conformance.
 
-Both exports reflect exactly what's in the characteristics table at the moment you click — there's no separate "finalize" step.
+### Customer Blank Excel Templates (.xlsx)
+When a customer requires their proprietary FAI form format:
+1. Click **Template** in the workspace toolbar or Project Details.
+2. Upload a blank customer `.xlsx` workbook.
+3. Select the target inspection worksheet from the dropdown.
+4. Map header cell addresses (e.g. `C2` for Part No, `E2` for Rev, `G2` for Status) in standard A1 notation.
+5. Define table start/end rows with live capacity validation.
+6. Map characteristic columns (Balloon #, Nominal, Tolerance, USL, LSL, Status, Samples #1..#N).
+7. Save the template. The export button dynamically displays `Excel (<Template Name>)`. Clicking it fills a fresh copy of the customer's original form with all limits and statuses. A secondary **Default** button remains available to export the standard AS9102 workbook at any time.
+
+### Multi-Drawing Project Rollup Exports
+For projects containing multiple drawings:
+- **All PDFs (N)** — merges every ballooned drawing in the project into a single consolidated multi-page PDF package.
+- **All Excel (N)** — exports a master project workbook containing a Project Form 1 summary tab, Form 2 process tab, a consolidated **All Characteristics** sheet merging all parts, and dedicated standalone Form 3 sheets for each drawing.
 
 ---
 
@@ -270,7 +307,13 @@ Shortcuts are disabled while typing in any text field, and in Measurement mode (
 | `H` | Pan tool |
 | `T` | Text Select / OCR tool |
 | `E` | Open edit/reassign/delete popover for the selected balloon |
-| `Esc` | Close the topmost open thing — Settings/Tolerance dialog first, else Help, an edit popover, an in-progress OCR/auto-balloon drag, or a pending balloon target |
+| `Enter` | Confirm Auto-Balloon candidates or finish editing selected balloon |
+| `Del` / `Backspace` | Delete selected characteristic from drawing and table |
+| `D` | Rapidly cycle requirement type (`dimension` → `gdt` → `note` → `visual`) |
+| `↑` / `↓` (or `K` / `J`) | Navigate characteristic rows in the table with selection wrapping |
+| `1`–`9` | Quick-assign balloon number to selected requirement |
+| `+` / `−` | Zoom drawing in and out |
+| `Esc` | Close the topmost open element — Settings/Tolerance dialog, candidate review, or pending balloon target |
 
 ![Help dialog — quick workflow and shortcut reference](assets/screenshots/17-help-dialog.png)
 
@@ -295,6 +338,16 @@ You can always reopen this reference in the app itself via the **Help** button (
 ## 13. Appendix: Version History
 
 Sourced from the in-app Help dialog's changelog.
+
+**v0.9.2** — Added support for uploaded customer-specific blank Excel FAI templates (`.xlsx`). Interactive mapping dialog for header cells (A1 notation) and table column bounds with real-time validation and project persistence in IndexedDB. Added default export fallback action.
+
+**v0.9.1** — AS9102 Rev C Multi-Sheet FAI Excel Workbook export with Form 1 (Part Accountability), Form 2 (Product Process Accountability), and Form 3 (Characteristic Accountability). Multi-drawing project rollup for merged PDF packages and consolidated master Excel workbooks. Adaptive client-side OCR contrast enhancement. High-throughput keyboard navigation shortcuts. Batch sample auto-fill and 2D clipboard grid pasting. Dual dimensioning (`MM [IN]`) and Degrees-Minutes-Seconds (`45° 30' ±15'`) angle notation. Solid vector arrowhead terminations on balloon leader lines.
+
+**v0.8.1** — Added Settings controls for the balloon number's font color (default Black) and font family (Times New Roman, Arial, or Courier) applied across the canvas and exported PDFs.
+
+**v0.8.0** — Added Settings toggle to show or hide balloon leader lines.
+
+**v0.7.0** — Improved project management with React Router-based navigation and new dedicated project pages.
 
 **v0.6.0** — Improved the UI overall. Icon buttons now support a text label alongside the icon, with a setting to choose Icon only or Icon + Text.
 

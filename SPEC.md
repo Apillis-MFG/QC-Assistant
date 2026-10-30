@@ -101,7 +101,97 @@ What could break inspection correctness, export fidelity, or drawing integrity?
 
 ## Current Execution Backlog
 
+### Backlog Status Summary
+
+| ID | Title | Epic | Status | Shipped / Target |
+| --- | --- | --- | --- | --- |
+| P0-1 | Verify all `getLimits` branches against known manufacturing values | Trust: Inspection Math | Done | v0.9.1 |
+| P0-2 | Excel FAI workbook submission compliance check | Trust: Export Fidelity | Done | v0.9.1 |
+| P0-3 | Balloon coordinate accuracy for multi-page and zoomed PDFs | Trust: Export Fidelity | Done | v0.9.1 |
+| P0-4 | AS9102 Rev C Multi-Sheet FAI Workbook Export (Forms 1, 2, 3) | Trust: Export Fidelity | Done | v0.9.1 |
+| P0-5 | Metric & Imperial Dual Dimensioning & Tolerance Conversion | Trust: Inspection Math | Done | v0.9.1 |
+| P0-6 | Non-Standard Angle Unit Conversions (Degrees-Minutes-Seconds) | Trust: Inspection Math | Done | v0.9.1 |
+| P1-1 | Text capture reliability for rotated and small PDF text | Activation: First Session | Done | v0.9.1 |
+| P1-2 | Mobile and tablet layout for field inspection use | Activation: First Session | Done | v0.9.1 |
+| P1-3 | OCR Preprocessing & Contrast Enhancement | Activation: First Session | Done | v0.9.1 |
+| P1-4 | Keyboard Shortcuts & High-Throughput Quick-Ballooning | Activation: First Session | Done | v0.9.1 |
+| P1-5 | Batch Sample Auto-Fill & Clipboard Pasting | Activation: First Session | Done | v0.9.1 |
+| P1-6 | Multi-Drawing Batch PDF Export | Distribution: Report Quality | Done | v0.9.1 |
+| P1-7 | Multi-Drawing FAI Report Rollup (Combined AS9102 Multi-Part Package) | Distribution: Report Quality | Done | v0.9.1 |
+| P1-8 | Uploaded Excel FAI Templates (Custom Customer Form Ingestion & UI Mapping) | Distribution: Report Quality | Done | v0.9.2 |
+| P2-1 | Solid Arrowhead Terminations on Balloon Leader Lines | Distribution: Report Quality | Done | v0.9.1 |
+| P1-8b | Custom Excel FAI Template Validation Hardening & Dual-Dimension Parity | Trust: Export Fidelity | Ready | v0.9.3 |
+
+---
+
+### P1-8b: Custom Excel FAI Template Validation Hardening & Dual-Dimension Parity
+
+Status:
+
+```text
+Ready (v0.9.3)
+```
+
+Epic:
+
+```text
+Trust: Export Fidelity
+```
+
+Outcome:
+
+```text
+Custom Excel FAI template mapping prevents accidental formula overwrite and merged-cell collisions,
+accurately validates capacity against expanded occurrence counts for repeated dimensions,
+preserves dual-dimension notes on customer exports, and safely handles modal keyboard/cloud persistence boundaries.
+```
+
+Scope:
+
+- In `src/lib/faiTemplate.js`:
+  - Enhance `validateTemplateConfig` to verify target worksheet exists in workbook bytes.
+  - Detect and reject mapped table column/row ranges that intersect merged cell ranges (`!merges`) in the target sheet.
+  - Detect and reject mapped header or table cells that contain pre-existing formulas (`cell.f`), preventing formula clobbering.
+  - In `fillCustomTemplateWorkbook`, append `[Dual: ...]` reference to row notes when `item.dual` is present, matching standard Form 3 export behavior.
+- In `src/components/panels.jsx`:
+  - Update `FaiTemplateDialog` capacity validation to compute total row count including expanded occurrences (`quantity > 1`) across all drawing characteristics.
+- In `src/App.jsx`:
+  - Add `templateDialogOpen` to the keyboard shortcut handler so `Escape` dismisses the template dialog and background shortcuts are suppressed while open.
+  - Guard `handleSaveProjectTemplate` and `handleRemoveProjectTemplate` so cloud-backed projects do not inadvertently save shadow local projects into IndexedDB.
+- Verification tests in `scripts/verify-fai-template.mjs`:
+  - Deterministic checks for merged-cell rejection, formula-cell conflict rejection, unexpanded occurrence capacity checking, and dual-dimension note preservation.
+
+Out:
+
+- No external/npm dependencies.
+- No automatic cell-mapping heuristics or dynamic row expansion.
+
+Likely files:
+
+- `src/lib/faiTemplate.js`
+- `src/components/panels.jsx`
+- `src/App.jsx`
+- `scripts/verify-fai-template.mjs`
+
+Acceptance:
+
+- [ ] Templates with merged cells in the mapped inspection range are rejected with an actionable error message.
+- [ ] Templates with pre-existing formulas in mapped target cells are rejected before writing.
+- [ ] Characteristics with unexpanded repeated quantities (e.g. `3X Ø10`) count all 3 instances against template capacity in `FaiTemplateDialog`.
+- [ ] Exported custom templates include dual-dimension bracketed notes when dual callouts exist.
+- [ ] `Escape` cleanly closes `FaiTemplateDialog` without firing underlying canvas shortcuts.
+- [ ] 100% of offline verification tests and `pnpm build` pass cleanly.
+
+---
+
 ### P1-8: Uploaded Excel FAI Templates (Custom Customer Form Ingestion & UI Mapping)
+
+Status:
+
+```text
+Done (shipped in v0.9.2)
+Verification: scripts/verify-fai-template.mjs (100% PASS)
+```
 
 Epic:
 
@@ -172,6 +262,13 @@ Acceptance:
 
 ### P0-1: Verify all `getLimits` branches against known manufacturing values
 
+Status:
+
+```text
+Done (shipped in v0.9.1)
+Verification: scripts/verify-inspection-math.mjs (100% PASS)
+```
+
 Epic:
 
 ```text
@@ -208,6 +305,13 @@ Acceptance:
 - `pnpm build` passes.
 
 ### P0-2: Excel FAI workbook submission compliance check
+
+Status:
+
+```text
+Done (shipped in v0.9.1)
+Verification: scripts/verify-excel-export.mjs (100% PASS)
+```
 
 Epic:
 
@@ -247,6 +351,13 @@ Acceptance:
 
 ### P0-3: Balloon coordinate accuracy for multi-page and zoomed PDFs
 
+Status:
+
+```text
+Done (shipped in v0.9.1)
+Verification: scripts/verify-pdf-export.mjs (100% PASS)
+```
+
 Epic:
 
 ```text
@@ -281,6 +392,13 @@ Acceptance:
 - Multi-page drawings export balloons on the correct page.
 
 ### P0-4: AS9102 Rev C Multi-Sheet FAI Workbook Export (Forms 1, 2, and 3)
+
+Status:
+
+```text
+Done (shipped in v0.9.1)
+Verification: scripts/verify-excel-export.mjs (100% PASS)
+```
 
 Epic:
 
@@ -321,6 +439,13 @@ Acceptance:
 - 100% of Excel verification tests and full build pass cleanly.
 
 ### P0-5: Metric & Imperial Dual Dimensioning & Tolerance Conversion
+
+Status:
+
+```text
+Done (shipped in v0.9.1)
+Verification: scripts/verify-unit-parsing.mjs (100% PASS)
+```
 
 Epic:
 
@@ -364,6 +489,13 @@ Acceptance:
 - 100% of offline verification tests and production build pass.
 
 ### P0-6: Non-Standard Angle Unit Conversions (Degrees-Minutes-Seconds)
+
+Status:
+
+```text
+Done (shipped in v0.9.1)
+Verification: scripts/verify-inspection-math.mjs (100% PASS)
+```
 
 Epic:
 
@@ -412,6 +544,13 @@ Acceptance:
 
 ### P1-1: Text capture reliability for rotated and small PDF text
 
+Status:
+
+```text
+Done (shipped in v0.9.1)
+Verification: scripts/verify-text-capture.mjs (100% PASS)
+```
+
 Epic:
 
 ```text
@@ -446,6 +585,13 @@ Acceptance:
 - Non-selectable raster text is not affected (OCR mode covers that path).
 
 ### P1-2: Mobile and tablet layout for field inspection use
+
+Status:
+
+```text
+Done (shipped in v0.9.1)
+Verification: scripts/verify-responsive-layout.mjs (100% PASS)
+```
 
 Epic:
 
@@ -483,6 +629,13 @@ Acceptance:
 - Inspector panel is reachable without horizontal scroll on iPad-width screens.
 
 ### P1-3: OCR Preprocessing & Contrast Enhancement for Faint Scans and Inverted Title Blocks
+
+Status:
+
+```text
+Done (shipped in v0.9.1)
+Verification: scripts/verify-ocr-preprocessing.mjs (100% PASS)
+```
 
 Epic:
 
@@ -524,6 +677,13 @@ Acceptance:
 - Node offline verification suite and production build pass with 100% success.
 
 ### P1-4: Keyboard Shortcuts & High-Throughput Quick-Ballooning
+
+Status:
+
+```text
+Done (shipped in v0.9.1)
+Verification: scripts/verify-keyboard-shortcuts.mjs (100% PASS)
+```
 
 Epic:
 
@@ -570,6 +730,13 @@ Acceptance:
 - 100% of offline verification tests and production build pass.
 
 ### P1-5: Batch Sample Auto-Fill & Clipboard Pasting
+
+Status:
+
+```text
+Done (shipped in v0.9.1)
+Verification: scripts/verify-batch-samples.mjs (100% PASS)
+```
 
 Epic:
 
@@ -621,6 +788,13 @@ Acceptance:
 
 ### P1-6: Multi-Drawing Batch PDF Export
 
+Status:
+
+```text
+Done (shipped in v0.9.1)
+Verification: scripts/verify-batch-pdf-export.mjs (100% PASS)
+```
+
 Epic:
 
 ```text
@@ -666,6 +840,13 @@ Acceptance:
 - 100% of offline verification test suites and production build pass cleanly.
 
 ### P1-7: Multi-Drawing FAI Report Rollup (Combined AS9102 Multi-Part Package)
+
+Status:
+
+```text
+Done (shipped in v0.9.1)
+Verification: scripts/verify-batch-excel-export.mjs (100% PASS)
+```
 
 Epic:
 
@@ -715,6 +896,13 @@ Acceptance:
 - 100% of offline verification test suites and production build pass cleanly.
 
 ### P2-1: Solid Arrowhead Terminations on Balloon Leader Lines
+
+Status:
+
+```text
+Done (shipped in v0.9.1)
+Verification: scripts/verify-pdf-export.mjs (100% PASS)
+```
 
 Epic:
 

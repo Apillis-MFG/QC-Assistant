@@ -11,16 +11,23 @@ QC Assistant proves speed and precision for engineering drawing ballooning and f
 
 ## Decision
 
-This repository is a zero-backend, browser-first application. Keep core application state flat and centralized in `src/App.jsx`, keep inspection math pure and deterministic in `src/exporters.js`, and keep all design tokens in `src/styles.css`. Cloud synchronization (`supabase/`) is strictly opt-in per project; never make authentication or remote network access a requirement for the default local workflow. Build the smallest verifiable slices that directly improve trust, distribution, or activation.
+This repository is a zero-backend, browser-first application. Keep core application state flat and centralized in `src/App.jsx`, keep inspection math pure and deterministic in `src/lib/exporters.js`, and keep all design tokens in `src/styles.css`. Cloud synchronization (`supabase/`, `src/lib/supabaseStore.js`) is strictly opt-in per project; never make authentication or remote network access a requirement for the default local workflow. Build the smallest verifiable slices that directly improve trust, distribution, or activation.
 
 ## Repository boundaries
 
-- `src/` owns UI layout, drawing canvas interaction, OCR/text capture, and characteristic table management.
-- `src/App.jsx` owns all core application state, event handlers, and drawing-to-table coordination.
-- `src/exporters.js` owns deterministic inspection math (`getLimits`, `getStatus`), PDF balloon coordinate transformation, and Excel FAI workbook export.
+- `src/` owns UI layout, routing, drawing canvas interaction, OCR/text capture, and characteristic table management.
+- `src/App.jsx` owns core application state, routes, event handlers, and drawing-to-table coordination.
+- `src/lib/` owns pure mathematical engines and data persistence:
+  - `src/lib/exporters.js` owns deterministic inspection math (`getLimits`, `getStatus`), PDF balloon coordinate transformation, and Excel AS9102 workbook exports.
+  - `src/lib/faiTemplate.js` owns customer Excel FAI template validation, inspection, and filling.
+  - `src/lib/occurrences.js` owns repeated-dimension instance management (`5.1..5.N`).
+  - `src/lib/projectStore.js` owns IndexedDB local persistence (`qca_projects_v1`).
+  - `src/lib/ocrPreprocessing.js` owns contrast stretching and adaptive binarization for OCR.
+  - `src/lib/utils.js` and `src/lib/dimensionExtractor.js` own dimension parsing, conversion, and tolerance detection.
+  - `src/lib/sampleData.js` owns demo characteristics and seed state.
+- `src/components/` owns modular UI components (`panels.jsx`, `widgets.jsx`, `AuthScreens.jsx`, `OnboardingScreen.jsx`).
+- `src/context/` owns opt-in cloud authentication state (`AuthContext.jsx`).
 - `src/styles.css` owns global design tokens (`:root` variables), layout, and component styling.
-- `src/sampleData.js` owns demo characteristics and seed state.
-- `src/lib/` and `src/context/` own opt-in cloud synchronization and local storage persistence.
 - `docs/` owns product specifications, user guides, implementation plans, and delivery contracts.
 - `SPEC.md` owns the execution spec, risk-aligned epics, and active issue backlog.
 - `WORKFLOW.md` owns the mandatory GitHub issue/project loop and verification contracts.
@@ -32,8 +39,8 @@ This repository is a zero-backend, browser-first application. Keep core applicat
 
 - Keep inspection math conservative: when limits cannot be determined or are missing, default status to `OPEN`, never `OK`.
 - The default workflow must remain 100% offline and client-side (no login, no network fetch required).
-- Preserve the centralized state architecture in `src/App.jsx`. Do not introduce context providers, reducers, or routing libraries without explicit user request.
-- Keep inspection math in `src/exporters.js` pure, deterministic, and free of React or DOM dependencies.
+- Preserve the centralized state architecture in `src/App.jsx`. Do not introduce reducers or extra external state management libraries without explicit user request.
+- Keep inspection math in `src/lib/exporters.js` pure, deterministic, and free of React or DOM dependencies.
 - Use CSS tokens from `src/styles.css` (`var(--token)`). Do not inline colors, typography, or arbitrary spacing values.
 - Balloon coordinate mapping must preserve exact relative positions (`0..1` fractions) and translate faithfully to PDF points across all page orientations and aspect ratios.
 - Do not add npm dependencies without documenting bundle size impact and getting user approval.
@@ -51,7 +58,7 @@ Push back when a task increases scope without improving trust, distribution, or 
 
 ## Inspection & Export scope
 
-Inspection-specific rules apply across `src/exporters.js`, drawing canvas ballooning, and table entry:
+Inspection-specific rules apply across `src/lib/exporters.js`, `src/lib/faiTemplate.js`, drawing canvas ballooning, and table entry:
 
 - **Coordinate mapping**: Balloons store normalized `(x, y)` fractions (`0..1`) relative to the drawing canvas. `exportBalloonedPdf` must translate these accurately to PDF points using `page.getSize()`.
 - **Data shape integrity**: All characteristics must follow the `createCharacteristic` factory in `App.jsx`. When fields change, update `sampleData.js` and `exporters.js` synchronously.
