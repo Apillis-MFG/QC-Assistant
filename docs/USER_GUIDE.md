@@ -127,6 +127,8 @@ When a drawing specifies repeated requirements (e.g. `3X Ø10 ±0.1`):
 4. All instances share the requirement definition (nominal, tolerance, unit, method), but keep independent sample measurements, notes, and balloon coordinates.
 5. In Excel exports, each occurrence occupies its own numbered row (`5.1`, `5.2`, `5.3`).
 
+![Repeated dimensions: expanding 4X Ø8.00 creates linked sub-balloons 1.1–1.4 with guided placement](assets/screenshots/18-repeated-dimensions.png)
+
 - **Single-click** a balloon to select it (its details appear in "Selected Balloon" on the right).
 - **Double-click**, or press `E` while selected, opens a small popover to **reassign its number** or **delete** it.
 - **Add Row** (in the "Build Controls" section of the inspector) creates a characteristic with no balloon yet placed on the drawing — useful for notes/visual checks that don't map to a specific dimension.
@@ -192,6 +194,8 @@ To accelerate high-throughput data entry:
 - **Fill Nominals**: One-click action in the table header to populate empty sample cells with their nominal dimension values (and "OK" for visual/note requirements).
 - **Fill Visuals OK**: Sets "OK" for all visual and note requirements in one pass without altering numeric dimension measurements.
 - **Clear Samples**: Resets all recorded inspection measurements to empty while preserving drawing balloons and requirement definitions.
+
+![Characteristics table batch sample actions](assets/screenshots/21-batch-sample-actions.png)
 
 ---
 
@@ -287,6 +291,16 @@ When a customer requires their proprietary FAI form format:
 5. Define table start/end rows with live capacity validation.
 6. Map characteristic columns (Balloon #, Nominal, Tolerance, USL, LSL, Status, Samples #1..#N).
 7. Save the template. The export button dynamically displays `Excel (<Template Name>)`. Clicking it fills a fresh copy of the customer's original form with all limits and statuses. A secondary **Default** button remains available to export the standard AS9102 workbook at any time.
+
+![Customer Excel FAI Template dialog](assets/screenshots/19-customer-template-dialog.png)
+
+**Template Validation & Protection (v0.9.3):**
+- **Formula Overwrite Protection**: The engine detects pre-existing Excel formulas (`=CONCATENATE(...)`, `=IF(...)`, etc.) in target header and table cells and blocks mapping to prevent clobbering customer workbook logic.
+- **Merged-Cell Collision Guards**: Inspection table rows cannot intersect merged cell ranges. Header targets that intersect merged areas must map directly to the top-left cell of the merge.
+- **Repeated-Dimension Capacity Checks**: Capacity validation calculates total required rows including expanded occurrences (`quantity > 1`), ensuring a `3X` dimension properly reserves 3 rows in the customer form.
+- **Dual-Dimension Notes Parity**: Exports into custom templates preserve bracketed secondary dimension callouts (`[Dual: ...]`) in the mapped notes column, matching standard Form 3 behavior.
+
+![Export controls: customer template export with Default fallback](assets/screenshots/20-template-export-toolbar.png)
 
 ### Multi-Drawing Project Rollup Exports
 For projects containing multiple drawings:

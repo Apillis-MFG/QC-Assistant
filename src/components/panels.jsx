@@ -44,13 +44,18 @@ export function FullUserGuide() {
         <h4>Capturing Text &amp; OCR</h4>
         <GuideFigure src="/guide/11-text-select-active.png" alt="Text Select tool active in the workspace" />
         <p>The <strong>Text Select</strong> tool (<kbd>T</kbd>) pulls text straight off the PDF into "Selected PDF Text." Click embedded text directly, or drag a rectangle over raster/scanned text to run on-device OCR instead. Then send the captured text to Description, Drawing No, Rev, Requirement, Tolerance, or Notes.</p>
+        <p><strong>Adaptive OCR &amp; Inversion:</strong> Scanned drawings automatically run through client-side contrast stretching and perimeter-based inversion, reliably capturing faint blueprints and dark/inverted CAD title blocks.</p>
+        <p><strong>Dual Dimensions:</strong> Dimensions containing secondary bracketed callouts (e.g. <code>25.40 [1.000] ±0.10 [±.004]</code>) automatically extract both primary and secondary envelopes with automatic unit inference.</p>
+        <p><strong>Angular Callouts:</strong> Degrees-Minutes-Seconds callouts (e.g. <code>45° 30' ±15'</code>) parse accurately into decimal degree limit envelopes while preserving standard DMS display notation.</p>
       </div>
 
       <div className="guide-topic">
         <h4>Ballooning</h4>
-        <p>Select <strong>Balloon</strong> (<kbd>B</kbd>) and click a dimension callout. QC Assistant snaps to the nearest recognized dimension text and pre-fills the nominal/tolerance when it can parse them — e.g. <code>42.50 ±0.10</code>, <code>Ø12.00 +0.05/-0.02</code>, <code>90° ±0.5°</code>. Drag the circle or leader target to adjust placement afterward.</p>
+        <p>Select <strong>Balloon</strong> (<kbd>B</kbd>) and click a dimension callout. QC Assistant snaps to the nearest recognized dimension text and pre-fills the nominal/tolerance when it can parse them — e.g. <code>42.50 ±0.10</code>, <code>Ø12.00 +0.05/-0.02</code>, <code>90° ±0.5°</code>. The balloon is placed with a solid vector arrowhead pointing directly at the dimension feature target; drag the circle or leader target to adjust placement afterward.</p>
         <GuideFigure src="/guide/08-balloons-placed.png" alt="Three balloons manually placed on the drawing" />
         <p>Single-click selects a balloon; double-click or <kbd>E</kbd> opens reassign/delete. <strong>Add Row</strong> creates a characteristic with no balloon placed yet. <strong>Demo Rows</strong> seeds 7 examples. <strong>Clear Drawing Data</strong> / <strong>Clear All Balloons</strong> wipe with confirmation.</p>
+        <p><strong>Repeated Dimensions &amp; Occurrences:</strong> When a requirement specifies multiple instances (e.g. <code>3X Ø10 ±0.1</code>), QC Assistant detects the quantity. Click <strong>Create 3 instances</strong> to expand into linked sub-balloons <code>5.1</code>, <code>5.2</code>, and <code>5.3</code>. Guided placement directs you to click each feature target sequentially (press <kbd>Esc</kbd> to pause placement). All instances share nominal and tolerance definitions, but maintain independent sample measurements, notes, and drawing balloon coordinates.</p>
+        <GuideFigure src="/guide/18-repeated-dimensions.png" alt="Repeated dimension expanded into sub-balloons with guided sequential placement" caption="Repeated dimensions: expanding 4X Ø8.00 creates linked sub-balloons 1.1–1.4 with guided placement." />
       </div>
 
       <div className="guide-topic">
@@ -88,6 +93,10 @@ export function FullUserGuide() {
       <div className="guide-topic">
         <h4>Characteristics Table</h4>
         <p>Every balloon has a matching row. Type sets a default Method (dimension→DC, gdt→CMM, note/visual→VS) unless you've chosen one already. USL/LSL compute automatically from Nominal + Tolerance. Sample columns follow the chosen sample count (1, 3, 5, 10, or custom). The table stays sorted by balloon number and stays read-only (except samples/Notes) in Measurement mode.</p>
+        <p><strong>Batch Data Entry &amp; Pasting:</strong> Copy a 1D row, 1D column, or 2D matrix of numbers from Excel or Google Sheets, click any sample cell, and press <kbd>Ctrl+V</kbd> (or <kbd>Cmd+V</kbd>) to paste across rows and sample columns automatically.</p>
+        <p><strong>Batch Auto-Fill Actions:</strong> In the table header, click <strong>Fill Nominals</strong> to populate empty sample cells with target nominals (and "OK" for visual checks), <strong>Fill Visuals OK</strong> to mark all visual/note items passed, or <strong>Clear Samples</strong> to wipe recorded measurements while preserving requirement definitions.</p>
+        <p><strong>Fast Keyboard Navigation:</strong> Press <kbd>D</kbd> to rapidly cycle requirement type, <kbd>↑</kbd> / <kbd>↓</kbd> (or <kbd>J</kbd> / <kbd>K</kbd>) to navigate rows with auto-scroll, and <kbd>1</kbd>–<kbd>9</kbd> to quick-assign balloon numbers.</p>
+        <GuideFigure src="/guide/21-batch-sample-actions.png" alt="Characteristics table with batch auto-fill actions and sample values" caption="Characteristics table: batch sample entry with Fill Nominals, Fill Visuals OK, and 2D clipboard grid paste." />
       </div>
 
       <div className="guide-topic">
@@ -149,13 +158,19 @@ export function FullUserGuide() {
       <div className="guide-topic">
         <h4>Settings</h4>
         <GuideFigure src="/guide/13-settings-dialog.png" alt="Settings dialog with a live balloon preview" />
-        <p>Toolbar button style (Icon + Text or Icon Only), balloon diameter, number font size, and leader length — all save automatically and follow you across every project and drawing.</p>
+        <p>Open <strong>Settings</strong> (gear icon) to tune balloon and toolbar appearance: toolbar button style (Icon + Text or Icon Only), balloon diameter (16–48px), number font size (8–18px), font color (default Black), and font family (Times New Roman, Arial, or Courier).</p>
+        <p><strong>Leader Lines:</strong> Toggle leader lines on or off. When hidden, balloons snap directly onto features without leader lines or target markers. Terminations render with solid vector arrowheads pointing directly at the dimension feature.</p>
       </div>
 
       <div className="guide-topic">
         <h4>Exporting</h4>
         <GuideFigure src="/guide/16-export-toolbar.png" alt="Export buttons enabled in the toolbar" />
-        <p><strong>PDF</strong> draws a red circle, leader line, and balloon number over each requirement's target on the original drawing. <strong>Excel</strong> exports a "QC FAI" workbook: header block, one row per characteristic with ID #, Type, Unit, Nominal, Tolerance, USL, LSL, every sample, computed MIN/MAX, Method, Status, and Notes, plus a Method legend. Both reflect exactly what's in the table the moment you click.</p>
+        <p><strong>PDF Export:</strong> Draws red numbered circles, leader lines, and solid vector arrowheads over each requirement's target on the original drawing across all pages. Filename: <code>&lt;drawing&gt;_ballooned.pdf</code>.</p>
+        <p><strong>Standard AS9102 Rev C Excel Report:</strong> Generates a full AS9102 workbook including <strong>Form 1</strong> (Part Number Accountability &amp; disposition summary), <strong>Form 2</strong> (Product Process Accountability for materials and processes), and <strong>Form 3</strong> (Characteristic Accountability with limits, samples, MIN/MAX calculations, methods, and status rollups).</p>
+        <p><strong>Customer Blank Excel Templates (.xlsx):</strong> When a customer requires their proprietary form format, click <strong>Template</strong> to upload their blank <code>.xlsx</code> workbook, select the inspection worksheet, map header cells (A1 notation), and set table column targets. The engine validates worksheet existence, blocks overwriting pre-existing formula cells (e.g. <code>=CONCATENATE</code>, <code>=IF</code>), prevents merged-cell collisions in inspection rows, and checks table capacity against total expanded occurrences for repeated dimensions. Exports preserve dual-dimension bracketed notes (<code>[Dual: ...]</code>). A secondary <strong>Default</strong> button remains available to export standard AS9102 workbooks anytime.</p>
+        <GuideFigure src="/guide/19-customer-template-dialog.png" alt="Customer Excel FAI Template mapping dialog with live capacity validation" caption="Customer Excel FAI Template dialog: worksheet selection, A1 cell mapping, and live table capacity checks." />
+        <p><strong>Multi-Drawing Project Rollups:</strong> When a project contains multiple drawings, use <strong>All PDFs</strong> to merge all ballooned drawings into a single multi-page PDF package, or <strong>All Excel</strong> to export a master project workbook with Project Form 1, Form 2, a consolidated Master Characteristics sheet, and individual drawing Form 3 tabs.</p>
+        <GuideFigure src="/guide/20-template-export-toolbar.png" alt="Workspace toolbar with customer template export, default AS9102 fallback, and multi-drawing rollups" caption="Export controls: single-click customer template export with Default fallback and multi-drawing package rollups." />
       </div>
 
       <div className="guide-topic">
@@ -163,9 +178,11 @@ export function FullUserGuide() {
         <ul>
           <li><strong>"Local storage quota exceeded"</strong> — your browser's storage for this site is full; delete unused drawings/projects or use a smaller PDF.</li>
           <li><strong>A requirement stays OPEN</strong> — either not every sample is filled in, or the tolerance couldn't be resolved. Check the Tolerance Table and the row's +Tol/−Tol fields.</li>
+          <li><strong>Template capacity error</strong> — your template table row capacity is smaller than the required characteristics (including expanded occurrences for repeated dimensions like <code>3X</code>). Increase the table end row.</li>
+          <li><strong>Template formula or merged-cell error</strong> — template inspection rows cannot contain merged cells, and mapped cells cannot overwrite pre-existing formulas. Map to unmerged data cells.</li>
           <li><strong>Auto Balloon found nothing, or found garbage</strong> — it only searches inside the rectangle you drag; try a tighter or looser box, remove bad candidates before committing, or place that one manually.</li>
           <li><strong>Can't edit a requirement in Measurement mode</strong> — by design, so measurement entry can't change what's being measured. Switch to Edit mode.</li>
-          <li><strong>Text Select won't pick up some text</strong> — that text is a raster scan, not embedded PDF text. Drag a rectangle over it to run OCR instead.</li>
+          <li><strong>Text Select won't pick up some text</strong> — that text is a raster scan, not embedded PDF text. Drag a rectangle over it to run adaptive OCR instead.</li>
         </ul>
       </div>
     </div>
