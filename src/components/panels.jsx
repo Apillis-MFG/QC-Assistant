@@ -1,8 +1,10 @@
-import { memo, useMemo } from "react";
-import { X, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft } from "lucide-react";
+import { balloonLabel, compareOccurrences, MAX_OCCURRENCE_QUANTITY } from "../lib/occurrences.js";
+import { memo, useMemo, useRef, useCallback, useState, useEffect } from "react";
+import { X, Plus, FilePlus2, Circle, Trash2, RotateCcw, ArrowLeft, Sparkles, CheckSquare, Download, Save, FileSpreadsheet, Settings2, Upload, AlertCircle, CheckCircle2 } from "lucide-react";
 import { getLimits, getStatus } from "../lib/exporters.js";
-import { methods, types, APP_VERSION } from "../lib/constants.js";
-import { formatBytes, formatDate } from "../lib/utils.js";
+import { inspectTemplateWorkbook, validateTemplateConfig, normalizeFaiTemplate } from "../lib/faiTemplate.js";
+import { methods, types, APP_VERSION, getDefaultUnit, normalizeUnitSystem, CHARACTERISTIC_UNITS, hasCharacteristicUnit } from "../lib/constants.js";
+import { formatBytes, formatDate, parseClipboardGrid, computePastedSampleUpdates } from "../lib/utils.js";
 import { DrawingNavToolbar, PdfUploadPrompt, LeaderLayer, Field, HelpMenu } from "./widgets.jsx";
 import { BALLOON_FONT_FAMILIES } from "../lib/balloonSettings.js";
 
@@ -34,6 +36,7 @@ export function FullUserGuide() {
         <GuideFigure src="/guide/04-workspace-upload-prompt.png" alt="Upload a drawing PDF prompt" />
         <GuideFigure src="/guide/07-workspace-drawing-layout.png" alt="Drawing-only layout with the PDF loaded, no balloons yet" caption="Drawing-only layout: canvas plus inspector, no table." />
         <p><strong>Edit</strong> mode has the full toolset. <strong>Measurement</strong> mode locks balloon positions and requirement definitions — only sample values and notes stay editable, so nobody can move a balloon mid-inspection.</p>
+        <p><strong>Drawing units</strong> selects Metric (mm) or Inch (in) for new rows. Each drawing remembers its choice. Changing it preserves existing row units, values, tolerances, and samples.</p>
         <p><strong>Layout</strong> (Edit mode) arranges the canvas, table, and inspector: Drawing only, Table only, Side by Side, or Stacked (default). Panel sizes are resizable and remembered.</p>
       </div>
 
@@ -90,6 +93,7 @@ export function FullUserGuide() {
       <div className="guide-topic">
         <h4>Tolerance Table</h4>
         <p>Open <strong>Tolerance</strong> in the toolbar. QC Assistant reads the drawing's title-block note (e.g. <code>X.XX = ±0.05</code>, <code>X° = ±0.5°</code>) and offers to apply it in bulk, keyed by decimal-place count (angles only match dimensions whose unit contains ° or "deg").</p>
+        <p>After switching drawing units, confirm the linear table applies to the new unit before automatic fill resumes. Bulk fill only affects blank tolerances on matching-unit rows. Confirmation does not convert numbers or update existing tolerances.</p>
         <GuideFigure src="/guide/12-tolerance-table.png" alt="Tolerance table with auto-detected linear and angular tolerances" />
         <p><strong>Fill N blank dimensions</strong> / <strong>Apply all rows</strong> only ever fill blanks — an existing tolerance is never overwritten. Override any row, or <strong>Reset</strong> back to auto-detected.</p>
       </div>
@@ -175,8 +179,14 @@ export function GuidePage({ onBack }) {
     ["V", "Select tool"],
     ["H", "Pan tool"],
     ["T", "Text Select / OCR"],
-    ["E", "Edit selected balloon actions"],
-    ["Esc", "Close help, cancel selection UI"],
+    ["E", "Edit selected balloon"],
+    ["Enter", "Confirm Auto-Balloon candidates / finish edit"],
+    ["Del / ⌫", "Delete selected characteristic"],
+    ["D", "Cycle requirement type (dimension/GD&T/note/visual)"],
+    ["↑ / ↓ (J/K)", "Navigate characteristic rows in table"],
+    ["1–9", "Quick-set balloon number"],
+    ["+ / −", "Zoom drawing in / out"],
+    ["Esc", "Cancel current tool, dialog, or review"],
   ];
 
   return (
@@ -260,6 +270,32 @@ export function GuidePage({ onBack }) {
 }
 
 export function VersionHistoryPage({ onBack }) {
+  const releaseNotes093 = [
+    "Hardened customer Excel FAI template validation: automatically verifies target worksheet existence and prevents overwriting pre-existing formula cells.",
+    "Merged-cell collision protection: detects and rejects mapped inspection table cells intersecting merged ranges in the customer workbook.",
+    "Repeated-dimension capacity validation: template mapping checks table row capacity against expanded occurrence counts for multi-instance requirements.",
+    "Dual-dimension notes parity: custom template exports now retain and format bracketed dual callouts [Dual: ...] on characteristic notes.",
+    "Modal keyboard & cloud boundaries: Escape key dismisses the template dialog safely; cloud projects are guarded against inadvertent shadow IndexedDB writes.",
+  ];
+
+  const releaseNotes092 = [
+    "Added support for uploaded customer-specific blank Excel FAI templates (.xlsx).",
+    "Interactive FAI Template Mapping dialog: upload blank customer workbooks, select worksheets, map header cells (A1 notation), define table bounds, and map characteristic/sample columns.",
+    "Real-time validation engine: checks row capacity, prevents duplicate column collisions, and protects against header/table row overlaps.",
+    "Project persistence: customer templates are stored locally with the active project in IndexedDB, with instant one-click export into the customer's exact format.",
+    "Added fallback 'Default' export button alongside custom template export so standard AS9102 reports remain accessible at any time.",
+  ];
+
+  const releaseNotes091 = [
+    "AS9102 Rev C Multi-Sheet FAI Excel Workbook export with Form 1 (Part Accountability), Form 2 (Product Process Accountability), and Form 3 (Characteristic Accountability).",
+    "Multi-drawing project rollup: export all drawings to a single merged PDF package or consolidated AS9102 Excel workbook with Form 1 index and Master Characteristics sheet.",
+    "Adaptive client-side OCR contrast enhancement and binarization for faint scans and dark/inverted title blocks.",
+    "High-throughput keyboard navigation shortcuts (B, N, D, Tab, Delete, Arrow navigation) for rapid balloon placement and characteristic editing.",
+    "Batch sample auto-fill (Nominal, Midpoint, Random spread within tolerance) and tabular clipboard pasting.",
+    "Dual dimension parsing and conversions (Metric/Imperial) and non-standard angle parsing (Degrees-Minutes-Seconds).",
+    "Solid vector arrowhead terminations on balloon leader lines conforming to engineering drawing standards.",
+  ];
+
   const releaseNotes081 = [
     "Added Settings controls for the balloon number's font color (default Black) and font (Times New Roman, Arial, or Courier).",
     "The font color and font settings apply everywhere balloon numbers are drawn: the editor and exported PDFs.",
@@ -331,6 +367,30 @@ export function VersionHistoryPage({ onBack }) {
 
       <section className="help-dialog dashboard-main" aria-labelledby="version-history-title">
         <div className="help-content">
+          <div className="release-note">
+            <h3>v0.9.3</h3>
+            <ul>
+              {releaseNotes093.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="release-note">
+            <h3>v0.9.2</h3>
+            <ul>
+              {releaseNotes092.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="release-note">
+            <h3>v0.9.1</h3>
+            <ul>
+              {releaseNotes091.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
           <div className="release-note">
             <h3>v0.8.1</h3>
             <ul>
@@ -452,6 +512,7 @@ export function ProjectDashboard({
   onOpenGuide,
   onOpenUserGuide,
   onOpenVersionHistory,
+  onShareProject,
 }) {
   return (
     <div className="dashboard-shell">
@@ -468,7 +529,7 @@ export function ProjectDashboard({
                 onOpenVersionHistory={onOpenVersionHistory}
               />
             </div>
-            <p>Local inspection projects</p>
+            <p>Local and shared inspection projects</p>
           </div>
         </div>
         <button className="button primary" onClick={onNewProject}>
@@ -482,7 +543,7 @@ export function ProjectDashboard({
           <div className="dashboard-title">
             <div>
               <h2>Projects</h2>
-              <p>{projects.length} local projects</p>
+              <p>{projects.length} projects</p>
             </div>
           </div>
 
@@ -500,6 +561,9 @@ export function ProjectDashboard({
                       <h3>
                         {project.name}
                         {project.code ? <span className="project-card-code">{project.code}</span> : null}
+                        <span className={`status mini ${project.kind === "cloud" ? "ok" : ""}`}>
+                          {project.kind === "cloud" ? "Shared" : "Local"}
+                        </span>
                       </h3>
                       <p>
                         {project.drawingCount} drawings · {formatBytes(project.totalBytes)} · Updated {formatDate(project.updatedAt)}
@@ -510,6 +574,9 @@ export function ProjectDashboard({
                     <button className="button primary" onClick={() => onOpenProject(project.id)}>Open</button>
                     <button className="small-button project-action add" onClick={() => onManageProject(project.id)}>Manage</button>
                     <button className="small-button project-action add" onClick={() => onRenameProject(project)}>Edit Name</button>
+                    {project.kind !== "cloud" && onShareProject ? (
+                      <button className="small-button project-action add" onClick={() => onShareProject(project)}>Share...</button>
+                    ) : null}
                     <button className="small-button project-action delete-project" onClick={() => onDeleteProject(project)}>Delete Project</button>
                   </div>
                 </article>
@@ -610,6 +677,9 @@ export function ProjectDetail({
   onAddDrawing,
   onRenameDrawing,
   onDeleteDrawing,
+  onExportAllDrawingsPdf,
+  onExportAllDrawingsExcel,
+  onOpenTemplateDialog,
   drawingDialog,
   onDrawingDialogChange,
   onDrawingDialogSubmit,
@@ -617,6 +687,12 @@ export function ProjectDetail({
   onOpenGuide,
   onOpenUserGuide,
   onOpenVersionHistory,
+  shares = [],
+  shareEmail = "",
+  shareStatus = "idle",
+  onShareEmailChange,
+  onInviteVendor,
+  onRevokeShare,
 }) {
   return (
     <div className="dashboard-shell">
@@ -676,9 +752,69 @@ export function ProjectDetail({
                   Save
                 </button>
               </div>
+
+              <div className="template-info-box">
+                <div className="template-info-text">
+                  <span className="template-info-label">Customer FAI Template</span>
+                  <span className="template-info-value">
+                    {project?.faiTemplate ? project.faiTemplate.name : "None (Standard AS9102 Report)"}
+                  </span>
+                </div>
+                {onOpenTemplateDialog ? (
+                  <button type="button" className="button secondary" onClick={onOpenTemplateDialog}>
+                    <FileSpreadsheet size={15} />
+                    {project?.faiTemplate ? "Configure Template" : "Upload Template"}
+                  </button>
+                ) : null}
+              </div>
             </div>
           )}
         </section>
+
+        {ready && project?.kind === "cloud" ? (
+          <section className="dashboard-panel">
+            <div className="dashboard-title">
+              <div>
+                <h2>Sharing</h2>
+                <p>Invite a vendor to view and fill in this project.</p>
+              </div>
+            </div>
+
+            <form className="project-detail-form" onSubmit={onInviteVendor}>
+              <div className="project-detail-fields">
+                <Field label="Vendor Email" type="email" value={shareEmail} onChange={onShareEmailChange} wide />
+              </div>
+              <div className="dialog-actions">
+                <button type="submit" className="button primary" disabled={!shareEmail.trim() || shareStatus === "sending"}>
+                  {shareStatus === "sending" ? "Inviting..." : "Invite Vendor"}
+                </button>
+              </div>
+            </form>
+
+            {shares.length ? (
+              <div className="project-list">
+                {shares.map((share) => (
+                  <article key={share.id} className="project-card">
+                    <div className="project-card-main">
+                      <div>
+                        <h3>{share.partner_org?.name || "Vendor"}</h3>
+                        <p>
+                          {share.can_create_balloons ? "Can add balloons" : "Read-only balloons"} ·{" "}
+                          {share.can_edit_measurements ? "Can enter measurements" : "Read-only measurements"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="project-card-actions">
+                      <button className="small-button project-action delete-project" onClick={() => onRevokeShare(share.id)}>Revoke</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p>Not shared with any vendor yet.</p>
+            )}
+          </section>
+        ) : null}
 
         <section className="dashboard-panel">
           <div className="dashboard-title">
@@ -686,11 +822,35 @@ export function ProjectDetail({
               <h2>Drawings</h2>
               <p>{drawings.length} drawings</p>
             </div>
-            <label className="small-button project-action add file-button">
-              <Plus size={14} />
-              Add Drawing
-              <input type="file" accept="application/pdf" onChange={onAddDrawing} />
-            </label>
+            <div className="project-title-actions">
+              {drawings.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    className="small-button project-action"
+                    onClick={onExportAllDrawingsPdf}
+                    title="Export all drawings in this project as a combined ballooned PDF package"
+                  >
+                    <Download size={14} />
+                    Export All PDFs
+                  </button>
+                  <button
+                    type="button"
+                    className="small-button project-action"
+                    onClick={onExportAllDrawingsExcel}
+                    title="Export all drawings in this project as a consolidated AS9102 FAI Excel workbook"
+                  >
+                    <Save size={14} />
+                    Export All Excel
+                  </button>
+                </>
+              )}
+              <label className="small-button project-action add file-button">
+                <Plus size={14} />
+                Add Drawing
+                <input type="file" accept="application/pdf" onChange={onAddDrawing} />
+              </label>
+            </div>
           </div>
 
           {drawings.length ? (
@@ -778,6 +938,9 @@ export function MeasurementWorkspace({
   onSelect,
   onChange,
   onSampleChange,
+  onBatchSampleChange,
+  onAutoFill,
+  onClearSamples,
   onSampleCountChange,
   balloonDiameter = 24,
   showLeaderLine = true,
@@ -824,15 +987,15 @@ export function MeasurementWorkspace({
               {currentPageBalloons.map((item) => (
                 <button
                   key={item.id}
-                  className={`balloon measurement-balloon ${selectedId === item.id ? "selected" : ""}`}
-                  style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%` }}
+                  className={`balloon ${balloonLabel(item).length > 3 ? "long-label" : ""} measurement-balloon ${selectedId === item.id ? "selected" : ""}`}
+                  style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, "--balloon-label-length": balloonLabel(item).length }}
                   onClick={(event) => {
                     event.stopPropagation();
                     onSelect(item.id);
                   }}
-                  title={`Select balloon ${item.balloonNo}`}
+                  title={`Select balloon ${balloonLabel(item)}`}
                 >
-                  {item.balloonNo}
+                  {balloonLabel(item)}
                 </button>
               ))}
             </div>
@@ -874,6 +1037,38 @@ export function MeasurementWorkspace({
               />
             </div>
           </label>
+          <div className="measurement-actions">
+            <button
+              type="button"
+              className="small-button secondary"
+              onClick={() => onAutoFill?.("nominal")}
+              disabled={!characteristics.length}
+              title="Auto-fill empty sample cells with nominal values (or OK for visual/notes)"
+            >
+              <Sparkles size={13} />
+              Fill Nominals
+            </button>
+            <button
+              type="button"
+              className="small-button secondary"
+              onClick={() => onAutoFill?.("visuals-ok")}
+              disabled={!characteristics.length}
+              title="Auto-fill empty sample cells for visual and note requirements with OK"
+            >
+              <CheckSquare size={13} />
+              Fill Visuals OK
+            </button>
+            <button
+              type="button"
+              className="small-button secondary"
+              onClick={() => onClearSamples?.()}
+              disabled={!characteristics.some((item) => Object.keys(item.samples || {}).length > 0)}
+              title="Clear all recorded sample measurements"
+            >
+              <RotateCcw size={13} />
+              Clear Samples
+            </button>
+          </div>
           <span className="mode-chip">Balloon geometry locked</span>
         </div>
 
@@ -886,6 +1081,7 @@ export function MeasurementWorkspace({
           onSelect={onSelect}
           onChange={onChange}
           onSampleChange={onSampleChange}
+          onBatchSampleChange={onBatchSampleChange}
         />
 
         <div className="message">{message}</div>
@@ -959,10 +1155,94 @@ function ToleranceInput({ value, onChange }) {
   );
 }
 
-export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampleChange }) {
+function UnitSelect({ item, readOnly = false, onChange }) {
+  const hasUnit = hasCharacteristicUnit(item.type);
+  const unit = hasUnit ? (item.unit ?? "") : "";
+  const units = unit && !CHARACTERISTIC_UNITS.includes(unit)
+    ? [unit, ...CHARACTERISTIC_UNITS]
+    : CHARACTERISTIC_UNITS;
+  return (
+    <select
+      value={unit}
+      disabled={readOnly || !hasUnit}
+      aria-label={`Unit for balloon ${balloonLabel(item)}`}
+      onChange={readOnly || !hasUnit ? undefined : (event) => onChange(event.target.value)}
+    >
+      <option value="">—</option>
+      {hasUnit ? units.map((value) => <option key={value} value={value}>{value}</option>) : null}
+    </select>
+  );
+}
+
+function NominalInput({ value, disabled, onChange }) {
+  const initialValue = useRef(value);
+  return (
+    <input
+      value={value}
+      disabled={disabled}
+      onFocus={() => { initialValue.current = value; }}
+      onChange={disabled ? undefined : (event) => onChange({ nominal: event.target.value, applyDefaultTolerance: false })}
+      onBlur={disabled ? undefined : (event) => {
+        if (event.target.value !== String(initialValue.current ?? "")) onChange({ nominal: event.target.value });
+      }}
+    />
+  );
+}
+
+export function BalloonEditor({
+  item,
+  sampleCount,
+  onChange,
+  onReassign,
+  onSampleChange,
+  onBatchSampleChange,
+  onAutoFillSingle,
+  onQuantity,
+  onResume,
+  cloud,
+  hasUnplaced,
+}) {
   const { usl, lsl } = getLimits(item);
+
+  const handleSamplePaste = (event, sampleIndex) => {
+    const clipboardData = event.clipboardData || window.clipboardData;
+    if (!clipboardData) return;
+    const text = clipboardData.getData("text");
+    if (!text) return;
+    const grid = parseClipboardGrid(text);
+    if (grid.length > 1 || (grid[0] && grid[0].length > 1)) {
+      event.preventDefault();
+      const flat = grid.flat();
+      const updates = {};
+      flat.forEach((val, offset) => {
+        const targetIdx = sampleIndex + offset;
+        if (targetIdx < sampleCount) {
+          updates[targetIdx] = val;
+        }
+      });
+      if (Object.keys(updates).length > 0) {
+        onBatchSampleChange?.({ [item.id]: updates });
+      }
+    }
+  };
+
   return (
     <div className="editor-grid">
+      <form className="span-2" key={`${item.groupId || item.id}-${item.quantity || 1}`} onSubmit={(event) => {
+        event.preventDefault();
+        onQuantity(item.id, Number(new FormData(event.currentTarget).get("quantity")));
+      }}>
+        <label>Quantity (feature locations per part)
+          <input name="quantity" type="number" min="1" max={MAX_OCCURRENCE_QUANTITY} step="1" defaultValue={item.quantity || 1} disabled={cloud} />
+        </label>
+        <button type="submit" className="button secondary" disabled={cloud}>
+          {item.instancesExpanded ? "Update instance count" : "Create instances"}
+        </button>
+        {cloud ? <p className="muted">Repeated dimensions are local-only until cloud occurrence support is available.</p> : null}
+        {(item.quantity || 1) > 1 && !item.instancesExpanded ? <p className="muted">Create {item.quantity} instances to inspect every location. Quantity does not change sample count.</p> : null}
+        {item.isPlaced === false ? <p className="muted">{balloonLabel(item)} is unplaced.</p> : null}
+        {!cloud && hasUnplaced ? <button type="button" className="button secondary" onClick={() => onResume(item)}>Resume placement</button> : null}
+      </form>
       <label>
         Balloon #
         <input
@@ -986,7 +1266,7 @@ export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampl
       </label>
       <label>
         Unit
-        <input value={item.unit} onChange={(event) => onChange({ unit: event.target.value })} />
+        <UnitSelect item={item} onChange={(unit) => onChange({ unit })} />
       </label>
       <label>
         Method
@@ -996,7 +1276,7 @@ export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampl
       </label>
       <label className="span-2">
         Nominal / Requirement
-        <input value={item.nominal} onChange={(event) => onChange({ nominal: event.target.value })} />
+        <NominalInput value={item.nominal} onChange={onChange} />
       </label>
       <label className="span-2">
         Tolerance
@@ -1010,11 +1290,28 @@ export function BalloonEditor({ item, sampleCount, onChange, onReassign, onSampl
         Notes
         <textarea value={item.notes} onChange={(event) => onChange({ notes: event.target.value })} />
       </label>
+      <div className="sample-stack-header span-2">
+        <span>Sample Measurements</span>
+        <button
+          type="button"
+          className="small-button secondary"
+          onClick={() => onAutoFillSingle?.(item.id)}
+          title="Fill empty samples for this balloon with nominal value (or OK for visual/notes)"
+        >
+          <Sparkles size={12} />
+          Fill {item.type === "note" || item.type === "visual" ? "OK" : "Nominal"}
+        </button>
+      </div>
       <div className="sample-stack span-2">
         {Array.from({ length: sampleCount }, (_, index) => (
           <label key={index}>
             #{index + 1}
-            <input value={item.samples[index] ?? ""} onChange={(event) => onSampleChange(index, event.target.value)} placeholder={item.type === "dimension" ? "0.000" : "OK"} />
+            <input
+              value={item.samples[index] ?? ""}
+              onChange={(event) => onSampleChange(index, event.target.value)}
+              onPaste={(event) => handleSamplePaste(event, index)}
+              placeholder={item.type === "dimension" ? "0.000" : "OK"}
+            />
           </label>
         ))}
       </div>
@@ -1031,25 +1328,40 @@ const CharacteristicRow = memo(function CharacteristicRow({
   onChange,
   onReassign,
   onSampleChange,
+  onBatchPaste,
   onDelete,
 }) {
   const { usl, lsl } = getLimits(item);
   const status = getStatus(item, sampleCount);
   const toleranceParts = parseToleranceParts(item.tolerance);
+
+  const handlePaste = (event, sampleIndex) => {
+    const clipboardData = event.clipboardData || window.clipboardData;
+    if (!clipboardData) return;
+    const text = clipboardData.getData("text");
+    if (!text) return;
+    const grid = parseClipboardGrid(text);
+    if (grid.length > 1 || (grid[0] && grid[0].length > 1)) {
+      event.preventDefault();
+      onBatchPaste?.(item.id, sampleIndex, grid);
+    }
+  };
+
   return (
     <tr
       className={selectedId === item.id ? "row-selected" : ""}
       onClick={() => onSelect(item.id)}
     >
-      {readOnly ? (
-        <td className="id-cell locked-id">{item.balloonNo}</td>
+      {readOnly || item.instancesExpanded ? (
+        <td className="id-cell locked-id">{balloonLabel(item)}{item.isPlaced === false ? <span className="muted"> Unplaced</span> : null}</td>
       ) : (
         <td className="id-cell">
+          {item.isPlaced === false ? <span className="muted"> Unplaced</span> : null}
           <input
             type="number"
             min="1"
             value={item.balloonNo}
-            aria-label={`Reassign balloon ${item.balloonNo}`}
+            aria-label={`Reassign balloon ${balloonLabel(item)}`}
             onClick={(event) => event.stopPropagation()}
             onChange={(event) => onReassign(item.id, event.target.value)}
           />
@@ -1067,13 +1379,13 @@ const CharacteristicRow = memo(function CharacteristicRow({
           {types.map((type) => <option key={type} value={type}>{type}</option>)}
         </select>
       </td>
-      <td><input value={item.unit} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { unit: event.target.value })} /></td>
-      <td><input value={item.nominal} disabled={readOnly} onChange={readOnly ? undefined : (event) => onChange(item.id, { nominal: event.target.value })} /></td>
+      <td><UnitSelect item={item} readOnly={readOnly} onChange={(unit) => onChange(item.id, { unit })} /></td>
+      <td><NominalInput value={item.nominal} disabled={readOnly} onChange={(patch) => onChange(item.id, patch)} /></td>
       <td>
         <ToleranceHalfInput
           value={toleranceParts.upper}
           disabled={readOnly}
-          label={`Upper tolerance for balloon ${item.balloonNo}`}
+          label={`Upper tolerance for balloon ${balloonLabel(item)}`}
           onChange={(upper) => onChange(item.id, { tolerance: formatTolerance(upper, toleranceParts.lower) })}
         />
       </td>
@@ -1081,7 +1393,7 @@ const CharacteristicRow = memo(function CharacteristicRow({
         <ToleranceHalfInput
           value={toleranceParts.lower}
           disabled={readOnly}
-          label={`Lower tolerance for balloon ${item.balloonNo}`}
+          label={`Lower tolerance for balloon ${balloonLabel(item)}`}
           onChange={(lower) => onChange(item.id, { tolerance: formatTolerance(toleranceParts.upper, lower) })}
         />
       </td>
@@ -1092,6 +1404,7 @@ const CharacteristicRow = memo(function CharacteristicRow({
           <input
             value={item.samples[index] ?? ""}
             onChange={(event) => onSampleChange(item.id, index, event.target.value)}
+            onPaste={(event) => handlePaste(event, index)}
             placeholder={readOnly ? (item.type === "dimension" ? "0.000" : "OK") : undefined}
           />
         </td>
@@ -1113,7 +1426,7 @@ const CharacteristicRow = memo(function CharacteristicRow({
               event.stopPropagation();
               onDelete(item.id);
             }}
-            title={`Delete balloon ${item.balloonNo}`}
+            title={`Delete balloon ${balloonLabel(item)}`}
           >
             <Trash2 size={14} />
           </button>
@@ -1133,12 +1446,25 @@ export function CharacteristicTable({
   onChange,
   onReassign,
   onSampleChange,
+  onBatchSampleChange,
   onDelete,
 }) {
   const sorted = useMemo(
-    () => characteristics.slice().sort((a, b) => a.balloonNo - b.balloonNo),
+    () => characteristics.slice().sort(compareOccurrences),
     [characteristics],
   );
+
+  const handleBatchPaste = useCallback((charId, sampleIndex, grid) => {
+    if (!onBatchSampleChange) return;
+    const updates = computePastedSampleUpdates(
+      sorted,
+      charId,
+      sampleIndex,
+      sampleCount,
+      grid,
+    );
+    onBatchSampleChange(updates);
+  }, [sorted, sampleCount, onBatchSampleChange]);
 
   if (readOnly && !activeDrawingId) {
     return (
@@ -1190,6 +1516,7 @@ export function CharacteristicTable({
               onChange={onChange}
               onReassign={onReassign}
               onSampleChange={onSampleChange}
+              onBatchPaste={handleBatchPaste}
               onDelete={onDelete}
             />
           ))}
@@ -1199,7 +1526,7 @@ export function CharacteristicTable({
   );
 }
 
-export function SettingsPage({ settings, onBack, onChange }) {
+export function SettingsPage({ settings, onBack, onChange, orgMemberships = [], user, onSignOut }) {
   const defaults = {
     diameter: 24,
     fontSize: 11,
@@ -1247,6 +1574,20 @@ export function SettingsPage({ settings, onBack, onChange }) {
         aria-labelledby="settings-title"
       >
         <div className="settings-body">
+          {user ? (
+            <div className="settings-row">
+              <p className="settings-section-title">Organization</p>
+              <p className="settings-row-desc">Signed in as {user.email}.</p>
+              {orgMemberships.map((membership) => (
+                <p key={membership.organization_id} className="settings-row-desc">
+                  {membership.organization?.name} ({membership.organization?.kind}) — {membership.role}
+                </p>
+              ))}
+              <div className="dialog-actions">
+                <button type="button" className="button secondary" onClick={onSignOut}>Sign out</button>
+              </div>
+            </div>
+          ) : null}
           {/* Toolbar Buttons */}
           <div className="settings-row">
             <p className="settings-section-title">Toolbar</p>
@@ -1518,11 +1859,12 @@ function toleranceBucketLabel(kind, places) {
   return kind === "angle" ? `${placeholder}°` : placeholder;
 }
 
-function ToleranceRow({ kind, places, autoValue, overrideValue, matchCount, onChange, onReset, onApply }) {
+function ToleranceRow({ kind, places, autoValue, savedValue, overrideValue, matchCount, onChange, onReset, onApply }) {
   const isManual = overrideValue !== undefined;
-  const value = isManual ? overrideValue : (autoValue || "");
-  const badgeText = isManual ? "Manual" : autoValue ? "Auto" : "Not detected";
-  const badgeClass = isManual ? "manual" : autoValue ? "auto" : "none";
+  const hasSaved = savedValue !== undefined;
+  const value = isManual ? overrideValue : (autoValue ?? savedValue ?? "");
+  const badgeText = isManual ? "Manual" : autoValue ? "Auto" : hasSaved ? "Saved locally" : "Not detected";
+  const badgeClass = isManual ? "manual" : autoValue ? "auto" : hasSaved ? "manual" : "none";
 
   return (
     <div className="settings-row">
@@ -1535,7 +1877,7 @@ function ToleranceRow({ kind, places, autoValue, overrideValue, matchCount, onCh
       ) : null}
       <div className="settings-row-controls tolerance-row-actions">
         <ToleranceInput value={value} onChange={onChange} />
-        {isManual ? (
+        {isManual || hasSaved ? (
           <button
             type="button"
             className="settings-reset-btn"
@@ -1563,7 +1905,10 @@ export function ToleranceTableDialog({
   open,
   onClose,
   autoTolerances,
+  savedTolerances,
   toleranceOverrides,
+  unitSystem,
+  onConfirmLinearUnit,
   onOverrideChange,
   onResetOverride,
   onApply,
@@ -1571,8 +1916,10 @@ export function ToleranceTableDialog({
 }) {
   if (!open) return null;
 
-  const linearBuckets = getToleranceBuckets(TOLERANCE_LINEAR_BASELINE, autoTolerances.linear, toleranceOverrides.linear);
-  const angleBuckets = getToleranceBuckets(TOLERANCE_ANGLE_BASELINE, autoTolerances.angle, toleranceOverrides.angle);
+  const linearBuckets = getToleranceBuckets(TOLERANCE_LINEAR_BASELINE, { ...savedTolerances.linear, ...autoTolerances.linear }, toleranceOverrides.linear);
+  const linearUnitSystem = normalizeUnitSystem(toleranceOverrides.linearUnitSystem);
+  const linearConfirmed = normalizeUnitSystem(unitSystem) === linearUnitSystem;
+  const angleBuckets = getToleranceBuckets(TOLERANCE_ANGLE_BASELINE, { ...savedTolerances.angle, ...autoTolerances.angle }, toleranceOverrides.angle);
 
   const allBuckets = [
     ...linearBuckets.map((places) => ({ kind: "linear", places })),
@@ -1580,7 +1927,7 @@ export function ToleranceTableDialog({
   ].map(({ kind, places }) => {
     const autoValue = autoTolerances[kind][places];
     const overrideValue = toleranceOverrides[kind][places];
-    const value = overrideValue !== undefined ? overrideValue : (autoValue || "");
+    const value = overrideValue !== undefined ? overrideValue : (autoValue ?? savedTolerances[kind][places] ?? "");
     return { kind, places, value, matchCount: value ? countMatches(kind, places) : 0 };
   });
   const totalApplyCount = allBuckets.reduce((sum, bucket) => sum + bucket.matchCount, 0);
@@ -1603,7 +1950,7 @@ export function ToleranceTableDialog({
         <div className="dialog-title help-title">
           <div>
             <h2 id="tolerance-title">Tolerance Table</h2>
-            <p>Auto-detected from the drawing's title block. Override a row, or fill it into every blank dimension that matches.</p>
+            <p>Defaults save in this browser for new drawings, separately for MM and IN. The drawing's title block takes priority over saved defaults. Adding a nominal fills a matching blank tolerance; you can edit it afterward.</p>
           </div>
           <button type="button" className="icon-button" onClick={onClose} aria-label="Close tolerance table">
             <X size={17} />
@@ -1612,13 +1959,23 @@ export function ToleranceTableDialog({
 
         <div className="settings-body">
           <div className="tolerance-section">
-            <h3>Linear Dimensions</h3>
+            <h3>Linear Dimensions ({getDefaultUnit(linearUnitSystem)})</h3>
+            <p className="settings-row-desc">Blank linear tolerances apply only to {getDefaultUnit(unitSystem)} rows in this drawing.</p>
+            {!linearConfirmed ? (
+              <div className="message">
+                <p>Automatic linear tolerance fill is paused. Confirm to use saved {getDefaultUnit(unitSystem)} defaults and this drawing's detected table. Saved {getDefaultUnit(linearUnitSystem)} defaults remain available. Numbers will not be converted.</p>
+                <button type="button" className="button secondary" onClick={onConfirmLinearUnit}>
+                  Confirm linear table for {getDefaultUnit(unitSystem)}
+                </button>
+              </div>
+            ) : null}
             {linearBuckets.map((places) => (
               <ToleranceRow
                 key={`linear-${places}`}
                 kind="linear"
                 places={places}
                 autoValue={autoTolerances.linear[places]}
+                savedValue={savedTolerances.linear[places]}
                 overrideValue={toleranceOverrides.linear[places]}
                 matchCount={countMatches("linear", places)}
                 onChange={(value) => onOverrideChange("linear", places, value)}
@@ -1636,6 +1993,7 @@ export function ToleranceTableDialog({
                 kind="angle"
                 places={places}
                 autoValue={autoTolerances.angle[places]}
+                savedValue={savedTolerances.angle[places]}
                 overrideValue={toleranceOverrides.angle[places]}
                 matchCount={countMatches("angle", places)}
                 onChange={(value) => onOverrideChange("angle", places, value)}
@@ -1661,6 +2019,569 @@ export function ToleranceTableDialog({
           <button type="button" className="settings-close-btn" onClick={onClose}>
             Done
           </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function FaiTemplateDialog({
+  open,
+  onClose,
+  template,
+  onSaveTemplate,
+  onRemoveTemplate,
+  characteristics = [],
+  sampleCount = 1,
+  metadata = {},
+}) {
+  const fileInputRef = useRef(null);
+  const [draft, setDraft] = useState(() => normalizeFaiTemplate(template) || {
+    name: "",
+    bytes: null,
+    byteLength: 0,
+    worksheet: "",
+    headers: { drawingNo: "", revision: "", supplier: "", description: "", sampleCount: "", overallStatus: "" },
+    table: {
+      startRow: 6,
+      endRow: 50,
+      columns: {
+        balloonNo: "A",
+        nominal: "",
+        tolerance: "",
+        usl: "",
+        lsl: "",
+        type: "",
+        unit: "",
+        method: "",
+        min: "",
+        max: "",
+        status: "M",
+        notes: "",
+        samples: [],
+      },
+    },
+  });
+  const [sheetNames, setSheetNames] = useState([]);
+  const [uploadError, setUploadError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    if (template) {
+      const norm = normalizeFaiTemplate(template);
+      setDraft(norm);
+      if (template.bytes) {
+        try {
+          const inspected = inspectTemplateWorkbook(template.bytes);
+          setSheetNames(inspected.sheetNames);
+        } catch (e) {
+          console.warn("Could not inspect existing template bytes:", e);
+        }
+      }
+    } else {
+      setDraft({
+        name: "",
+        bytes: null,
+        byteLength: 0,
+        worksheet: "",
+        headers: { drawingNo: "", revision: "", supplier: "", description: "", sampleCount: "", overallStatus: "" },
+        table: {
+          startRow: 6,
+          endRow: 50,
+          columns: {
+            balloonNo: "A",
+            nominal: "",
+            tolerance: "",
+            usl: "",
+            lsl: "",
+            type: "",
+            unit: "",
+            method: "",
+            min: "",
+            max: "",
+            status: "M",
+            notes: "",
+            samples: [],
+          },
+        },
+      });
+      setSheetNames([]);
+    }
+    setUploadError("");
+  }, [open, template]);
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      setUploadError("Only unencrypted Excel (.xlsx) workbooks are supported.");
+      return;
+    }
+    try {
+      setUploadError("");
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8 = new Uint8Array(arrayBuffer);
+      const inspected = inspectTemplateWorkbook(uint8);
+      setSheetNames(inspected.sheetNames);
+      const defaultSheet = inspected.sheetNames[0] || "";
+
+      setDraft((prev) => ({
+        ...prev,
+        name: file.name,
+        bytes: uint8,
+        byteLength: uint8.byteLength,
+        worksheet: defaultSheet,
+      }));
+    } catch (err) {
+      setUploadError(`Failed to parse workbook: ${err.message}`);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const expandedCharCount = useMemo(() => {
+    return (characteristics || []).reduce(
+      (sum, item) => sum + ((item.quantity || 1) > 1 && !item.instancesExpanded ? item.quantity : 1),
+      0,
+    );
+  }, [characteristics]);
+
+  const validation = useMemo(() => {
+    if (!draft.bytes && !draft.byteLength) {
+      return {
+        valid: false,
+        errors: ["Please upload a blank customer .xlsx workbook template."],
+        warnings: [],
+        capacity: 0,
+      };
+    }
+    return validateTemplateConfig(draft, expandedCharCount, sampleCount);
+  }, [draft, expandedCharCount, sampleCount]);
+
+  if (!open) return null;
+
+  const validSampleCount = Math.max(1, parseInt(sampleCount, 10) || 1);
+  const currentCapacity = draft.table.startRow > 0 && draft.table.endRow >= draft.table.startRow
+    ? draft.table.endRow - draft.table.startRow + 1
+    : 0;
+
+  const updateHeader = (field, val) => {
+    setDraft((prev) => ({
+      ...prev,
+      headers: { ...prev.headers, [field]: val.toUpperCase() },
+    }));
+  };
+
+  const updateCol = (field, val) => {
+    setDraft((prev) => ({
+      ...prev,
+      table: {
+        ...prev.table,
+        columns: { ...prev.table.columns, [field]: val.toUpperCase() },
+      },
+    }));
+  };
+
+  const updateSampleCol = (idx, val) => {
+    setDraft((prev) => {
+      const s = [...(prev.table?.columns?.samples || [])];
+      s[idx] = val.toUpperCase();
+      return {
+        ...prev,
+        table: {
+          ...prev.table,
+          columns: { ...prev.table.columns, samples: s },
+        },
+      };
+    });
+  };
+
+  const updateRowBound = (field, val) => {
+    const num = parseInt(val, 10) || 0;
+    setDraft((prev) => ({
+      ...prev,
+      table: {
+        ...prev.table,
+        [field]: num,
+      },
+    }));
+  };
+
+  const handleSave = () => {
+    if (!validation.valid) return;
+    onSaveTemplate(draft);
+    onClose();
+  };
+
+  const handleRemove = () => {
+    if (onRemoveTemplate) onRemoveTemplate();
+    onClose();
+  };
+
+  return (
+    <div className="dialog-backdrop help-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="settings-dialog template-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="template-dialog-title"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="dialog-title help-title">
+          <div>
+            <h2 id="template-dialog-title">Customer Excel FAI Template</h2>
+            <p>Upload a blank .xlsx workbook, map headers and characteristic columns, and save it locally for this project.</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close template dialog">
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="template-dialog-body">
+          {/* Upload Zone */}
+          <div className="template-upload-zone">
+            <div className="template-file-meta">
+              <span className="template-file-name">
+                {draft.name || "No workbook uploaded"}
+              </span>
+              <span className="template-file-size">
+                {draft.byteLength ? `${formatBytes(draft.byteLength)} • .xlsx` : "Select a blank customer form"}
+              </span>
+            </div>
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx"
+                style={{ display: "none" }}
+                onChange={handleFileChange}
+              />
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload size={14} />
+                {draft.name ? "Replace .xlsx" : "Upload .xlsx"}
+              </button>
+            </div>
+          </div>
+
+          {uploadError ? (
+            <div className="template-validation-box error">
+              <strong>Upload Error:</strong> {uploadError}
+            </div>
+          ) : null}
+
+          {/* Worksheet Selection */}
+          {sheetNames.length > 0 ? (
+            <div className="template-section">
+              <span className="template-section-title">Inspection Worksheet</span>
+              <select
+                className="template-field-input"
+                style={{ fontFamily: "inherit" }}
+                value={draft.worksheet}
+                onChange={(e) => setDraft((prev) => ({ ...prev, worksheet: e.target.value }))}
+              >
+                {sheetNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          {/* Header Mappings */}
+          <div className="template-section">
+            <span className="template-section-title">Header Cell Mappings (A1 Notation)</span>
+            <div className="template-grid-3">
+              <div className="template-field-group">
+                <label className="template-field-label">Drawing Number</label>
+                <input
+                  type="text"
+                  placeholder="e.g. C2"
+                  className="template-field-input"
+                  value={draft.headers.drawingNo || ""}
+                  onChange={(e) => updateHeader("drawingNo", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Revision</label>
+                <input
+                  type="text"
+                  placeholder="e.g. E2"
+                  className="template-field-input"
+                  value={draft.headers.revision || ""}
+                  onChange={(e) => updateHeader("revision", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Supplier</label>
+                <input
+                  type="text"
+                  placeholder="e.g. C3"
+                  className="template-field-input"
+                  value={draft.headers.supplier || ""}
+                  onChange={(e) => updateHeader("supplier", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Description</label>
+                <input
+                  type="text"
+                  placeholder="e.g. E3"
+                  className="template-field-input"
+                  value={draft.headers.description || ""}
+                  onChange={(e) => updateHeader("description", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Sample Size</label>
+                <input
+                  type="text"
+                  placeholder="e.g. G2"
+                  className="template-field-input"
+                  value={draft.headers.sampleCount || ""}
+                  onChange={(e) => updateHeader("sampleCount", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Overall Status</label>
+                <input
+                  type="text"
+                  placeholder="e.g. G3"
+                  className="template-field-input"
+                  value={draft.headers.overallStatus || ""}
+                  onChange={(e) => updateHeader("overallStatus", e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Table Bounds */}
+          <div className="template-section">
+            <div className="template-section-title">
+              <span>Inspection Table Bounds</span>
+              <span className={`template-badge ${currentCapacity >= expandedCharCount && currentCapacity > 0 ? "template-badge--active" : "template-badge--none"}`}>
+                Capacity: {currentCapacity} rows ({expandedCharCount} required {expandedCharCount === 1 ? "row" : "rows"})
+              </span>
+            </div>
+            <div className="template-grid-2">
+              <div className="template-field-group">
+                <label className="template-field-label">Start Row (First characteristic row)</label>
+                <input
+                  type="number"
+                  min="1"
+                  className="template-field-input"
+                  value={draft.table.startRow || ""}
+                  onChange={(e) => updateRowBound("startRow", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">End Row (Last characteristic row)</label>
+                <input
+                  type="number"
+                  min="1"
+                  className="template-field-input"
+                  value={draft.table.endRow || ""}
+                  onChange={(e) => updateRowBound("endRow", e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Characteristic Column Mappings */}
+          <div className="template-section">
+            <span className="template-section-title">Characteristic Column Mappings</span>
+            <div className="template-grid-3">
+              <div className="template-field-group">
+                <label className="template-field-label">Balloon # (Required)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. A"
+                  className="template-field-input"
+                  value={draft.table.columns.balloonNo || ""}
+                  onChange={(e) => updateCol("balloonNo", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Status Result (Required)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. M"
+                  className="template-field-input"
+                  value={draft.table.columns.status || ""}
+                  onChange={(e) => updateCol("status", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Nominal</label>
+                <input
+                  type="text"
+                  placeholder="e.g. C"
+                  className="template-field-input"
+                  value={draft.table.columns.nominal || ""}
+                  onChange={(e) => updateCol("nominal", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Tolerance</label>
+                <input
+                  type="text"
+                  placeholder="e.g. D"
+                  className="template-field-input"
+                  value={draft.table.columns.tolerance || ""}
+                  onChange={(e) => updateCol("tolerance", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">USL</label>
+                <input
+                  type="text"
+                  placeholder="e.g. E"
+                  className="template-field-input"
+                  value={draft.table.columns.usl || ""}
+                  onChange={(e) => updateCol("usl", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">LSL</label>
+                <input
+                  type="text"
+                  placeholder="e.g. F"
+                  className="template-field-input"
+                  value={draft.table.columns.lsl || ""}
+                  onChange={(e) => updateCol("lsl", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Method</label>
+                <input
+                  type="text"
+                  placeholder="e.g. L"
+                  className="template-field-input"
+                  value={draft.table.columns.method || ""}
+                  onChange={(e) => updateCol("method", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Min</label>
+                <input
+                  type="text"
+                  placeholder="e.g. J"
+                  className="template-field-input"
+                  value={draft.table.columns.min || ""}
+                  onChange={(e) => updateCol("min", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Max</label>
+                <input
+                  type="text"
+                  placeholder="e.g. K"
+                  className="template-field-input"
+                  value={draft.table.columns.max || ""}
+                  onChange={(e) => updateCol("max", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Type</label>
+                <input
+                  type="text"
+                  placeholder="e.g. B"
+                  className="template-field-input"
+                  value={draft.table.columns.type || ""}
+                  onChange={(e) => updateCol("type", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Unit</label>
+                <input
+                  type="text"
+                  placeholder="e.g. MM"
+                  className="template-field-input"
+                  value={draft.table.columns.unit || ""}
+                  onChange={(e) => updateCol("unit", e.target.value)}
+                />
+              </div>
+              <div className="template-field-group">
+                <label className="template-field-label">Notes</label>
+                <input
+                  type="text"
+                  placeholder="e.g. N"
+                  className="template-field-input"
+                  value={draft.table.columns.notes || ""}
+                  onChange={(e) => updateCol("notes", e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Sample Columns */}
+          <div className="template-section">
+            <span className="template-section-title">Sample Measurement Columns ({validSampleCount} active)</span>
+            <div className="template-grid-3">
+              {Array.from({ length: validSampleCount }, (_, i) => (
+                <div key={i} className="template-field-group">
+                  <label className="template-field-label">Sample #{i + 1} Column</label>
+                  <input
+                    type="text"
+                    placeholder={`e.g. ${String.fromCharCode(71 + i)}`}
+                    className="template-field-input"
+                    value={draft.table.columns.samples?.[i] || ""}
+                    onChange={(e) => updateSampleCol(i, e.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Validation Status */}
+          {validation.valid ? (
+            <div className="template-validation-box success">
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <CheckCircle2 size={16} />
+                <strong>Mapping Valid:</strong> Ready to save and export {characteristics.length} characteristics into {draft.name}.
+              </div>
+            </div>
+          ) : (
+            <div className="template-validation-box error">
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <AlertCircle size={16} />
+                <strong>Configuration Issues:</strong>
+              </div>
+              <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+                {validation.errors.map((err, i) => (
+                  <li key={i}>{err}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        <div className="settings-footer" style={{ justifyContent: "space-between" }}>
+          <div>
+            {template ? (
+              <button type="button" className="button secondary danger-text" onClick={handleRemove}>
+                <Trash2 size={15} />
+                Use Default Report
+              </button>
+            ) : null}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="button secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="button primary"
+              disabled={!validation.valid}
+              onClick={handleSave}
+            >
+              Save Template
+            </button>
+          </div>
         </div>
       </section>
     </div>

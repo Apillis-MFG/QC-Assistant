@@ -23,6 +23,8 @@ For non-trivial work:
 ## Architecture Guardrails
 
 - Stack: React 19 / Vite 6 / pdfjs-dist / pdf-lib / Tesseract.js / SheetJS (xlsx) / lucide-react.
+- Chat naming: format thread titles as `QCA-<NN> | <Task or Subsystem>`.
+- Chat shortcuts: honor prompt aliases (`/Whatnext`, `/Explain`, `/Investigate`, `/Build`, `/Fix`, `/Test`, etc.) per `AGENTS.md`.
 - No backend. All state is in-memory per session. No fetch, no auth, no cloud.
 - State management: `useState` / `useMemo` / `useRef` in `App.jsx`. Do not add context providers or reducers unless asked.
 - Inspection math: `src/exporters.js` — keep `getLimits` and `getStatus` pure.

@@ -1,24 +1,7 @@
+import { balloonLabel } from "../lib/occurrences.js";
+import { getLeaderLine } from "../lib/utils.js";
 import { useEffect, useRef, useState } from "react";
 import { X, FilePlus2, ZoomIn, ZoomOut, Upload, HelpCircle, Keyboard, BookOpen, History } from "lucide-react";
-
-function getLeaderLine({ x, y, targetX, targetY, radius = 13 }) {
-  const targetGap = 3;
-  const dx = targetX - x;
-  const dy = targetY - y;
-  const distance = Math.hypot(dx, dy);
-  if (distance < radius + targetGap) {
-    return { startX: x, startY: y, endX: targetX, endY: targetY };
-  }
-
-  const ux = dx / distance;
-  const uy = dy / distance;
-  return {
-    startX: x + ux * radius,
-    startY: y + uy * radius,
-    endX: targetX - ux * targetGap,
-    endY: targetY - uy * targetGap,
-  };
-}
 
 export function HelpMenu({ onOpenShortcuts, onOpenUserGuide, onOpenVersionHistory, labeled = false }) {
   const [open, setOpen] = useState(false);
@@ -201,17 +184,26 @@ export function LeaderLayer({ balloons, selectedId, width, height, balloonDiamet
           y: item.y * height,
           targetX: targetX * width,
           targetY: targetY * height,
-          radius,
+          radius: balloonLabel(item).length > 3 ? radius * 1.5 : radius,
         });
+        if (!geometry) return null;
+        const isSelected = selectedId === item.id;
         return (
-          <line
-            key={item.id}
-            className={`leader-line ${selectedId === item.id ? "selected" : ""}`}
-            x1={geometry.startX}
-            y1={geometry.startY}
-            x2={geometry.endX}
-            y2={geometry.endY}
-          />
+          <g key={item.id} className={`leader-group ${isSelected ? "selected" : ""}`}>
+            <line
+              className={`leader-line ${isSelected ? "selected" : ""}`}
+              x1={geometry.startX}
+              y1={geometry.startY}
+              x2={geometry.endX}
+              y2={geometry.endY}
+            />
+            {geometry.arrow && (
+              <polygon
+                className={`leader-arrow ${isSelected ? "selected" : ""}`}
+                points={geometry.arrow.polygonPoints}
+              />
+            )}
+          </g>
         );
       })}
     </svg>
@@ -232,15 +224,23 @@ export function AutoBalloonPreview({ candidates, width, height, showLeaderLine =
               targetX: item.targetX * width,
               targetY: item.targetY * height,
             });
+            if (!geometry) return null;
             return (
-              <line
-                key={`leader-${item.id}`}
-                className="auto-balloon-leader"
-                x1={geometry.startX}
-                y1={geometry.startY}
-                x2={geometry.endX}
-                y2={geometry.endY}
-              />
+              <g key={`leader-${item.id}`} className="auto-balloon-leader-group">
+                <line
+                  className="auto-balloon-leader"
+                  x1={geometry.startX}
+                  y1={geometry.startY}
+                  x2={geometry.endX}
+                  y2={geometry.endY}
+                />
+                {geometry.arrow && (
+                  <polygon
+                    className="auto-balloon-leader-arrow"
+                    points={geometry.arrow.polygonPoints}
+                  />
+                )}
+              </g>
             );
           })}
         </svg>

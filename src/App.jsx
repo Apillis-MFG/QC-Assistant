@@ -1,3 +1,4 @@
+import { normalizeOccurrence, balloonLabel, sameRequirement, SHARED_REQUIREMENT_FIELDS, resizeOccurrences, reassignOccurrenceBase, hasInspectionData, assertCloudCompatible, isValidOccurrenceQuantity, MAX_OCCURRENCE_QUANTITY } from "./lib/occurrences.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from "react-router-dom";
 import {
@@ -17,14 +18,22 @@ import {
   Table2,
   TextSelect,
   Trash2,
+  Sparkles,
+  CheckSquare,
+  RotateCcw,
+  FileSpreadsheet,
+  Settings2,
 } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { demoCharacteristics } from "./lib/sampleData.js";
 import {
   exportBalloonedPdf,
+  exportBatchBalloonedPdf,
   exportInspectionWorkbook,
-  getStatus,
+  exportBatchInspectionWorkbook,
+  exportCustomInspectionWorkbook,
+  overallStatus,
 } from "./lib/exporters.js";
 import {
   ACTIVE_PROJECT_KEY,
@@ -39,6 +48,11 @@ import {
   saveDrawing,
   saveProject,
 } from "./lib/projectStore.js";
+import * as supabaseStore from "./lib/supabaseStore.js";
+import { supabaseEnabled } from "./lib/supabaseClient.js";
+import { useAuth } from "./context/AuthContext.jsx";
+import { LoginPage, InviteAcceptPage } from "./components/AuthScreens.jsx";
+import { OnboardingScreen } from "./components/OnboardingScreen.jsx";
 import {
   methods, types, TYPE_DEFAULT_METHOD, CHARACTERISTIC_FIELDS, APP_VERSION,
   PANEL_STORAGE_KEY, RESIZE_HANDLE_SIZE,
@@ -48,16 +62,18 @@ import {
   AUTO_BALLOON_MIN_SPACING, AUTO_BALLOON_MIN_CONFIDENCE,
   AUTO_BALLOON_MAX_LABEL_LENGTH, DRAWING_NUMBER_PATTERN,
   defaultPanelSizes, emptyMetadata, emptyToleranceOverrides,
+  normalizeUnitSystem, getDefaultUnit, hasCharacteristicUnit,
 } from "./lib/constants.js";
 import {
   buildDrawingSnapshot, updateDrawingSummary, getStorageWarning, getStorageErrorMessage,
   formatDate, setMetadataValue, mapTextItem, metadataLabel, fieldLabel,
   getNormalizedPoint, normalizeRect, getDefaultBalloonPosition, cropCanvasArea, clamp,
-  parseDimension, findNearestTextDimension, findDimensionAtPoint, getTextItemBounds,
+  parseDimension, getDimensionCaptureError, findNearestTextDimension, findDimensionAtPoint, findTextItemAtPoint, getTextItemBounds,
+  computeAutoFillSampleUpdates,
 } from "./lib/utils.js";
 import {
   getEmbeddedAutoBalloonCandidates, getOcrAutoBalloonCandidates, buildAutoBalloonCandidates,
-  renumberAutoBalloonCandidates, nextBalloonNo, renumber,
+  renumberAutoBalloonCandidates, nextBalloonNo,
 } from "./lib/autoBalloon.js";
 import {
   Field, ToolButton, ResizeHandle, TextLayer, LeaderLayer,
@@ -66,7 +82,7 @@ import {
 } from "./components/widgets.jsx";
 import {
   ProjectDashboard, ProjectDetail, NewProjectPage, GuidePage, UserGuidePage, VersionHistoryPage, MeasurementWorkspace, BalloonEditor, CharacteristicTable, SettingsPage,
-  ToleranceTableDialog,
+  ToleranceTableDialog, FaiTemplateDialog,
 } from "./components/panels.jsx";
 import {
   loadBalloonSettings, saveBalloonSettings,
@@ -104,21 +120,42 @@ function loadPanelSizes() {
   }
 }
 
-function createCharacteristic({ balloonNo, x = 0.5, y = 0.5, targetX = x, targetY = y, page = 1, seed = {} }) {
+const TOLERANCE_DEFAULTS_KEY = "qca_tolerance_defaults_v1";
+
+function loadToleranceDefaults() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TOLERANCE_DEFAULTS_KEY) || "{}");
+    const table = (value) => Object.fromEntries(Object.entries(value || {}).filter(([places, tolerance]) =>
+      /^\d+$/.test(places) && Number(places) <= 10 && typeof tolerance === "string" &&
+      /^(?:|±\d+(?:\.\d+)?|[+-]\d+(?:\.\d+)?(?:\/-\d+(?:\.\d+)?)?)$/.test(tolerance),
+    ));
+    return { metric: table(saved?.metric), inch: table(saved?.inch), angle: table(saved?.angle) };
+  } catch {
+    return { metric: {}, inch: {}, angle: {} };
+  }
+}
+
+function createCharacteristic({ balloonNo, x = 0.5, y = 0.5, targetX = x, targetY = y, page = 1, unitSystem = "metric", seed = {} }) {
   return {
     id: crypto.randomUUID(),
     balloonNo,
+    groupId: crypto.randomUUID(),
+    quantity: seed.quantity ?? 1,
+    occurrenceIndex: 1,
+    instancesExpanded: false,
+    isPlaced: seed.isPlaced !== false,
     page,
     x,
     y,
     targetX: seed.targetX ?? targetX,
     targetY: seed.targetY ?? targetY,
     type: seed.type ?? "dimension",
-    unit: seed.unit ?? "MM",
+    unit: hasCharacteristicUnit(seed.type ?? "dimension") ? (seed.unit ?? getDefaultUnit(unitSystem)) : "",
     nominal: seed.nominal ?? "",
     tolerance: seed.tolerance ?? "",
     method: seed.method ?? TYPE_DEFAULT_METHOD[seed.type ?? "dimension"] ?? "DC",
     notes: seed.notes ?? "",
+    dual: seed.dual ?? null,
     samples: seed.samples ?? {},
   };
 }
@@ -131,10 +168,12 @@ function formatLocalSaveLog(drawingCount) {
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, orgIds, orgMemberships, signOut, loading: authLoading } = useAuth();
   const [projectSummaries, setProjectSummaries] = useState([]);
   const [activeProject, setActiveProject] = useState(null);
   const [drawings, setDrawings] = useState([]);
   const [activeDrawingId, setActiveDrawingId] = useState(null);
+  const [drawingLoading, setDrawingLoading] = useState(false);
   const [projectsReady, setProjectsReady] = useState(false);
   const [projectDialog, setProjectDialog] = useState({ open: false, projectId: null, name: "" });
   const [newProjectName, setNewProjectName] = useState("");
@@ -142,10 +181,15 @@ export default function App() {
   const [detailProject, setDetailProject] = useState(null);
   const [detailDrawings, setDetailDrawings] = useState([]);
   const [detailFields, setDetailFields] = useState({ name: "", code: "", owner: "", estimatedDeliveryDate: "", notes: "" });
+  const [projectShares, setProjectShares] = useState([]);
+  const [shareEmail, setShareEmail] = useState("");
+  const [shareStatus, setShareStatus] = useState("idle");
   const [drawingDialog, setDrawingDialog] = useState({ open: false, drawingId: null, name: "" });
   const [saveState, setSaveState] = useState({ status: "idle", label: "local: not saved" });
   const [metadata, setMetadata] = useState(emptyMetadata);
+  const [unitSystem, setUnitSystem] = useState("metric");
   const [toleranceOverrides, setToleranceOverrides] = useState(emptyToleranceOverrides);
+  const [toleranceDefaults, setToleranceDefaults] = useState(loadToleranceDefaults);
   const [sampleCount, setSampleCount] = useState(5);
   const [pdfBytes, setPdfBytes] = useState(null);
   const [pdfName, setPdfName] = useState("");
@@ -159,6 +203,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null);
   const [editingBalloonId, setEditingBalloonId] = useState(null);
   const [pendingTarget, setPendingTarget] = useState(null);
+  const [placementGroupId, setPlacementGroupId] = useState(null);
   const [textItems, setTextItems] = useState([]);
   const [selectedText, setSelectedText] = useState("");
   const [ocrRect, setOcrRect] = useState(null);
@@ -168,6 +213,8 @@ export default function App() {
   const [autoBalloonCandidates, setAutoBalloonCandidates] = useState([]);
   const [autoBalloonReviewOpen, setAutoBalloonReviewOpen] = useState(false);
   const [toleranceTableOpen, setToleranceTableOpen] = useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [templateDialogProject, setTemplateDialogProject] = useState(null);
   const [balloonSettings, setBalloonSettings] = useState(loadBalloonSettings);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [layoutMode, setLayoutMode] = useState("split-v");
@@ -186,8 +233,11 @@ export default function App() {
   const autoBalloonRef = useRef(null);
   const panelResizeRef = useRef(null);
   const saveTimerRef = useRef(null);
+  const saveQueueRef = useRef(Promise.resolve(true));
   const applyingDrawingRef = useRef(false);
+  const drawingLoadRequestRef = useRef(0);
   const persistActiveDrawingRef = useRef(null);
+  const projectSummariesRef = useRef([]);
   const drawingsRef = useRef([]);
   const activeDrawingRef = useRef(null);
 
@@ -197,17 +247,16 @@ export default function App() {
   );
 
   const currentPageBalloons = useMemo(
-    () => characteristics.filter((item) => item.page === pageNumber),
+    () => characteristics.filter((item) => item.page === pageNumber && item.isPlaced !== false),
     [characteristics, pageNumber],
   );
 
-  const projectStatus = useMemo(() => {
-    if (!characteristics.length) return "OPEN";
-    const statuses = characteristics.map((item) => getStatus(item, sampleCount));
-    if (statuses.includes("NG")) return "FAIL";
-    if (statuses.includes("OPEN")) return "OPEN";
-    return "PASS";
-  }, [characteristics, sampleCount]);
+  const placementNext = useMemo(() => placementGroupId
+    ? characteristics.filter((item) => (item.groupId || item.id) === placementGroupId && item.isPlaced === false)
+      .sort((a, b) => a.occurrenceIndex - b.occurrenceIndex)[0] || null : null,
+    [characteristics, placementGroupId]);
+
+  const projectStatus = useMemo(() => overallStatus(characteristics, sampleCount), [characteristics, sampleCount]);
 
   const activeDrawing = useMemo(
     () => drawings.find((drawing) => drawing.id === activeDrawingId) || null,
@@ -218,13 +267,31 @@ export default function App() {
   // Derived from whatever text the current page exposes (title block, notes, etc.)
   const generalTolerances = useMemo(() => parseGeneralTolerances(textItems), [textItems]);
   const autoAngleTolerances = useMemo(() => parseAngleTolerances(textItems), [textItems]);
+  const savedTolerances = useMemo(() => ({
+    linear: toleranceDefaults[normalizeUnitSystem(toleranceOverrides.linearUnitSystem)],
+    angle: toleranceDefaults.angle,
+  }), [toleranceDefaults, toleranceOverrides.linearUnitSystem]);
+  const detectedAndSavedTolerances = useMemo(() => ({
+    linear: { ...savedTolerances.linear, ...generalTolerances },
+    angle: { ...savedTolerances.angle, ...autoAngleTolerances },
+  }), [savedTolerances, generalTolerances, autoAngleTolerances]);
 
   // Auto-detected tables above, with any per-drawing manual overrides layered on top.
   // This is the table the rest of the app should consult (auto-fill + bulk-apply UI).
   const resolvedTolerances = useMemo(() => ({
-    linear: { ...generalTolerances, ...toleranceOverrides.linear },
-    angle: { ...autoAngleTolerances, ...toleranceOverrides.angle },
-  }), [generalTolerances, autoAngleTolerances, toleranceOverrides]);
+    linear: unitSystem === normalizeUnitSystem(toleranceOverrides.linearUnitSystem)
+      ? { ...detectedAndSavedTolerances.linear, ...toleranceOverrides.linear }
+      : {},
+    angle: { ...detectedAndSavedTolerances.angle, ...toleranceOverrides.angle },
+  }), [detectedAndSavedTolerances, toleranceOverrides, unitSystem]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TOLERANCE_DEFAULTS_KEY, JSON.stringify(toleranceDefaults));
+    } catch {
+      setMessage("Could not save default tolerances in this browser. Free up browser storage and try again.");
+    }
+  }, [toleranceDefaults]);
 
   // All text items on the current page that parse as dimensions, with tolerance resolved.
   // Used to render highlight boxes in balloon mode and for accurate click-to-value snapping.
@@ -234,12 +301,12 @@ export default function App() {
       .map((item) => {
         const parsed = parseDimension(item.text);
         if (!parsed?.nominal) return null;
-        const tolerance = applyGeneralTolerance(parsed.nominal, parsed.tolerance, resolvedTolerances.linear);
+        const tolerance = applyGeneralTolerance(parsed.nominal, parsed.tolerance, parsed.unit === "°" ? resolvedTolerances.angle : resolvedTolerances.linear);
         // Keep only items that look like real dimensions: decimal point or resolvable tolerance.
         // Pure integers with no tolerance are likely drawing numbers or quantities.
         if (!tolerance && !/\./.test(parsed.nominal)) return null;
         const bounds = getTextItemBounds(item);
-        return { ...item, ...bounds, nominal: parsed.nominal, tolerance };
+        return { ...item, ...bounds, ...parsed, tolerance };
       })
       .filter(Boolean);
   }, [textItems, canvasSize, resolvedTolerances]);
@@ -262,7 +329,9 @@ export default function App() {
   }), [panelSizes]);
 
   const resetDrawingState = useCallback((nextMessage = "Upload a drawing PDF to begin.") => {
+    setPlacementGroupId(null);
     setMetadata(emptyMetadata);
+    setUnitSystem("metric");
     setToleranceOverrides(emptyToleranceOverrides);
     setSampleCount(5);
     setPdfBytes(null);
@@ -287,10 +356,27 @@ export default function App() {
   }, []);
 
   const refreshProjectList = useCallback(async () => {
-    const summaries = await listProjects();
+    const local = await listProjects();
+    let cloud = [];
+    if (supabaseEnabled && orgIds.length) {
+      try {
+        cloud = await supabaseStore.listProjects(orgIds);
+      } catch (error) {
+        // Cloud visibility is additive; a transient network/auth error should
+        // not block the local-only dashboard from loading.
+        console.error("Could not load shared projects:", error);
+      }
+    }
+    // Cloud is authoritative for any id it also knows about -- a local entry
+    // can only exist under a cloud project's id via the stale-kind race in
+    // openProjectWorkspace (fixed, but a prior local write from before that
+    // fix may still be sitting in IndexedDB on some browsers).
+    const cloudIds = new Set(cloud.map((project) => project.id));
+    const summaries = [...local.filter((project) => !cloudIds.has(project.id)), ...cloud];
+    projectSummariesRef.current = summaries;
     setProjectSummaries(summaries);
     return summaries;
-  }, []);
+  }, [orgIds]);
 
   const rememberActiveProject = useCallback((projectId, drawingId) => {
     try {
@@ -301,29 +387,37 @@ export default function App() {
   }, []);
 
   const applyDrawing = useCallback(async (drawingId, options = {}) => {
+    const requestId = ++drawingLoadRequestRef.current;
     if (!drawingId) {
+      applyingDrawingRef.current = false;
+      setDrawingLoading(false);
       setActiveDrawingId(null);
       resetDrawingState(options.message || "Add a drawing PDF to this project.");
       return;
     }
 
-    const drawing = await loadDrawing(drawingId);
-    if (!drawing) {
-      setMessage("Drawing could not be found in local project storage.");
-      return;
-    }
-
     applyingDrawingRef.current = true;
+    setDrawingLoading(true);
     try {
+      const drawing = options.kind === "cloud" ? await supabaseStore.loadDrawing(drawingId) : await loadDrawing(drawingId);
+      if (requestId !== drawingLoadRequestRef.current) return;
+      if (!drawing) {
+        setMessage(`Drawing could not be found in ${options.kind === "cloud" ? "the shared project" : "local project storage"}.`);
+        return;
+      }
       const loadedPdf = drawing.pdfBytes
         ? await pdfjsLib.getDocument({ data: drawing.pdfBytes.slice(0) }).promise
         : null;
+      if (requestId !== drawingLoadRequestRef.current) return;
 
+      setPlacementGroupId(null);
       setActiveDrawingId(drawing.id);
       setMetadata({ ...emptyMetadata, ...drawing.metadata });
+      setUnitSystem(normalizeUnitSystem(drawing.unitSystem));
       setToleranceOverrides({
         linear: { ...emptyToleranceOverrides.linear, ...drawing.toleranceOverrides?.linear },
         angle: { ...emptyToleranceOverrides.angle, ...drawing.toleranceOverrides?.angle },
+        linearUnitSystem: normalizeUnitSystem(drawing.toleranceOverrides?.linearUnitSystem),
       });
       setSampleCount(drawing.sampleCount || 5);
       setPdfBytes(drawing.pdfBytes || null);
@@ -334,7 +428,10 @@ export default function App() {
       setZoom(drawing.zoom || ZOOM_DEFAULT);
       setCharacteristics(
         (Array.isArray(drawing.characteristics) ? drawing.characteristics : [])
-          .map((item) => ({ samples: {}, notes: "", ...item })),
+          .map((raw) => {
+            const item = normalizeOccurrence(raw);
+            return { ...item, unit: hasCharacteristicUnit(item.type) ? (item.unit ?? "") : "" };
+          }),
       );
       setSelectedId(null);
       setEditingBalloonId(null);
@@ -347,38 +444,68 @@ export default function App() {
       setAutoBalloonCandidates([]);
       setAutoBalloonReviewOpen(false);
       setCanvasSize({ width: 0, height: 0 });
-      setSaveState({ status: "saved", label: "Saved locally" });
+      setSaveState({ status: "saved", label: options.kind === "cloud" ? "Synced" : "Saved locally" });
       setMessage(options.message || `Opened ${drawing.name || drawing.pdfName || "drawing"}.`);
       if (options.projectId) rememberActiveProject(options.projectId, drawing.id);
     } catch (error) {
-      setMessage(`Could not open drawing: ${error.message}`);
+      if (requestId === drawingLoadRequestRef.current) setMessage(`Could not open drawing: ${error.message}`);
     } finally {
       window.setTimeout(() => {
-        applyingDrawingRef.current = false;
+        if (requestId === drawingLoadRequestRef.current) {
+          applyingDrawingRef.current = false;
+          setDrawingLoading(false);
+        }
       }, 0);
     }
   }, [rememberActiveProject, resetDrawingState]);
 
   const openProjectWorkspace = useCallback(async (projectId, preferredDrawingId = null) => {
-    const workspace = await loadProject(projectId);
+    const summary = projectSummariesRef.current.find((project) => project.id === projectId);
+    // The summary lookup is only a hint -- projectSummaries can still be
+    // mid-load (e.g. on a direct/refreshed deep link, before the cloud list
+    // has merged in) so a miss here doesn't necessarily mean "local". Try the
+    // hinted source first, then fall back to the other so a stale/incomplete
+    // summary can never mis-tag a cloud project as local (which would corrupt
+    // IndexedDB with a phantom local copy under the cloud project's id).
+    let kind = summary?.kind === "cloud" ? "cloud" : "local";
+    let workspace = kind === "cloud" ? await supabaseStore.loadProject(projectId) : await loadProject(projectId);
+    // A shared deep link may arrive before the saved auth session resolves.
+    // Defer the cloud fallback; the route retries when authLoading changes.
+    if (!workspace && supabaseEnabled && authLoading) return;
+    if (!workspace && supabaseEnabled && user) {
+      const fallbackKind = kind === "cloud" ? "local" : "cloud";
+      const fallbackWorkspace = fallbackKind === "cloud" ? await supabaseStore.loadProject(projectId) : await loadProject(projectId);
+      if (fallbackWorkspace) {
+        kind = fallbackKind;
+        workspace = fallbackWorkspace;
+      }
+    }
     if (!workspace) {
-      setMessage("Project could not be found in local storage.");
+      // Not found locally and no cloud summary matched either -- if the user
+      // isn't signed in, this may simply be a shared-project link they can't
+      // resolve yet, so send them to sign in rather than a dead end.
+      if (!summary && supabaseEnabled && !user) {
+        navigate("/login");
+        return;
+      }
+      setMessage(kind === "cloud" ? "Shared project could not be found." : "Project could not be found in local storage.");
       return;
     }
 
-    setActiveProject(workspace.project);
-    setDrawings(workspace.drawings);
+    setActiveProject({ ...workspace.project, kind });
+    setDrawings(workspace.drawings.map((drawing) => ({ ...drawing, kind })));
     const nextDrawingId = preferredDrawingId && workspace.drawings.some((drawing) => drawing.id === preferredDrawingId)
       ? preferredDrawingId
       : workspace.drawings[0]?.id || null;
     rememberActiveProject(workspace.project.id, nextDrawingId);
     await applyDrawing(nextDrawingId, {
       projectId: workspace.project.id,
+      kind,
       message: nextDrawingId
         ? `Opened ${workspace.project.name}.`
         : `Opened ${workspace.project.name}. Add a drawing PDF to begin.`,
     });
-  }, [applyDrawing, rememberActiveProject]);
+  }, [applyDrawing, authLoading, navigate, rememberActiveProject, user]);
 
   const loadWorkspaceForRoute = useCallback(async (projectId, drawingId) => {
     if (!projectId) return;
@@ -399,6 +526,7 @@ export default function App() {
         await requestPersistentStorage();
         const summaries = await listProjects();
         if (cancelled) return;
+        projectSummariesRef.current = summaries;
         setProjectSummaries(summaries);
 
         if (landedAtRoot) {
@@ -428,6 +556,15 @@ export default function App() {
       cancelled = true;
     };
   }, [resetDrawingState, navigate]);
+
+  // Once auth/org membership resolves (after the initial local-only load
+  // above), refresh again so any shared/cloud projects appear on the
+  // dashboard without requiring a manual reload or re-triggering the
+  // root-redirect logic in the effect above.
+  useEffect(() => {
+    if (!supabaseEnabled || !orgIds.length) return;
+    refreshProjectList();
+  }, [orgIds, refreshProjectList]);
 
   useEffect(() => {
     let cancelled = false;
@@ -485,6 +622,7 @@ export default function App() {
   }, [mode]);
 
   const switchMode = useCallback((nextMode) => {
+    setPlacementGroupId(null);
     setMode(nextMode);
     setEditingBalloonId(null);
     const messages = {
@@ -498,6 +636,7 @@ export default function App() {
   }, []);
 
   const switchWorkspaceMode = useCallback((nextMode) => {
+    setPlacementGroupId(null);
     setWorkspaceMode(nextMode);
     setEditingBalloonId(null);
     setPendingTarget(null);
@@ -523,127 +662,122 @@ export default function App() {
     setMessage("Edit mode: add balloons, capture drawing text, and refine requirement setup.");
   }, []);
 
-  const isWorkspaceRoute = /^\/projects\/[^/]+\/drawings(\/|$)/.test(location.pathname);
+  const persistActiveDrawing = useCallback((reason = "auto") => {
+    const save = async () => {
+      if (!projectsReady || !activeProject?.id || !activeDrawingId) return true;
 
-  useEffect(() => {
-    const handleShortcut = (event) => {
-      if (!isWorkspaceRoute) return;
-      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
-      const target = event.target;
-      const tagName = target?.tagName?.toLowerCase();
-      const isTyping =
-        tagName === "input" ||
-        tagName === "textarea" ||
-        tagName === "select" ||
-        target?.isContentEditable;
-      if (isTyping) return;
-
-      const key = event.key.toLowerCase();
-      if (key === "escape") {
-        if (toleranceTableOpen) {
-          event.preventDefault();
-          setToleranceTableOpen(false);
-          return;
-        }
-        if (editingBalloonId || ocrRect || autoBalloonRect || autoBalloonReviewOpen || pendingTarget) {
-          event.preventDefault();
-          setEditingBalloonId(null);
-          setPendingTarget(null);
-          setOcrRect(null);
-          setAutoBalloonRect(null);
-          setAutoBalloonCandidates([]);
-          setAutoBalloonReviewOpen(false);
-        }
-        return;
-      }
-      if (toleranceTableOpen) return;
-      if (workspaceMode === "measurement") return;
-
-      const shortcutModes = {
-        b: "balloon",
-        v: "select",
-        h: "pan",
-        t: "text",
-        a: "autoBalloon",
+      const now = new Date().toISOString();
+      const isCloud = activeProject.kind === "cloud";
+      const projectRecord = {
+        id: activeProject.id,
+        ownerOrgId: activeProject.ownerOrgId,
+        name: activeProject.name || "Untitled Project",
+        createdAt: activeProject.createdAt,
+        updatedAt: now,
       };
-      if (shortcutModes[key]) {
-        event.preventDefault();
-        switchMode(shortcutModes[key]);
-        return;
+      const snapshot = buildDrawingSnapshot({
+        drawing: activeDrawingRef.current,
+        activeDrawingId,
+        activeProjectId: activeProject.id,
+        metadata,
+        unitSystem,
+        toleranceOverrides,
+        sampleCount,
+        pdfBytes,
+        pdfName,
+        pageCount,
+        pageNumber,
+        zoom,
+        characteristics,
+        status: projectStatus,
+        now,
+      });
+
+      if (isCloud) {
+        try {
+          setSaveState({ status: "saving", label: reason === "manual" ? "Saving..." : "Syncing..." });
+          assertCloudCompatible(snapshot.characteristics);
+          await supabaseStore.saveProject(projectRecord);
+          const savedDrawing = await supabaseStore.saveDrawing(activeProject.id, snapshot);
+          // Balloon numbers for any newly-created balloons are only known
+          // authoritatively after the server allocates them on save; reconcile
+          // local characteristic state (balloonNo) against the result. Keep the
+          // same array/item references when nothing actually changed -- always
+          // replacing them with fresh objects from the round-trip would change
+          // `characteristics` identity on every save, re-triggering the
+          // autosave effect (which depends on it) and looping forever.
+          if (Array.isArray(savedDrawing.characteristics)) {
+            const balloonNoById = new Map(savedDrawing.characteristics.map((item) => [item.id, item.balloonNo]));
+            setCharacteristics((current) => {
+              let changed = false;
+              const next = current.map((item) => {
+                const balloonNo = balloonNoById.get(item.id);
+                if (balloonNo != null && balloonNo !== item.balloonNo) {
+                  changed = true;
+                  return { ...item, balloonNo };
+                }
+                return item;
+              });
+              return changed ? next : current;
+            });
+          }
+          const nextDrawings = updateDrawingSummary(drawingsRef.current, savedDrawing);
+          setActiveProject((current) => ({ ...current, ...projectRecord }));
+          setDrawings(nextDrawings);
+          rememberActiveProject(activeProject.id, activeDrawingId);
+          setSaveState({ status: "saved", label: "Synced" });
+          return true;
+        } catch (error) {
+          setSaveState({ status: "error", label: error.message || "Sync failed" });
+          setMessage(error.message || "Could not sync to the shared project.");
+          return false;
+        }
       }
 
-      if (key === "e" && selected?.page === pageNumber) {
-        event.preventDefault();
-        setEditingBalloonId(selected.id);
-        setMessage(`Editing balloon ${selected.balloonNo}.`);
+      try {
+        setSaveState({ status: "saving", label: reason === "manual" ? "local: saving..." : "local: autosaving..." });
+        await saveProject(projectRecord);
+        const savedDrawing = await saveDrawing(activeProject.id, snapshot);
+        const summaries = await refreshProjectList();
+        const estimate = await getStorageEstimate();
+        const nextDrawings = updateDrawingSummary(drawingsRef.current, savedDrawing);
+        setActiveProject(projectRecord);
+        setDrawings(nextDrawings);
+        rememberActiveProject(activeProject.id, activeDrawingId);
+
+        const projectBytes = nextDrawings.reduce((sum, drawing) => sum + (drawing.pdfByteLength || 0), 0);
+        const warning = getStorageWarning({
+          drawingBytes: savedDrawing.pdfByteLength || 0,
+          projectBytes,
+          estimate,
+        });
+        const projectSummary = summaries.find((project) => project.id === activeProject.id);
+        setSaveState({
+          status: warning ? "warning" : "saved",
+          label: warning || formatLocalSaveLog(projectSummary?.drawingCount || nextDrawings.length),
+        });
+        return true;
+      } catch (error) {
+        setSaveState({ status: "error", label: getStorageErrorMessage(error) });
+        setMessage(getStorageErrorMessage(error));
+        return false;
       }
     };
-
-    window.addEventListener("keydown", handleShortcut);
-    return () => window.removeEventListener("keydown", handleShortcut);
-  }, [autoBalloonRect, autoBalloonReviewOpen, editingBalloonId, isWorkspaceRoute, toleranceTableOpen, ocrRect, pageNumber, pendingTarget, selected, switchMode, workspaceMode]);
-
-  const persistActiveDrawing = useCallback(async (reason = "auto") => {
-    if (!projectsReady || !activeProject?.id || !activeDrawingId) return;
-
-    const now = new Date().toISOString();
-    const projectRecord = {
-      id: activeProject.id,
-      name: activeProject.name || "Untitled Project",
-      createdAt: activeProject.createdAt,
-      updatedAt: now,
-    };
-    const snapshot = buildDrawingSnapshot({
-      drawing: activeDrawingRef.current,
-      activeDrawingId,
-      activeProjectId: activeProject.id,
-      metadata,
-      toleranceOverrides,
-      sampleCount,
-      pdfBytes,
-      pdfName,
-      pageCount,
-      pageNumber,
-      zoom,
-      characteristics,
-      status: projectStatus,
-      now,
-    });
-
-    try {
-      setSaveState({ status: "saving", label: reason === "manual" ? "local: saving..." : "local: autosaving..." });
-      await saveProject(projectRecord);
-      const savedDrawing = await saveDrawing(activeProject.id, snapshot);
-      const summaries = await refreshProjectList();
-      const estimate = await getStorageEstimate();
-      const nextDrawings = updateDrawingSummary(drawingsRef.current, savedDrawing);
-      setActiveProject(projectRecord);
-      setDrawings(nextDrawings);
-      rememberActiveProject(activeProject.id, activeDrawingId);
-
-      const projectBytes = nextDrawings.reduce((sum, drawing) => sum + (drawing.pdfByteLength || 0), 0);
-      const warning = getStorageWarning({
-        drawingBytes: savedDrawing.pdfByteLength || 0,
-        projectBytes,
-        estimate,
-      });
-      const projectSummary = summaries.find((project) => project.id === activeProject.id);
-      setSaveState({
-        status: warning ? "warning" : "saved",
-        label: warning || formatLocalSaveLog(projectSummary?.drawingCount || nextDrawings.length),
-      });
-    } catch (error) {
-      setSaveState({ status: "error", label: getStorageErrorMessage(error) });
-      setMessage(getStorageErrorMessage(error));
-    }
+    // Navigation waits for the latest snapshot after any in-flight autosave.
+    const pendingSave = saveQueueRef.current.then(save, save);
+    saveQueueRef.current = pendingSave;
+    return pendingSave;
   }, [
     activeDrawingId,
     activeProject?.createdAt,
     activeProject?.id,
+    activeProject?.kind,
     activeProject?.name,
+    activeProject?.ownerOrgId,
     characteristics,
     metadata,
     toleranceOverrides,
+    unitSystem,
     pageCount,
     pageNumber,
     pdfBytes,
@@ -659,6 +793,68 @@ export default function App() {
   useEffect(() => {
     persistActiveDrawingRef.current = persistActiveDrawing;
   }, [persistActiveDrawing]);
+
+  // Live collaboration: while viewing a shared drawing, reflect balloons and
+  // measurements another collaborator adds/edits without waiting for a
+  // manual reload. Kept intentionally conservative -- inserts/deletes and
+  // measurement values merge in directly, but a remote edit to a
+  // characteristic's own fields (nominal/tolerance/etc.) is left for the next
+  // load/save round-trip rather than merged live, so it can never clobber
+  // whatever the local user is mid-typing into that same row.
+  useEffect(() => {
+    if (activeProject?.kind !== "cloud" || !activeDrawingId) return;
+    const channel = supabaseStore.subscribeToDrawing(activeDrawingId, {
+      onCharacteristicChange: ({ eventType, new: newRow, old: oldRow }) => {
+        setCharacteristics((items) => {
+          if (eventType === "DELETE") {
+            if (!items.some((item) => item.id === oldRow.id)) return items;
+            return items.filter((item) => item.id !== oldRow.id);
+          }
+          if (eventType === "INSERT" && !items.some((item) => item.id === newRow.id)) {
+            return [...items, {
+              id: newRow.id,
+              balloonNo: newRow.balloon_no,
+              page: newRow.page,
+              x: Number(newRow.x),
+              y: Number(newRow.y),
+              targetX: newRow.target_x == null ? null : Number(newRow.target_x),
+              targetY: newRow.target_y == null ? null : Number(newRow.target_y),
+              type: newRow.type,
+              unit: hasCharacteristicUnit(newRow.type) ? (newRow.unit ?? "") : "",
+              nominal: newRow.nominal,
+              tolerance: newRow.tolerance,
+              method: newRow.method,
+              notes: newRow.notes || "",
+              samples: {},
+            }];
+          }
+          return items;
+        });
+      },
+      onMeasurementChange: ({ new: newRow }) => {
+        if (!newRow) return;
+        // This subscription has no server-side filter (measurements has no
+        // drawing_id column), so it fires for every measurement write in the
+        // whole database -- including the echo of our own save. Bail out
+        // with the same array reference unless this row actually belongs to
+        // an item here AND its value actually changed, otherwise this keeps
+        // re-triggering the autosave effect (which depends on
+        // `characteristics`) in an endless save -> echo -> save loop.
+        setCharacteristics((items) => {
+          const index = items.findIndex((item) => item.id === newRow.characteristic_id);
+          if (index === -1) return items;
+          const item = items[index];
+          if ((item.samples || {})[newRow.sample_index] === newRow.value) return items;
+          const next = items.slice();
+          next[index] = { ...item, samples: { ...item.samples, [newRow.sample_index]: newRow.value } };
+          return next;
+        });
+      },
+    });
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [activeProject?.kind, activeDrawingId]);
 
   useEffect(() => {
     if (!projectsReady || applyingDrawingRef.current || !activeProject?.id || !activeDrawingId) return;
@@ -774,13 +970,18 @@ export default function App() {
 
       const updatedProject = {
         id: currentProject.id,
+        ownerOrgId: currentProject.ownerOrgId,
         name,
         code: currentProject.code,
         createdAt: currentProject.createdAt,
         updatedAt: new Date().toISOString(),
       };
-      await saveProject(updatedProject);
-      if (activeProject?.id === updatedProject.id) setActiveProject(updatedProject);
+      if (currentProject.kind === "cloud") {
+        await supabaseStore.saveProject(updatedProject);
+      } else {
+        await saveProject(updatedProject);
+      }
+      if (activeProject?.id === updatedProject.id) setActiveProject((current) => ({ ...current, ...updatedProject }));
       if (detailProjectId === updatedProject.id) {
         setDetailProject(updatedProject);
         setDetailFields({ name: updatedProject.name, code: updatedProject.code || "" });
@@ -794,17 +995,23 @@ export default function App() {
     }
   }, [activeProject?.id, detailProjectId, projectDialog, projectSummaries, refreshProjectList]);
 
+  const navigateFromWorkspace = useCallback(async (path, options) => {
+    window.clearTimeout(saveTimerRef.current);
+    const saved = await persistActiveDrawingRef.current?.("manual");
+    if (saved === false) return false;
+    navigate(path, options);
+    return true;
+  }, [navigate]);
+
   const handleOpenProject = useCallback((projectId) => {
     if (!projectId) return;
-    navigate(`/projects/${projectId}/drawings`);
-  }, [navigate]);
+    return navigateFromWorkspace(`/projects/${projectId}/drawings`);
+  }, [navigateFromWorkspace]);
 
   const handleOpenDrawing = useCallback(async (drawingId) => {
     if (!drawingId || drawingId === activeDrawingId || !activeProject?.id) return;
-    window.clearTimeout(saveTimerRef.current);
-    await persistActiveDrawingRef.current?.("manual");
-    navigate(`/projects/${activeProject.id}/drawings/${drawingId}`);
-  }, [activeDrawingId, activeProject?.id, navigate]);
+    await navigateFromWorkspace(`/projects/${activeProject.id}/drawings/${drawingId}`);
+  }, [activeDrawingId, activeProject?.id, navigateFromWorkspace]);
 
   const handlePdfUpload = useCallback(async (event) => {
     const file = event.target.files?.[0];
@@ -817,6 +1024,8 @@ export default function App() {
     }
 
     try {
+      window.clearTimeout(saveTimerRef.current);
+      if (await persistActiveDrawingRef.current?.("manual") === false) return;
       const baseName = file.name.replace(/\.[^/.]+$/, "");
       const estimate = await getStorageEstimate();
       const storageFree = estimate?.quota && estimate?.usage ? estimate.quota - estimate.usage : null;
@@ -840,6 +1049,8 @@ export default function App() {
         pdfByteLength: file.size || bytes.byteLength,
         pageCount: loadedPdf.numPages,
         metadata: { ...emptyMetadata, drawingNo: baseName },
+        unitSystem: "metric",
+        toleranceOverrides: emptyToleranceOverrides,
         sampleCount: 5,
         characteristics: [],
         pageNumber: 1,
@@ -848,14 +1059,16 @@ export default function App() {
         createdAt: now,
         updatedAt: now,
       };
-      await saveProject(nextProject);
-      const savedDrawing = await saveDrawing(project.id, drawing);
+      const store = project.kind === "cloud" ? supabaseStore : { saveProject, saveDrawing };
+      await store.saveProject(nextProject);
+      const savedDrawing = await store.saveDrawing(project.id, drawing);
 
       applyingDrawingRef.current = true;
       setActiveProject(nextProject);
       setDrawings((items) => updateDrawingSummary(items, savedDrawing));
       setActiveDrawingId(savedDrawing.id);
       setMetadata(drawing.metadata);
+      setUnitSystem("metric");
       setToleranceOverrides(emptyToleranceOverrides);
       setSampleCount(5);
       setPdfBytes(bytes);
@@ -877,7 +1090,7 @@ export default function App() {
       setCanvasSize({ width: 0, height: 0 });
       rememberActiveProject(project.id, savedDrawing.id);
       await refreshProjectList();
-      setSaveState({ status: "saved", label: "local: drawing saved" });
+      setSaveState({ status: "saved", label: project.kind === "cloud" ? "Synced" : "local: drawing saved" });
       setMessage(`Added ${file.name} to ${nextProject.name}.`);
     } catch (error) {
       const messageText = getStorageErrorMessage(error);
@@ -893,6 +1106,16 @@ export default function App() {
     (event) => {
       if (!overlayRef.current || !pdfDoc) return;
       const point = getNormalizedPoint(event, overlayRef.current);
+      if (placementNext && mode === "balloon") {
+        const position = balloonSettings.showLeaderLine ? getDefaultBalloonPosition(point, balloonSettings.leaderScale) : point;
+        setCharacteristics((items) => items.map((item) => item.id === placementNext.id
+          ? { ...item, isPlaced: true, page: pageNumber, x: position.x, y: position.y, targetX: point.x, targetY: point.y } : item));
+        setSelectedId(placementNext.id);
+        const remaining = characteristics.filter((item) => sameRequirement(item, placementNext) && item.isPlaced === false && item.id !== placementNext.id);
+        setMessage(remaining.length ? `Placed ${balloonLabel(placementNext)}. ${remaining.length} instances remain.` : "All instances placed.");
+        if (!remaining.length) { setPlacementGroupId(null); setMode("select"); }
+        return;
+      }
 
       if (mode === "balloon") {
         // Prefer a highlighted dimension rect over fuzzy nearest-text search.
@@ -901,19 +1124,33 @@ export default function App() {
         // Snap target to the center of the highlight so the leader points exactly at the text.
         const target = hit
           ? {
-              x: clamp((hit.left + hit.width / 2) / canvasSize.width, 0, 1),
-              y: clamp((hit.top + hit.height / 2) / canvasSize.height, 0, 1),
-            }
+            x: clamp((hit.left + hit.width / 2) / canvasSize.width, 0, 1),
+            y: clamp((hit.top + hit.height / 2) / canvasSize.height, 0, 1),
+          }
           : point;
 
         const resolvedSeed = hit
-          ? { nominal: hit.nominal, tolerance: hit.tolerance }
+          ? {
+            nominal: hit.nominal,
+            quantity: hit.quantity,
+            tolerance: hit.tolerance,
+            ...(hit.unit ? { unit: hit.unit } : {}),
+            ...(hit.dual ? { dual: hit.dual } : {}),
+          }
           : (() => {
-              const dim = findNearestTextDimension(point, textItems, canvasSize);
-              return dim
-                ? { ...dim, tolerance: applyGeneralTolerance(dim.nominal, dim.tolerance, resolvedTolerances.linear) }
-                : {};
-            })();
+            const dim = findNearestTextDimension(point, textItems, canvasSize);
+            return dim
+              ? {
+                ...dim,
+                tolerance: applyGeneralTolerance(dim.nominal, dim.tolerance, dim.unit === "°" ? resolvedTolerances.angle : resolvedTolerances.linear),
+              }
+              : {};
+          })();
+
+        if (resolvedSeed.captureError) {
+          setMessage(resolvedSeed.captureError);
+          return;
+        }
 
         const position = balloonSettings.showLeaderLine
           ? getDefaultBalloonPosition(target, balloonSettings.leaderScale)
@@ -925,7 +1162,8 @@ export default function App() {
           targetX: target.x,
           targetY: target.y,
           page: pageNumber,
-          seed: resolvedSeed,
+          unitSystem,
+          seed: activeProject?.kind === "cloud" ? { ...resolvedSeed, quantity: 1 } : resolvedSeed,
         });
         setCharacteristics((items) => [...items, next]);
         setSelectedId(next.id);
@@ -936,7 +1174,7 @@ export default function App() {
         setEditingBalloonId(null);
       }
     },
-    [characteristics, mode, pageNumber, pdfDoc, balloonSettings.leaderScale, balloonSettings.showLeaderLine],
+    [activeProject?.kind, placementNext, characteristics, mode, pageNumber, pdfDoc, balloonSettings.leaderScale, balloonSettings.showLeaderLine, unitSystem, dimensionCandidates, canvasSize, textItems, resolvedTolerances],
   );
 
   const selectCharacteristic = useCallback((id) => {
@@ -950,19 +1188,87 @@ export default function App() {
   const nextPage = useCallback(() => setPageNumber((v) => v + 1), []);
 
   const updateCharacteristic = useCallback((id, patch) => {
-    setCharacteristics((items) =>
-      items.map((item) => {
-        if (item.id !== id) return item;
-        const nextType = patch.type ?? item.type;
-        const nextPatch = patch.type && !("method" in patch)
-          ? { ...patch, method: TYPE_DEFAULT_METHOD[nextType] ?? item.method }
-          : patch;
-        return { ...item, ...nextPatch };
-      }),
-    );
-  }, []);
+    const { applyDefaultTolerance = true, ...fields } = patch;
+    const selected = characteristics.find((item) => item.id === id);
+    if (applyDefaultTolerance && "nominal" in fields && (fields.type ?? selected?.type) === "dimension") {
+      const captureError = getDimensionCaptureError(fields.nominal);
+      if (captureError) {
+        // Live typing has already updated this field; clear it on commit so the
+        // rejected count cannot become an inspection limit.
+        fields.nominal = "";
+        fields.tolerance = "";
+        setMessage(captureError);
+      }
+    }
+    setCharacteristics((items) => {
+      const selected = items.find((item) => item.id === id);
+      if (!selected) return items;
+      const nextType = fields.type ?? selected.type;
+      const next = { ...selected, ...fields };
+      if (fields.type && !("method" in fields)) next.method = TYPE_DEFAULT_METHOD[nextType] ?? selected.method;
+      if (!hasCharacteristicUnit(nextType)) next.unit = "";
+      else if (fields.type && !hasCharacteristicUnit(selected.type) && !next.unit) next.unit = getDefaultUnit(unitSystem);
+      if (applyDefaultTolerance && "nominal" in fields && nextType === "dimension") {
+        const parsed = parseDimension(next.nominal);
+        if (parsed?.quantity > 1 && !next.instancesExpanded && activeProject?.kind !== "cloud") next.quantity = parsed.quantity;
+        if (parsed?.unit && !("unit" in fields)) next.unit = parsed.unit;
+        if (!("tolerance" in fields) && !next.tolerance) {
+          const angle = /°|deg/i.test(String(next.unit || "").trim());
+          const table = angle ? resolvedTolerances.angle
+            : String(next.unit || "").trim().toUpperCase() === getDefaultUnit(unitSystem) ? resolvedTolerances.linear : {};
+          next.tolerance = parsed?.tolerance || applyGeneralTolerance(next.nominal, next.tolerance, table);
+        }
+        if (parsed?.quantity > 1) {
+          next.nominal = parsed.nominal;
+          if (parsed.tolerance && !("tolerance" in fields)) next.tolerance = parsed.tolerance;
+        }
+      }
+      const shared = Object.fromEntries(SHARED_REQUIREMENT_FIELDS.map((key) => [key, next[key]]));
+      return items.map((item) => item.id === id ? next : sameRequirement(item, selected) ? { ...item, ...shared } : item);
+    });
+  }, [characteristics, unitSystem, resolvedTolerances, activeProject?.kind]);
+
+  const applyQuantity = useCallback((id, quantity) => {
+    if (activeProject?.kind === "cloud") {
+      setMessage("Repeated dimensions are local-only until cloud occurrence support is available.");
+      return;
+    }
+    if (!isValidOccurrenceQuantity(quantity)) {
+      setMessage(`Quantity must be a whole number from 1 to ${MAX_OCCURRENCE_QUANTITY}.`);
+      return;
+    }
+    const selected = characteristics.find((item) => item.id === id);
+    if (!selected) return;
+    const removed = characteristics.filter((item) => sameRequirement(item, selected) && (item.occurrenceIndex || 1) > quantity);
+    if (removed.some(hasInspectionData) && !window.confirm("Reducing quantity removes trailing instances and their measurements or notes. Continue?")) return;
+    const next = resizeOccurrences(characteristics, id, quantity);
+    setCharacteristics(next);
+    const retained = next.find((item) => sameRequirement(item, selected));
+    if (removed.some((item) => item.id === selectedId)) setSelectedId(retained?.id || null);
+    setEditingBalloonId(null);
+    const unplaced = next.filter((item) => sameRequirement(item, selected) && item.isPlaced === false);
+    setPlacementGroupId(unplaced.length ? (selected.groupId || selected.id) : null);
+    setMode(unplaced.length ? "balloon" : "select");
+    setMessage(unplaced.length ? `Click the target for ${balloonLabel(unplaced[0])}. ${unplaced.length} instances remain; Escape pauses placement.` : "Quantity updated.");
+  }, [activeProject?.kind, characteristics, selectedId]);
+
+  const resumePlacement = useCallback((item) => {
+    if (!characteristics.some((other) => sameRequirement(other, item) && other.isPlaced === false)) {
+      setMessage("All instances are already placed.");
+      return;
+    }
+    setPlacementGroupId(item.groupId || item.id);
+    setMode("balloon");
+    setMessage("Click each instance target. Escape pauses placement; rows remain saved.");
+  }, [characteristics]);
 
   const isAngleUnit = useCallback((unit) => /°|deg/i.test(String(unit || "").trim()), []);
+
+  const linearTolerancesConfirmed = unitSystem === normalizeUnitSystem(toleranceOverrides.linearUnitSystem);
+  const matchesToleranceUnit = useCallback((item, kind) => {
+    if (kind === "angle") return isAngleUnit(item.unit);
+    return linearTolerancesConfirmed && String(item.unit || "").trim().toUpperCase() === getDefaultUnit(unitSystem);
+  }, [isAngleUnit, linearTolerancesConfirmed, unitSystem]);
 
   // Live count of dimension rows a given tolerance-table bucket would fill in
   // (blank tolerance, matching decimal-place count and linear/angle kind).
@@ -970,10 +1276,10 @@ export default function App() {
     return characteristics.filter((item) =>
       item.type === "dimension" &&
       !item.tolerance &&
-      isAngleUnit(item.unit) === (kind === "angle") &&
+      matchesToleranceUnit(item, kind) &&
       getDecimalPlaces(item.nominal) === places,
     ).length;
-  }, [characteristics, isAngleUnit]);
+  }, [characteristics, matchesToleranceUnit]);
 
   // Fills the tolerance on every matching-but-blank dimension. Never overwrites
   // an existing tolerance, so it's safe to run repeatedly without confirmation.
@@ -982,19 +1288,31 @@ export default function App() {
     setCharacteristics((items) =>
       items.map((item) => {
         if (item.type !== "dimension" || item.tolerance) return item;
-        if (isAngleUnit(item.unit) !== (kind === "angle")) return item;
+        if (!matchesToleranceUnit(item, kind)) return item;
         if (getDecimalPlaces(item.nominal) !== places) return item;
         return { ...item, tolerance: value };
       }),
     );
-  }, [isAngleUnit]);
+  }, [matchesToleranceUnit]);
+
+  const confirmLinearToleranceUnit = useCallback(() => {
+    const previousBank = normalizeUnitSystem(toleranceOverrides.linearUnitSystem);
+    setToleranceDefaults((current) => ({
+      ...current,
+      [previousBank]: { ...toleranceOverrides.linear, ...current[previousBank] },
+    }));
+    setToleranceOverrides((current) => ({ ...current, linear: {}, linearUnitSystem: unitSystem }));
+    setMessage(`Confirmed linear tolerance table for ${getDefaultUnit(unitSystem)}. Existing rows stay unchanged.`);
+  }, [unitSystem, toleranceOverrides]);
 
   const applyToleranceOverride = useCallback((kind, places, value) => {
     setToleranceOverrides((current) => ({
       ...current,
       [kind]: { ...current[kind], [places]: value },
     }));
-  }, []);
+    const bank = kind === "linear" ? normalizeUnitSystem(toleranceOverrides.linearUnitSystem) : "angle";
+    setToleranceDefaults((current) => ({ ...current, [bank]: { ...current[bank], [places]: value } }));
+  }, [toleranceOverrides.linearUnitSystem]);
 
   const resetToleranceOverride = useCallback((kind, places) => {
     setToleranceOverrides((current) => {
@@ -1002,26 +1320,22 @@ export default function App() {
       delete next[places];
       return { ...current, [kind]: next };
     });
-  }, []);
+    const bank = kind === "linear" ? normalizeUnitSystem(toleranceOverrides.linearUnitSystem) : "angle";
+    setToleranceDefaults((current) => {
+      const next = { ...current[bank] };
+      delete next[places];
+      return { ...current, [bank]: next };
+    });
+  }, [toleranceOverrides.linearUnitSystem]);
 
   const reassignBalloonNo = useCallback((id, rawValue) => {
-    const nextNo = Number.parseInt(rawValue, 10);
-    if (!Number.isFinite(nextNo) || nextNo < 1) {
+    const nextNo = Number(rawValue);
+    if (!Number.isSafeInteger(nextNo) || nextNo < 1) {
       setMessage("Balloon number must be a positive whole number.");
       return;
     }
 
-    setCharacteristics((items) => {
-      const current = items.find((item) => item.id === id);
-      if (!current || current.balloonNo === nextNo) return items;
-
-      const currentNo = current.balloonNo;
-      return items.map((item) => {
-        if (item.id === id) return { ...item, balloonNo: nextNo };
-        if (item.balloonNo === nextNo) return { ...item, balloonNo: currentNo };
-        return item;
-      });
-    });
+    setCharacteristics((items) => reassignOccurrenceBase(items, id, nextNo));
     setMessage(`Reassigned balloon to ${nextNo}.`);
   }, []);
 
@@ -1034,6 +1348,45 @@ export default function App() {
       ),
     );
   }, []);
+
+  const updateBatchSamples = useCallback((updates) => {
+    if (!updates || !Object.keys(updates).length) return;
+    setCharacteristics((items) =>
+      items.map((item) => {
+        const itemUpdates = updates[item.id];
+        if (!itemUpdates) return item;
+        return {
+          ...item,
+          samples: {
+            ...item.samples,
+            ...itemUpdates,
+          },
+        };
+      }),
+    );
+  }, []);
+
+  const autoFillSamples = useCallback((mode = "nominal", targetId = null) => {
+    const updates = computeAutoFillSampleUpdates(characteristics, sampleCount, targetId, mode);
+    if (!Object.keys(updates).length) {
+      setMessage("No empty samples to auto-fill.");
+      return;
+    }
+    updateBatchSamples(updates);
+    const count = Object.values(updates).reduce((acc, row) => acc + Object.keys(row).length, 0);
+    setMessage(`Auto-filled ${count} sample measurement${count === 1 ? "" : "s"}.`);
+  }, [characteristics, sampleCount, updateBatchSamples]);
+
+  const clearAllSamples = useCallback(() => {
+    if (!characteristics.some((item) => Object.keys(item.samples || {}).length > 0)) {
+      setMessage("Samples are already empty.");
+      return;
+    }
+    setCharacteristics((items) =>
+      items.map((item) => ({ ...item, samples: {} }))
+    );
+    setMessage("Cleared all sample measurements.");
+  }, [characteristics]);
 
   const updatePosition = useCallback((id, clientX, clientY, point = "balloon") => {
     const rect = overlayRef.current?.getBoundingClientRect();
@@ -1077,14 +1430,25 @@ export default function App() {
     const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
 
     if (drag.point === "target") {
-      const detected = findNearestTextDimension({ x, y }, textItems, canvasSize);
+      const row = characteristics.find((item) => item.id === drag.id);
+      const detected = row?.instancesExpanded ? null : findNearestTextDimension({ x, y }, textItems, canvasSize);
+      if (detected?.captureError) {
+        updateCharacteristic(drag.id, { targetX: x, targetY: y });
+        setMessage(detected.captureError);
+        return;
+      }
       if (detected?.nominal) {
-        const resolvedTol = applyGeneralTolerance(detected.nominal, detected.tolerance, resolvedTolerances.linear);
+        const unit = detected.unit ?? row?.unit;
+        const table = /°|deg/i.test(String(unit || "")) ? resolvedTolerances.angle
+          : String(unit || "").trim().toUpperCase() === getDefaultUnit(unitSystem) ? resolvedTolerances.linear : {};
+        const resolvedTol = applyGeneralTolerance(detected.nominal, detected.tolerance || row?.tolerance, table);
         updateCharacteristic(drag.id, {
           targetX: x,
           targetY: y,
           nominal: detected.nominal,
+          ...(activeProject?.kind !== "cloud" && detected.quantity > 1 ? { quantity: detected.quantity } : {}),
           ...(resolvedTol ? { tolerance: resolvedTol } : {}),
+          ...(detected.unit ? { unit: detected.unit } : {}),
         });
       } else {
         updateCharacteristic(drag.id, { targetX: x, targetY: y });
@@ -1092,7 +1456,7 @@ export default function App() {
     } else {
       updateCharacteristic(drag.id, { x, y });
     }
-  }, [canvasSize, resolvedTolerances, textItems, updateCharacteristic]);
+  }, [activeProject?.kind, canvasSize, characteristics, resolvedTolerances, textItems, unitSystem, updateCharacteristic]);
 
   const beginPan = useCallback((event) => {
     if (mode !== "pan" || !scrollRef.current) return;
@@ -1268,11 +1632,17 @@ export default function App() {
 
     if (rect.width < 0.012 || rect.height < 0.012) {
       setOcrRect(null);
+      if (mode === "text") {
+        const item = findTextItemAtPoint(point, textItems, canvasSize);
+        if (item) {
+          captureTextSelection(item.text);
+        }
+      }
       return;
     }
 
     await recognizeSelectedArea(rect);
-  }, [detectAutoBalloonCandidates, recognizeSelectedArea]);
+  }, [canvasSize, captureTextSelection, detectAutoBalloonCandidates, mode, recognizeSelectedArea, textItems]);
 
   const applyCapturedText = useCallback((destination) => {
     const text = selectedText.trim();
@@ -1290,17 +1660,25 @@ export default function App() {
     }
 
     if (!CHARACTERISTIC_FIELDS.includes(destination)) return;
+    if (destination === "nominal" && characteristics.find((item) => item.id === selectedId)?.type === "dimension") {
+      const captureError = getDimensionCaptureError(text);
+      if (captureError) { setMessage(captureError); return; }
+    }
     updateCharacteristic(selectedId, { [destination]: text });
     setMessage(`Filled selected row ${fieldLabel(destination)} from PDF text.`);
-  }, [selectedId, selectedText, updateCharacteristic]);
+  }, [characteristics, selectedId, selectedText, updateCharacteristic]);
 
   const addManualRow = useCallback(() => {
-    const next = createCharacteristic({ balloonNo: nextBalloonNo(characteristics), page: pageNumber });
+    const next = createCharacteristic({ balloonNo: nextBalloonNo(characteristics), page: pageNumber, unitSystem, seed: { isPlaced: activeProject?.kind === "cloud" } });
     setCharacteristics((items) => [...items, next]);
     setSelectedId(next.id);
     setEditingBalloonId(null);
+    if (activeProject?.kind !== "cloud") {
+      setPlacementGroupId(next.groupId);
+      setMode("balloon");
+    }
     setMessage(`Added row ${next.balloonNo}. Click the drawing to place its balloon later.`);
-  }, [characteristics, pageNumber]);
+  }, [activeProject?.kind, characteristics, pageNumber, unitSystem]);
 
   const cancelAutoBalloonReview = useCallback(() => {
     setAutoBalloonRect(null);
@@ -1320,6 +1698,8 @@ export default function App() {
 
   const commitAutoBalloonCandidates = useCallback(() => {
     if (!autoBalloonCandidates.length) return;
+    const captureError = autoBalloonCandidates.map((candidate) => getDimensionCaptureError(candidate.label)).find(Boolean);
+    if (captureError) { setMessage(captureError); return; }
 
     const startNo = nextBalloonNo(characteristics);
     const rows = autoBalloonCandidates.map((candidate, index) =>
@@ -1330,12 +1710,14 @@ export default function App() {
         targetX: candidate.targetX,
         targetY: candidate.targetY,
         page: pageNumber,
+        unitSystem,
         seed: (() => {
           const parsed = parseDimension(candidate.label);
           if (!parsed) return {};
           return {
             ...parsed,
-            tolerance: applyGeneralTolerance(parsed.nominal, parsed.tolerance, resolvedTolerances.linear),
+            quantity: activeProject?.kind === "cloud" ? 1 : parsed.quantity,
+            tolerance: applyGeneralTolerance(parsed.nominal, parsed.tolerance, parsed.unit === "°" ? resolvedTolerances.angle : resolvedTolerances.linear),
           };
         })(),
       }),
@@ -1348,7 +1730,7 @@ export default function App() {
     setAutoBalloonCandidates([]);
     setAutoBalloonReviewOpen(false);
     setMessage(`Added ${rows.length} reviewed balloon${rows.length === 1 ? "" : "s"}. Drag any balloon or target to refine placement.`);
-  }, [autoBalloonCandidates, characteristics, resolvedTolerances, pageNumber]);
+  }, [activeProject?.kind, autoBalloonCandidates, characteristics, resolvedTolerances, pageNumber, unitSystem]);
 
   const loadDemoRows = useCallback(() => {
     const positions = [
@@ -1400,7 +1782,7 @@ export default function App() {
 
   const clearDrawingData = useCallback(() => {
     setMetadata(emptyMetadata);
-    setToleranceOverrides(emptyToleranceOverrides);
+    setToleranceOverrides((current) => ({ ...emptyToleranceOverrides, linearUnitSystem: current.linearUnitSystem }));
     setSampleCount(5);
     setCharacteristics([]);
     setSelectedId(null);
@@ -1416,11 +1798,20 @@ export default function App() {
   }, []);
 
   const handleDeleteProjectFromDashboard = useCallback(async (project) => {
-    const confirmed = window.confirm(`Delete project "${project.name}" and all local drawings?`);
+    const isCloud = project.kind === "cloud";
+    const confirmed = window.confirm(
+      isCloud
+        ? `Remove shared project "${project.name}"? This deletes it for every collaborator.`
+        : `Delete project "${project.name}" and all local drawings?`
+    );
     if (!confirmed) return;
 
     try {
-      await deleteProject(project.id);
+      if (isCloud) {
+        await supabaseStore.deleteProject(project.id);
+      } else {
+        await deleteProject(project.id);
+      }
       if (activeProject?.id === project.id) {
         setActiveProject(null);
         setDrawings([]);
@@ -1436,13 +1827,23 @@ export default function App() {
   }, [activeProject?.id, refreshProjectList, resetDrawingState]);
 
   const loadDetailForProject = useCallback(async (projectId) => {
-    const workspace = await loadProject(projectId);
+    const summary = projectSummariesRef.current.find((project) => project.id === projectId);
+    let kind = summary?.kind === "cloud" ? "cloud" : "local";
+    let workspace = kind === "cloud" ? await supabaseStore.loadProject(projectId) : await loadProject(projectId);
+    if (!workspace && supabaseEnabled && user) {
+      const fallbackKind = kind === "cloud" ? "local" : "cloud";
+      const fallbackWorkspace = fallbackKind === "cloud" ? await supabaseStore.loadProject(projectId) : await loadProject(projectId);
+      if (fallbackWorkspace) {
+        kind = fallbackKind;
+        workspace = fallbackWorkspace;
+      }
+    }
     if (!workspace) {
-      setMessage("Project could not be found in local storage.");
+      setMessage(kind === "cloud" ? "Shared project could not be found." : "Project could not be found in local storage.");
       return;
     }
     setDetailProjectId(projectId);
-    setDetailProject(workspace.project);
+    setDetailProject({ ...workspace.project, kind });
     setDetailDrawings(workspace.drawings);
     setDetailFields({
       name: workspace.project.name,
@@ -1451,7 +1852,87 @@ export default function App() {
       estimatedDeliveryDate: workspace.project.estimatedDeliveryDate || "",
       notes: workspace.project.notes || "",
     });
-  }, []);
+    if (kind === "cloud") {
+      try {
+        setProjectShares(await supabaseStore.listShares(projectId));
+      } catch (error) {
+        console.error("Could not load project shares:", error);
+      }
+    } else {
+      setProjectShares([]);
+    }
+  }, [user]);
+
+  const handleInviteVendor = useCallback(async (event) => {
+    event.preventDefault();
+    if (!detailProjectId || !shareEmail.trim()) return;
+    setShareStatus("sending");
+    try {
+      await supabaseStore.shareProject(detailProjectId, shareEmail.trim());
+      setShareEmail("");
+      setProjectShares(await supabaseStore.listShares(detailProjectId));
+      setMessage(`Invited ${shareEmail.trim()} to this project.`);
+    } catch (error) {
+      setMessage(`Could not send invite: ${error.message}`);
+    } finally {
+      setShareStatus("idle");
+    }
+  }, [detailProjectId, shareEmail]);
+
+  const handleRevokeShare = useCallback(async (shareId) => {
+    if (!detailProjectId) return;
+    try {
+      await supabaseStore.revokeShare(shareId);
+      setProjectShares(await supabaseStore.listShares(detailProjectId));
+    } catch (error) {
+      setMessage(`Could not revoke access: ${error.message}`);
+    }
+  }, [detailProjectId]);
+
+  // Converts an existing local (IndexedDB) project into a cloud-backed one so
+  // it can be shared. The local copy is retained untouched -- nothing is
+  // deleted here -- so a failed/partial upload can't lose data.
+  const convertProjectToCloud = useCallback(async (projectId) => {
+    if (!supabaseEnabled) {
+      setMessage("Cloud sharing is not configured for this deployment.");
+      return;
+    }
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    if (!orgIds.length) {
+      navigate("/onboarding");
+      return;
+    }
+
+    try {
+      if (projectId === activeProject?.id) {
+        assertCloudCompatible(characteristics);
+        if (!await persistActiveDrawing("manual")) return;
+      }
+      setMessage("Sharing project...");
+      const localWorkspace = await loadProject(projectId);
+      if (!localWorkspace) {
+        setMessage("Project could not be found in local storage.");
+        return;
+      }
+      const localDrawings = await Promise.all(
+        localWorkspace.drawings.map((drawing) => loadDrawing(drawing.id))
+      );
+      localDrawings.filter(Boolean).forEach((drawing) => assertCloudCompatible(drawing.characteristics || []));
+      const cloudProject = await supabaseStore.migrateLocalProjectToCloud(
+        orgIds[0],
+        localWorkspace.project,
+        localDrawings.filter(Boolean)
+      );
+      await refreshProjectList();
+      setMessage(`"${localWorkspace.project.name}" is now shared. Your local copy is untouched.`);
+      navigate(`/projects/${cloudProject.id}`);
+    } catch (error) {
+      setMessage(`Could not share project: ${error.message}`);
+    }
+  }, [activeProject?.id, characteristics, persistActiveDrawing, navigate, orgIds, refreshProjectList, user]);
 
   const handleManageProject = useCallback((projectId) => {
     navigate(`/projects/${projectId}`);
@@ -1462,6 +1943,7 @@ export default function App() {
     setDetailProjectId(null);
     setDetailProject(null);
     setDetailDrawings([]);
+    setProjectShares([]);
     await refreshProjectList();
   }, [navigate, refreshProjectList]);
 
@@ -1482,9 +1964,13 @@ export default function App() {
       notes: detailFields.notes,
       updatedAt: new Date().toISOString(),
     };
-    await saveProject(updatedProject);
+    if (detailProject.kind === "cloud") {
+      await supabaseStore.saveProject(updatedProject);
+    } else {
+      await saveProject(updatedProject);
+    }
     setDetailProject(updatedProject);
-    if (activeProject?.id === updatedProject.id) setActiveProject(updatedProject);
+    if (activeProject?.id === updatedProject.id) setActiveProject((current) => ({ ...current, ...updatedProject }));
     await refreshProjectList();
     setMessage(`Saved ${updatedProject.name}.`);
   }, [activeProject?.id, detailFields, detailProject, refreshProjectList]);
@@ -1513,6 +1999,8 @@ export default function App() {
         pdfByteLength: file.size || bytes.byteLength,
         pageCount: loadedPdf.numPages,
         metadata: { ...emptyMetadata, drawingNo: baseName },
+        unitSystem: "metric",
+        toleranceOverrides: emptyToleranceOverrides,
         sampleCount: 5,
         characteristics: [],
         pageNumber: 1,
@@ -1521,9 +2009,16 @@ export default function App() {
         createdAt: now,
         updatedAt: now,
       };
-      await saveDrawing(detailProjectId, drawing);
-      const workspace = await loadProject(detailProjectId);
-      setDetailDrawings(workspace?.drawings || []);
+      const isCloud = detailProject?.kind === "cloud";
+      if (isCloud) {
+        await supabaseStore.saveDrawing(detailProjectId, drawing);
+        const workspace = await supabaseStore.loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      } else {
+        await saveDrawing(detailProjectId, drawing);
+        const workspace = await loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      }
       await refreshProjectList();
       setMessage(`Added ${file.name}.`);
     } catch (error) {
@@ -1531,7 +2026,7 @@ export default function App() {
     } finally {
       event.target.value = "";
     }
-  }, [detailDrawings.length, detailProjectId, refreshProjectList]);
+  }, [detailDrawings.length, detailProject?.kind, detailProjectId, refreshProjectList]);
 
   const handleDetailOpenDrawing = useCallback((drawingId) => {
     if (!detailProjectId) return;
@@ -1556,30 +2051,44 @@ export default function App() {
     if (!name || !detailProjectId) return;
 
     try {
-      const drawing = await loadDrawing(drawingDialog.drawingId);
+      const isCloud = detailProject?.kind === "cloud";
+      const drawing = isCloud ? await supabaseStore.loadDrawing(drawingDialog.drawingId) : await loadDrawing(drawingDialog.drawingId);
       if (!drawing) {
         setMessage("Drawing could not be found for rename.");
         return;
       }
       const updatedDrawing = { ...drawing, name, updatedAt: new Date().toISOString() };
-      await saveDrawing(detailProjectId, updatedDrawing);
+      if (isCloud) {
+        await supabaseStore.saveDrawing(detailProjectId, updatedDrawing);
+        const workspace = await supabaseStore.loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      } else {
+        await saveDrawing(detailProjectId, updatedDrawing);
+        const workspace = await loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      }
       setDrawingDialog({ open: false, drawingId: null, name: "" });
-      const workspace = await loadProject(detailProjectId);
-      setDetailDrawings(workspace?.drawings || []);
       if (activeDrawingId === drawing.id) setDrawings((items) => updateDrawingSummary(items, updatedDrawing));
     } catch (error) {
       setMessage(`Could not rename drawing: ${error.message}`);
     }
-  }, [activeDrawingId, detailProjectId, drawingDialog]);
+  }, [activeDrawingId, detailProject?.kind, detailProjectId, drawingDialog]);
 
   const handleDetailDeleteDrawing = useCallback(async (drawing) => {
     const confirmed = window.confirm(`Delete drawing "${drawing.name}" and its local PDF, balloons, table, and measurements?`);
     if (!confirmed || !detailProjectId) return;
 
     try {
-      await deleteDrawing(drawing.id);
-      const workspace = await loadProject(detailProjectId);
-      setDetailDrawings(workspace?.drawings || []);
+      const isCloud = detailProject?.kind === "cloud";
+      if (isCloud) {
+        await supabaseStore.deleteDrawing(drawing.id);
+        const workspace = await supabaseStore.loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      } else {
+        await deleteDrawing(drawing.id);
+        const workspace = await loadProject(detailProjectId);
+        setDetailDrawings(workspace?.drawings || []);
+      }
       await refreshProjectList();
 
       if (activeProject?.id === detailProjectId && activeDrawingId === drawing.id) {
@@ -1588,7 +2097,7 @@ export default function App() {
         const nextDrawingId = remaining[0]?.id || null;
         rememberActiveProject(detailProjectId, nextDrawingId);
         if (nextDrawingId) {
-          await applyDrawing(nextDrawingId, { projectId: detailProjectId, message: "Deleted drawing. Opened the next drawing." });
+          await applyDrawing(nextDrawingId, { projectId: detailProjectId, kind: isCloud ? "cloud" : "local", message: "Deleted drawing. Opened the next drawing." });
         } else {
           setActiveDrawingId(null);
           resetDrawingState("Deleted drawing. Add another drawing PDF to this project.");
@@ -1597,19 +2106,224 @@ export default function App() {
     } catch (error) {
       setMessage(`Could not delete drawing: ${error.message}`);
     }
-  }, [activeDrawingId, activeProject?.id, applyDrawing, detailProjectId, drawings, refreshProjectList, rememberActiveProject, resetDrawingState]);
+  }, [activeDrawingId, activeProject?.id, applyDrawing, detailProject?.kind, detailProjectId, drawings, refreshProjectList, rememberActiveProject, resetDrawingState]);
 
   const deleteCharacteristic = useCallback((id) => {
     if (!id) return;
-    setCharacteristics((items) => renumber(items.filter((item) => item.id !== id)));
-    setSelectedId((current) => (current === id ? null : current));
-    setEditingBalloonId((current) => (current === id ? null : current));
-    setMessage("Deleted selected balloon and renumbered the table.");
-  }, []);
+    const selected = characteristics.find((item) => item.id === id);
+    if (!selected) return;
+    const group = characteristics.filter((item) => sameRequirement(item, selected));
+    if (group.length > 1 && !window.confirm(`Delete requirement ${balloonLabel(selected)} and all ${group.length} instances?`)) return;
+    setCharacteristics((items) => items.filter((item) => !sameRequirement(item, selected)));
+    if (group.some((item) => item.id === selectedId)) setSelectedId(null);
+    setEditingBalloonId(null);
+    setPlacementGroupId(null);
+    setMessage("Deleted requirement. Other balloon numbers are preserved.");
+  }, [characteristics, selectedId]);
 
   const deleteSelected = useCallback(() => {
     deleteCharacteristic(selectedId);
   }, [deleteCharacteristic, selectedId]);
+
+  const isWorkspaceRoute = /^\/projects\/[^/]+\/drawings(\/|$)/.test(location.pathname);
+
+  useEffect(() => {
+    const handleShortcut = (event) => {
+      if (!isWorkspaceRoute) return;
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping =
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select" ||
+        target?.isContentEditable;
+      if (isTyping) {
+        if (lowerKey === "escape") {
+          if (templateDialogOpen) {
+            event.preventDefault();
+            setTemplateDialogOpen(false);
+            setTemplateDialogProject(null);
+            return;
+          }
+          if (toleranceTableOpen) {
+            event.preventDefault();
+            setToleranceTableOpen(false);
+            return;
+          }
+        }
+        return;
+      }
+
+      const key = event.key;
+      const lowerKey = key.toLowerCase();
+
+      // 1. Escape: cancel active tool states, placement, dialogs, review panels
+      if (lowerKey === "escape") {
+        if (templateDialogOpen) {
+          event.preventDefault();
+          setTemplateDialogOpen(false);
+          setTemplateDialogProject(null);
+          return;
+        }
+        if (placementGroupId) {
+          setMode("select");
+          setMessage("Placement paused. Select a requirement and resume placement to continue.");
+        }
+        setPlacementGroupId(null);
+        if (toleranceTableOpen) {
+          event.preventDefault();
+          setToleranceTableOpen(false);
+          return;
+        }
+        if (editingBalloonId || ocrRect || autoBalloonRect || autoBalloonReviewOpen || pendingTarget) {
+          event.preventDefault();
+          setEditingBalloonId(null);
+          setPendingTarget(null);
+          setOcrRect(null);
+          setAutoBalloonRect(null);
+          setAutoBalloonCandidates([]);
+          setAutoBalloonReviewOpen(false);
+        }
+        return;
+      }
+
+      // If tolerance table or template modal is open, don't trigger workspace shortcuts
+      if (toleranceTableOpen || templateDialogOpen) return;
+
+      // 2. Enter: confirm pending candidate review or finish balloon edit
+      if (lowerKey === "enter") {
+        if (autoBalloonReviewOpen && autoBalloonCandidates.length > 0) {
+          event.preventDefault();
+          commitAutoBalloonCandidates();
+          return;
+        }
+        if (editingBalloonId) {
+          event.preventDefault();
+          setEditingBalloonId(null);
+          setMessage("Finished balloon editing.");
+          return;
+        }
+      }
+
+      if (workspaceMode === "measurement") return;
+
+      // 3. Delete / Backspace: delete selected requirement
+      if (key === "Delete" || key === "Backspace") {
+        if (selectedId && !editingBalloonId) {
+          event.preventDefault();
+          deleteSelected();
+          return;
+        }
+      }
+
+      // 4. Primary Tool Shortcuts
+      const shortcutModes = {
+        b: "balloon",
+        v: "select",
+        h: "pan",
+        t: "text",
+        a: "autoBalloon",
+      };
+      if (shortcutModes[lowerKey]) {
+        event.preventDefault();
+        switchMode(shortcutModes[lowerKey]);
+        return;
+      }
+
+      // 5. Edit Selected Balloon
+      if (lowerKey === "e" && selected?.page === pageNumber) {
+        event.preventDefault();
+        setEditingBalloonId(selected.id);
+        setMessage(`Editing balloon ${balloonLabel(selected)}.`);
+        return;
+      }
+
+      // 6. 'd': Cycle requirement type (dimension -> gdt -> note -> visual)
+      if (lowerKey === "d" && selected) {
+        event.preventDefault();
+        const currentType = selected.type || "dimension";
+        const currentIndex = types.indexOf(currentType);
+        const nextType = types[(currentIndex + 1) % types.length];
+        const nextMethod = TYPE_DEFAULT_METHOD[nextType] || selected.method || "DC";
+        updateCharacteristic(selected.id, {
+          type: nextType,
+          method: nextMethod,
+          ...(hasCharacteristicUnit(nextType) ? {} : { unit: "" }),
+        });
+        setMessage(`Changed ${balloonLabel(selected)} type to ${nextType}.`);
+        return;
+      }
+
+      // 7. ArrowUp / ArrowDown (or k / j): Navigate characteristic selection in table
+      if (key === "ArrowDown" || lowerKey === "j") {
+        if (characteristics.length > 0) {
+          event.preventDefault();
+          const currentIndex = characteristics.findIndex((c) => c.id === selectedId);
+          const nextIndex = currentIndex < characteristics.length - 1 ? currentIndex + 1 : 0;
+          setSelectedId(characteristics[nextIndex].id);
+          setMessage(`Selected characteristic #${balloonLabel(characteristics[nextIndex])}.`);
+          return;
+        }
+      }
+      if (key === "ArrowUp" || lowerKey === "k") {
+        if (characteristics.length > 0) {
+          event.preventDefault();
+          const currentIndex = characteristics.findIndex((c) => c.id === selectedId);
+          const prevIndex = currentIndex > 0 ? currentIndex - 1 : characteristics.length - 1;
+          setSelectedId(characteristics[prevIndex].id);
+          setMessage(`Selected characteristic #${balloonLabel(characteristics[prevIndex])}.`);
+          return;
+        }
+      }
+
+      // 8. Number keys 1-9: Quick set balloon number for selected requirement
+      if (/^[1-9]$/.test(key) && selected && !editingBalloonId) {
+        event.preventDefault();
+        const newNo = Number(key);
+        updateCharacteristic(selected.id, { balloonNo: newNo });
+        setMessage(`Set balloon number to ${newNo}.`);
+        return;
+      }
+
+      // 9. Zoom Shortcuts: '+' or '=' to zoom in, '-' to zoom out
+      if (key === "+" || key === "=") {
+        event.preventDefault();
+        zoomIn();
+        return;
+      }
+      if (key === "-") {
+        event.preventDefault();
+        zoomOut();
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [
+    autoBalloonCandidates,
+    autoBalloonRect,
+    autoBalloonReviewOpen,
+    characteristics,
+    commitAutoBalloonCandidates,
+    deleteSelected,
+    editingBalloonId,
+    isWorkspaceRoute,
+    ocrRect,
+    pageNumber,
+    pendingTarget,
+    placementGroupId,
+    selected,
+    selectedId,
+    switchMode,
+    templateDialogOpen,
+    toleranceTableOpen,
+    updateCharacteristic,
+    workspaceMode,
+    zoomIn,
+    zoomOut,
+  ]);
 
   const exportPdf = useCallback(async () => {
     try {
@@ -1640,12 +2354,176 @@ export default function App() {
 
   const exportExcel = useCallback(() => {
     try {
-      exportInspectionWorkbook({ metadata, characteristics, sampleCount });
-      setMessage("Exported QC/FAI Excel workbook.");
+      if (activeProject?.faiTemplate) {
+        exportCustomInspectionWorkbook({
+          template: activeProject.faiTemplate,
+          metadata,
+          characteristics,
+          sampleCount,
+        });
+        setMessage(`Exported custom FAI Excel workbook (${activeProject.faiTemplate.name}).`);
+      } else {
+        exportInspectionWorkbook({ metadata, characteristics, sampleCount });
+        setMessage("Exported standard AS9102 FAI Excel workbook.");
+      }
     } catch (error) {
       setMessage(error.message);
     }
-  }, [characteristics, metadata, sampleCount]);
+  }, [activeProject, characteristics, metadata, sampleCount]);
+
+  const handleSaveProjectTemplate = useCallback(
+    async (templateDraft) => {
+      const target = templateDialogProject || activeProject;
+      if (!target) return;
+      if (target.kind === "cloud") {
+        setMessage("Custom Excel FAI templates are local-only; cloud template sync is not supported.");
+        return;
+      }
+      try {
+        const updatedProject = {
+          ...target,
+          faiTemplate: templateDraft,
+          updatedAt: new Date().toISOString(),
+        };
+        await saveProject(updatedProject);
+        if (activeProject?.id === target.id) setActiveProject(updatedProject);
+        if (detailProject?.id === target.id) setDetailProject(updatedProject);
+        await refreshProjectList();
+        setMessage(`Custom Excel FAI template '${templateDraft.name}' saved for ${target.name}.`);
+      } catch (error) {
+        setMessage(`Failed to save template: ${error.message}`);
+      }
+    },
+    [templateDialogProject, activeProject, detailProject, refreshProjectList],
+  );
+
+  const handleRemoveProjectTemplate = useCallback(
+    async () => {
+      const target = templateDialogProject || activeProject;
+      if (!target) return;
+      if (target.kind === "cloud") {
+        setMessage("Custom Excel FAI templates are local-only; cloud template sync is not supported.");
+        return;
+      }
+      try {
+        const updatedProject = {
+          ...target,
+          faiTemplate: null,
+          updatedAt: new Date().toISOString(),
+        };
+        await saveProject(updatedProject);
+        if (activeProject?.id === target.id) setActiveProject(updatedProject);
+        if (detailProject?.id === target.id) setDetailProject(updatedProject);
+        await refreshProjectList();
+        setMessage(`Custom template removed from ${target.name}. Default AS9102 report restored.`);
+      } catch (error) {
+        setMessage(`Failed to remove template: ${error.message}`);
+      }
+    },
+    [templateDialogProject, activeProject, detailProject, refreshProjectList],
+  );
+
+  const exportAllProjectDrawings = useCallback(
+    async (targetProject, targetDrawings, activeState = null) => {
+      if (!targetProject || !targetDrawings || !targetDrawings.length) {
+        setMessage("No drawings found to export.");
+        return;
+      }
+      try {
+        setMessage("Preparing multi-drawing PDF export...");
+        const loader = targetProject.kind === "cloud" ? supabaseStore.loadDrawing : loadDrawing;
+        const fullDrawings = [];
+
+        for (const d of targetDrawings) {
+          if (activeState && d.id === activeState.activeDrawingId) {
+            fullDrawings.push({
+              id: d.id,
+              name: d.name,
+              fileName: activeState.pdfName || d.name,
+              pdfBytes: activeState.pdfBytes,
+              characteristics: activeState.characteristics,
+            });
+          } else {
+            const loaded = await loader(d.id);
+            if (loaded && loaded.pdfBytes) {
+              fullDrawings.push(loaded);
+            }
+          }
+        }
+
+        if (!fullDrawings.length) {
+          throw new Error("None of the drawings in this project have uploaded PDF files.");
+        }
+
+        const projectName = targetProject.name || "Project";
+        const cleanName = projectName.replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, "_");
+        const exportFileName = `${cleanName}_All_Drawings_Ballooned.pdf`;
+
+        await exportBatchBalloonedPdf({
+          drawings: fullDrawings,
+          fileName: exportFileName,
+          showLeaderLine: balloonSettings.showLeaderLine,
+          fontColor: balloonSettings.fontColor,
+          fontFamily: balloonSettings.fontFamily,
+          fontSize: balloonSettings.fontSize,
+          diameter: balloonSettings.diameter,
+        });
+
+        setMessage(`Exported complete multi-drawing PDF package (${fullDrawings.length} drawing${fullDrawings.length === 1 ? "" : "s"}).`);
+      } catch (error) {
+        setMessage(error.message);
+      }
+    },
+    [balloonSettings],
+  );
+
+  const exportAllProjectExcel = useCallback(
+    async (targetProject, targetDrawings, activeState = null) => {
+      if (!targetProject || !targetDrawings || !targetDrawings.length) {
+        setMessage("No drawings found to export.");
+        return;
+      }
+      try {
+        setMessage("Preparing multi-drawing FAI Excel report...");
+        const loader = targetProject.kind === "cloud" ? supabaseStore.loadDrawing : loadDrawing;
+        const fullDrawings = [];
+
+        for (const d of targetDrawings) {
+          if (activeState && d.id === activeState.activeDrawingId) {
+            fullDrawings.push({
+              id: d.id,
+              name: d.name,
+              fileName: activeState.pdfName || d.name,
+              metadata: activeState.metadata || d.metadata,
+              characteristics: activeState.characteristics,
+              sampleCount: activeState.sampleCount || sampleCount,
+            });
+          } else {
+            const loaded = await loader(d.id);
+            if (loaded) {
+              fullDrawings.push(loaded);
+            }
+          }
+        }
+
+        const projectName = targetProject.name || "Project";
+        const cleanName = projectName.replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, "_");
+        const exportFileName = `${cleanName}_Complete_FAI_Report.xlsx`;
+
+        exportBatchInspectionWorkbook({
+          project: targetProject,
+          drawings: fullDrawings,
+          sampleCount,
+          fileName: exportFileName,
+        });
+
+        setMessage(`Exported complete multi-drawing FAI workbook (${fullDrawings.length} drawing${fullDrawings.length === 1 ? "" : "s"}).`);
+      } catch (error) {
+        setMessage(error.message);
+      }
+    },
+    [sampleCount],
+  );
 
   const beginPanelResize = useCallback((event, axis) => {
     if (layoutMode !== "split-v" && layoutMode !== "split-h") return;
@@ -1778,6 +2656,7 @@ export default function App() {
       onManageProject={handleManageProject}
       onRenameProject={handleOpenProjectDialog}
       onDeleteProject={handleDeleteProjectFromDashboard}
+      onShareProject={supabaseEnabled ? (project) => convertProjectToCloud(project.id) : undefined}
       onDialogChange={(name) => setProjectDialog((current) => ({ ...current, name }))}
       onDialogSubmit={handleProjectDialogSubmit}
       onDialogClose={handleCloseProjectDialog}
@@ -1797,8 +2676,9 @@ export default function App() {
   );
 
   const detailElement = (
-    <ProjectDetail
-      project={detailProject}
+    <>
+      <ProjectDetail
+        project={detailProject}
       drawings={detailDrawings}
       ready={Boolean(detailProject)}
       fieldDraft={detailFields}
@@ -1817,6 +2697,12 @@ export default function App() {
       onAddDrawing={handleDetailAddDrawing}
       onRenameDrawing={handleOpenDrawingDialog}
       onDeleteDrawing={handleDetailDeleteDrawing}
+      onExportAllDrawingsPdf={() => exportAllProjectDrawings(detailProject, detailDrawings)}
+      onExportAllDrawingsExcel={() => exportAllProjectExcel(detailProject, detailDrawings)}
+      onOpenTemplateDialog={() => {
+        setTemplateDialogProject(detailProject);
+        setTemplateDialogOpen(true);
+      }}
       drawingDialog={drawingDialog}
       onDrawingDialogChange={handleDrawingDialogChange}
       onDrawingDialogSubmit={handleDrawingDialogSubmit}
@@ -1824,7 +2710,27 @@ export default function App() {
       onOpenGuide={() => navigate("/guide", { state: { from: location.pathname } })}
       onOpenUserGuide={() => navigate("/guide/user-guide", { state: { from: location.pathname } })}
       onOpenVersionHistory={() => navigate("/guide/version-history", { state: { from: location.pathname } })}
+      shares={projectShares}
+      shareEmail={shareEmail}
+      shareStatus={shareStatus}
+      onShareEmailChange={setShareEmail}
+      onInviteVendor={handleInviteVendor}
+      onRevokeShare={handleRevokeShare}
     />
+    <FaiTemplateDialog
+      open={templateDialogOpen && templateDialogProject?.id === detailProject?.id}
+      onClose={() => {
+        setTemplateDialogOpen(false);
+        setTemplateDialogProject(null);
+      }}
+      template={detailProject?.faiTemplate}
+      onSaveTemplate={handleSaveProjectTemplate}
+      onRemoveTemplate={handleRemoveProjectTemplate}
+      characteristics={[]}
+      sampleCount={1}
+      metadata={{}}
+    />
+  </>
   );
 
   const settingsElement = (
@@ -1832,6 +2738,9 @@ export default function App() {
       settings={balloonSettings}
       onBack={() => navigate(location.state?.from || "/projects")}
       onChange={setBalloonSettings}
+      orgMemberships={orgMemberships}
+      user={user}
+      onSignOut={signOut}
     />
   );
 
@@ -1860,7 +2769,7 @@ export default function App() {
             <button
               type="button"
               className="icon-button icon-button-labeled"
-              onClick={() => navigate("/settings", { state: { from: location.pathname } })}
+              onClick={() => navigateFromWorkspace("/settings", { state: { from: location.pathname } })}
               data-tooltip="Settings"
               aria-label="Settings"
             >
@@ -1869,9 +2778,9 @@ export default function App() {
             </button>
             <HelpMenu
               labeled
-              onOpenShortcuts={() => navigate("/guide", { state: { from: location.pathname } })}
-              onOpenUserGuide={() => navigate("/guide/user-guide", { state: { from: location.pathname } })}
-              onOpenVersionHistory={() => navigate("/guide/version-history", { state: { from: location.pathname } })}
+              onOpenShortcuts={() => navigateFromWorkspace("/guide", { state: { from: location.pathname } })}
+              onOpenUserGuide={() => navigateFromWorkspace("/guide/user-guide", { state: { from: location.pathname } })}
+              onOpenVersionHistory={() => navigateFromWorkspace("/guide/version-history", { state: { from: location.pathname } })}
             />
           </div>
         </div>
@@ -1881,7 +2790,7 @@ export default function App() {
         <div className="project-controls">
           <div className="toolbar-cluster project-cluster" aria-label="Project controls">
             <div className="toolbar-cluster-controls">
-              <button className="small-button project-action dashboard-link dashboard-link-active" onClick={() => navigate("/projects")}>
+              <button className="small-button project-action dashboard-link dashboard-link-active" onClick={() => navigateFromWorkspace("/projects")}>
                 <ChevronLeft size={14} />
                 Projects
               </button>
@@ -1905,6 +2814,24 @@ export default function App() {
                   ))}
                 </select>
               </label>
+              <label className="project-field unit-system-field" title="Applies to new rows. Existing row units and values stay unchanged; no conversion.">
+                Unit
+                <select
+                  value={unitSystem}
+                  onChange={(event) => {
+                    const nextUnitSystem = normalizeUnitSystem(event.target.value);
+                    setUnitSystem(nextUnitSystem);
+                    setMessage(`New rows will use ${getDefaultUnit(nextUnitSystem)}. Existing row units and values stay unchanged; no conversion.`);
+                  }}
+                  disabled={!activeDrawingId || drawingLoading || workspaceMode === "measurement"}
+                  aria-label="Drawing unit system"
+                  title="Applies to new rows. Existing row units and values stay unchanged; no conversion."
+                  aria-description="Applies to new rows. Existing row units and values stay unchanged; no conversion."
+                >
+                  <option value="metric">Metric (mm)</option>
+                  <option value="inch">Inch (in)</option>
+                </select>
+              </label>
               <button
                 type="button"
                 className="icon-button icon-button-labeled"
@@ -1920,10 +2847,101 @@ export default function App() {
                 <Download size={16} />
                 PDF
               </button>
-              <button className="button primary" onClick={exportExcel} disabled={!characteristics.length}>
-                <Save size={16} />
-                Excel
-              </button>
+              {drawings.length > 1 ? (
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() =>
+                    exportAllProjectDrawings(activeProject, drawings, {
+                      activeDrawingId,
+                      pdfBytes,
+                      characteristics,
+                      pdfName,
+                    })
+                  }
+                  title="Export all drawings in this project as a single merged ballooned PDF package"
+                >
+                  <Download size={16} />
+                  All PDFs ({drawings.length})
+                </button>
+              ) : null}
+              {activeProject?.faiTemplate ? (
+                <div className="template-export-cluster">
+                  <button
+                    className="button primary"
+                    onClick={exportExcel}
+                    disabled={!characteristics.length}
+                    title={`Export using customer template: ${activeProject.faiTemplate.name}`}
+                  >
+                    <FileSpreadsheet size={16} />
+                    Excel ({activeProject.faiTemplate.name.replace(/\.xlsx$/i, "")})
+                  </button>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => {
+                      try {
+                        exportInspectionWorkbook({ metadata, characteristics, sampleCount });
+                        setMessage("Exported standard AS9102 FAI Excel workbook.");
+                      } catch (err) {
+                        setMessage(err.message);
+                      }
+                    }}
+                    disabled={!characteristics.length}
+                    title="Export standard AS9102 FAI Excel report"
+                  >
+                    Default
+                  </button>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => {
+                      setTemplateDialogProject(activeProject);
+                      setTemplateDialogOpen(true);
+                    }}
+                    title="Configure customer Excel FAI template"
+                  >
+                    <Settings2 size={16} />
+                  </button>
+                </div>
+              ) : (
+                <div className="template-export-cluster">
+                  <button className="button primary" onClick={exportExcel} disabled={!characteristics.length}>
+                    <Save size={16} />
+                    Excel
+                  </button>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => {
+                      setTemplateDialogProject(activeProject);
+                      setTemplateDialogOpen(true);
+                    }}
+                    title="Upload and configure custom customer FAI Excel template"
+                  >
+                    <FileSpreadsheet size={16} />
+                    Template
+                  </button>
+                </div>
+              )}
+              {drawings.length > 1 ? (
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() =>
+                    exportAllProjectExcel(activeProject, drawings, {
+                      activeDrawingId,
+                      characteristics,
+                      metadata,
+                      sampleCount,
+                    })
+                  }
+                  title="Export all drawings in this project as a consolidated AS9102 FAI Excel workbook"
+                >
+                  <Save size={16} />
+                  All Excel ({drawings.length})
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -1994,383 +3012,443 @@ export default function App() {
           onSelect={selectCharacteristic}
           onChange={updateCharacteristic}
           onSampleChange={updateSample}
+          onBatchSampleChange={updateBatchSamples}
+          onAutoFill={autoFillSamples}
+          onClearSamples={clearAllSamples}
           onSampleCountChange={setSampleCount}
           balloonDiameter={balloonSettings.diameter}
           showLeaderLine={balloonSettings.showLeaderLine}
         />
       ) : (
-      <div ref={contentAreaRef} className="content-area" style={contentAreaStyle}>
+        <div ref={contentAreaRef} className="content-area" style={contentAreaStyle}>
 
-        <section ref={drawingPanelRef} className="drawing-panel">
-          <div className="panel-toolbar">
-            <div className="tool-group">
-              <ToolButton
-                active={mode === "select"}
-                title="Select (V)"
-                label="Select"
-                onClick={() => switchMode("select")}
-                icon={<MousePointer2 size={17} />}
-              />
-              <ToolButton
-                active={mode === "balloon"}
-                title="Add Balloon (B)"
-                label="Balloon"
-                onClick={() => switchMode("balloon")}
-                icon={<Circle size={17} />}
-              />
-              <ToolButton
-                active={mode === "autoBalloon"}
-                title="Review Balloon Candidates (A)"
-                label="Review"
-                onClick={() => switchMode("autoBalloon")}
-                icon={<ScanSearch size={17} />}
-              />
-              <ToolButton
-                active={mode === "text"}
-                title="Text Select (T)"
-                label="Text"
-                onClick={() => switchMode("text")}
-                icon={<TextSelect size={17} />}
-              />
-              <ToolButton
-                title="Pan Mode (H)"
-                label="Pan"
-                onClick={() => switchMode("pan")}
-                active={mode === "pan"}
-                icon={<Hand size={17} />}
-              />
-            </div>
-            <DrawingNavToolbar
-              zoom={zoom}
-              pageNumber={pageNumber}
-              pageCount={pageCount}
-              onZoomOut={zoomOut}
-              onZoomIn={zoomIn}
-              onPrevPage={prevPage}
-              onNextPage={nextPage}
-            />
-          </div>
-
-          <div
-            ref={scrollRef}
-            className={`canvas-scroll ${mode === "pan" ? "panning" : ""}`}
-            onPointerDown={beginPan}
-            onPointerMove={movePan}
-            onPointerUp={endPan}
-            onPointerCancel={endPan}
-          >
-            {!pdfDoc ? (
-              <PdfUploadPrompt
-                message="Then choose Balloon, click each dimension target, and drag balloons later to adjust leader placement."
-                onUpload={handlePdfUpload}
-              />
-            ) : (
-              <div
-                ref={overlayRef}
-                className={`pdf-stage ${mode === "balloon" || mode === "autoBalloon" ? "placing" : ""}`}
-                style={{ width: canvasSize.width, height: canvasSize.height }}
-                onClick={handleCanvasClick}
-                onPointerDown={beginTextAreaSelection}
-                onPointerMove={moveTextAreaSelection}
-                onPointerUp={endTextAreaSelection}
-                onPointerCancel={endTextAreaSelection}
-              >
-                <canvas ref={canvasRef} />
-                <DimensionHighlights
-                  candidates={dimensionCandidates}
+          <section ref={drawingPanelRef} className="drawing-panel">
+            <div className="panel-toolbar">
+              <div className="tool-group">
+                <ToolButton
+                  active={mode === "select"}
+                  title="Select (V)"
+                  label="Select"
+                  onClick={() => switchMode("select")}
+                  icon={<MousePointer2 size={17} />}
+                />
+                <ToolButton
                   active={mode === "balloon"}
+                  title="Add Balloon (B)"
+                  label="Balloon"
+                  onClick={() => switchMode("balloon")}
+                  icon={<Circle size={17} />}
                 />
-                <TextLayer
+                <ToolButton
+                  active={mode === "autoBalloon"}
+                  title="Review Balloon Candidates (A)"
+                  label="Review"
+                  onClick={() => switchMode("autoBalloon")}
+                  icon={<ScanSearch size={17} />}
+                />
+                <ToolButton
                   active={mode === "text"}
-                  items={textItems}
-                  onCapture={captureTextSelection}
+                  title="Text Select (T)"
+                  label="Text"
+                  onClick={() => switchMode("text")}
+                  icon={<TextSelect size={17} />}
                 />
-                <LeaderLayer
-                  balloons={currentPageBalloons}
-                  selectedId={selectedId}
-                  width={canvasSize.width}
-                  height={canvasSize.height}
-                  balloonDiameter={balloonSettings.diameter}
-                  visible={balloonSettings.showLeaderLine}
+                <ToolButton
+                  title="Pan Mode (H)"
+                  label="Pan"
+                  onClick={() => switchMode("pan")}
+                  active={mode === "pan"}
+                  icon={<Hand size={17} />}
                 />
-                {ocrRect ? (
-                  <div
-                    className="ocr-selection"
-                    style={{
-                      left: `${ocrRect.x * 100}%`,
-                      top: `${ocrRect.y * 100}%`,
-                      width: `${ocrRect.width * 100}%`,
-                      height: `${ocrRect.height * 100}%`,
-                    }}
-                  />
-                ) : null}
-                {autoBalloonRect ? (
-                  <div
-                    className="auto-balloon-selection"
-                    style={{
-                      left: `${autoBalloonRect.x * 100}%`,
-                      top: `${autoBalloonRect.y * 100}%`,
-                      width: `${autoBalloonRect.width * 100}%`,
-                      height: `${autoBalloonRect.height * 100}%`,
-                    }}
-                  />
-                ) : null}
-                <AutoBalloonPreview
-                  candidates={autoBalloonCandidates}
-                  width={canvasSize.width}
-                  height={canvasSize.height}
-                  showLeaderLine={balloonSettings.showLeaderLine}
-                />
-                {selected?.page === pageNumber && balloonSettings.showLeaderLine ? (
-                  <button
-                    className="target-handle"
-                    style={{
-                      left: `${(selected.targetX ?? selected.x) * 100}%`,
-                      top: `${(selected.targetY ?? selected.y) * 100}%`,
-                    }}
-                    onPointerDown={(event) => beginTargetDrag(event, selected)}
-                    onPointerMove={moveBalloonDrag}
-                    onPointerUp={endBalloonDrag}
-                    onPointerCancel={endBalloonDrag}
-                    onClick={(event) => event.stopPropagation()}
-                    title={`Move target for balloon ${selected.balloonNo}`}
-                  />
-                ) : null}
-                {currentPageBalloons.map((item) => (
-                  <button
-                    key={item.id}
-                    className={`balloon ${selectedId === item.id ? "selected" : ""}`}
-                    style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%` }}
-                    onPointerDown={(event) => beginBalloonDrag(event, item)}
-                    onPointerMove={moveBalloonDrag}
-                    onPointerUp={endBalloonDrag}
-                    onPointerCancel={endBalloonDrag}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedId(item.id);
-                      setEditingBalloonId(null);
-                    }}
-                    onDoubleClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedId(item.id);
-                      setEditingBalloonId(item.id);
-                      setMessage(`Editing balloon ${item.balloonNo}.`);
-                    }}
-                    title={`Balloon ${item.balloonNo}`}
-                  >
-                    {item.balloonNo}
-                  </button>
-                ))}
-                {selected?.page === pageNumber && editingBalloonId === selected.id ? (
-                  <div
-                    className="balloon-actions"
-                    style={{
-                      left: `${selected.x * 100}%`,
-                      top: `${selected.y * 100}%`,
-                    }}
-                    onClick={(event) => event.stopPropagation()}
-                    onPointerDown={(event) => event.stopPropagation()}
-                  >
-                    <input
-                      type="number"
-                      min="1"
-                      value={selected.balloonNo}
-                      aria-label="Reassign balloon number"
-                      onChange={(event) => reassignBalloonNo(selected.id, event.target.value)}
-                    />
-                    <button className="icon-button danger" onClick={deleteSelected} title="Delete selected balloon">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ) : null}
               </div>
-            )}
-          </div>
-        </section>
-
-        <ResizeHandle
-          axis="column"
-          onPointerDown={beginPanelResize}
-          onPointerMove={movePanelResize}
-          onPointerUp={endPanelResize}
-          onPointerCancel={endPanelResize}
-          onKeyDown={handlePanelResizeKey}
-          onDoubleClick={resetPanelResize}
-        />
-
-        <aside ref={inspectorRef} className="inspector">
-          <div className="inspector-section drawing-info-section">
-            <div className="section-title">
-              <h2>Drawing Info</h2>
-            </div>
-            <div className="drawing-info-fields">
-              <div className="drawing-info-field drawing-info-field-no">
-                <Field label="Drawing No" value={metadata.drawingNo} onChange={(value) => setMetadataValue(setMetadata, "drawingNo", value)} />
-              </div>
-              <div className="drawing-info-field drawing-info-field-rev">
-                <Field label="Rev" value={metadata.revision} onChange={(value) => setMetadataValue(setMetadata, "revision", value)} compact />
-              </div>
-              <div className="drawing-info-field drawing-info-field-desc">
-                <Field label="Description" value={metadata.description} onChange={(value) => setMetadataValue(setMetadata, "description", value)} wide />
-              </div>
-            </div>
-          </div>
-
-          <div className="inspector-section">
-            <div className="section-title">
-              <h2>Selected PDF Text</h2>
-            </div>
-            <div className="capture-panel">
-              <textarea
-                value={selectedText}
-                onChange={(event) => setSelectedText(event.target.value)}
-                placeholder="Use Text Select, then click embedded text or drag a box around visible text for OCR."
+              <DrawingNavToolbar
+                zoom={zoom}
+                pageNumber={pageNumber}
+                pageCount={pageCount}
+                onZoomOut={zoomOut}
+                onZoomIn={zoomIn}
+                onPrevPage={prevPage}
+                onNextPage={nextPage}
               />
-              <div className="capture-actions">
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("description")}>Description</button>
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("drawingNo")}>Drawing No</button>
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("revision")}>Rev</button>
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("nominal")}>Requirement</button>
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("tolerance")}>Tolerance</button>
-                <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("notes")}>Notes</button>
-              </div>
-              {ocrBusy ? <p className="muted compact-note">OCR is reading the selected area...</p> : null}
             </div>
-          </div>
 
-          <div className="inspector-section">
-            <div className="section-title">
-              <h2>Review Candidates</h2>
-              {autoBalloonCandidates.length ? <span className="candidate-count">{autoBalloonCandidates.length}</span> : null}
-            </div>
-            <AutoBalloonReview
-              busy={autoBalloonBusy}
-              open={autoBalloonReviewOpen}
-              candidates={autoBalloonCandidates}
-              onRemove={removeAutoBalloonCandidate}
-              onCancel={cancelAutoBalloonReview}
-              onCommit={commitAutoBalloonCandidates}
-            />
-          </div>
-
-          <div className="inspector-section">
-            <div className="section-title">
-              <h2>Selected Balloon</h2>
-              <button className="icon-button danger" disabled={!selectedId} onClick={deleteSelected} title="Delete selected">
-                <Trash2 size={16} />
-              </button>
-            </div>
-            {selected ? (
-              <BalloonEditor
-                item={selected}
-                sampleCount={sampleCount}
-                onChange={(patch) => updateCharacteristic(selected.id, patch)}
-                onReassign={(value) => reassignBalloonNo(selected.id, value)}
-                onSampleChange={(index, value) => updateSample(selected.id, index, value)}
-              />
-            ) : (
-              <p className="muted">Select a balloon or add a new one to edit its inspection requirement.</p>
-            )}
-          </div>
-
-          <div className="inspector-section">
-            <div className="section-title">
-              <h2>Build Controls</h2>
-            </div>
-            <label className="stacked-label">
-              Samples
-              <div className="sample-count-row">
-                <select value={sampleCount} onChange={(event) => setSampleCount(Number(event.target.value))}>
-                  {[1, 3, 5, 10].map((count) => (
-                    <option key={count} value={count}>{count}</option>
-                  ))}
-                  {![1, 3, 5, 10].includes(sampleCount) && (
-                    <option value={sampleCount}>{sampleCount}</option>
-                  )}
-                </select>
-                <input
-                  type="number"
-                  min={1}
-                  className="sample-count-custom"
-                  placeholder="Custom"
-                  value={sampleCount}
-                  onChange={(event) => {
-                    const parsed = Math.max(1, Math.round(Number(event.target.value) || 1));
-                    setSampleCount(parsed);
-                  }}
-                />
-              </div>
-            </label>
-            <div className="split-actions">
-              <button className="button secondary" onClick={addManualRow} disabled={!activeDrawingId}>
-                <Plus size={16} />
-                Add Row
-              </button>
-              <button className="button secondary" onClick={loadDemoRows} disabled={!activeDrawingId}>
-                Demo Rows
-              </button>
-            </div>
-            <button
-              className="button secondary"
-              onClick={clearDrawingData}
-              disabled={!activeDrawingId || (!characteristics.length && !metadata.drawingNo)}
+            <div
+              ref={scrollRef}
+              className={`canvas-scroll ${mode === "pan" ? "panning" : ""}`}
+              onPointerDown={beginPan}
+              onPointerMove={movePan}
+              onPointerUp={endPan}
+              onPointerCancel={endPan}
             >
-              Clear Drawing Data
-            </button>
-          </div>
+              {!pdfDoc ? (
+                <PdfUploadPrompt
+                  message="Then choose Balloon, click each dimension target, and drag balloons later to adjust leader placement."
+                  onUpload={handlePdfUpload}
+                />
+              ) : (
+                <div
+                  ref={overlayRef}
+                  className={`pdf-stage ${mode === "balloon" || mode === "autoBalloon" ? "placing" : ""}`}
+                  style={{ width: canvasSize.width, height: canvasSize.height }}
+                  onClick={handleCanvasClick}
+                  onPointerDown={beginTextAreaSelection}
+                  onPointerMove={moveTextAreaSelection}
+                  onPointerUp={endTextAreaSelection}
+                  onPointerCancel={endTextAreaSelection}
+                >
+                  <canvas ref={canvasRef} />
+                  <DimensionHighlights
+                    candidates={dimensionCandidates}
+                    active={mode === "balloon"}
+                  />
+                  <TextLayer
+                    active={mode === "text"}
+                    items={textItems}
+                    onCapture={captureTextSelection}
+                  />
+                  <LeaderLayer
+                    balloons={currentPageBalloons}
+                    selectedId={selectedId}
+                    width={canvasSize.width}
+                    height={canvasSize.height}
+                    balloonDiameter={balloonSettings.diameter}
+                    visible={balloonSettings.showLeaderLine}
+                  />
+                  {ocrRect ? (
+                    <div
+                      className="ocr-selection"
+                      style={{
+                        left: `${ocrRect.x * 100}%`,
+                        top: `${ocrRect.y * 100}%`,
+                        width: `${ocrRect.width * 100}%`,
+                        height: `${ocrRect.height * 100}%`,
+                      }}
+                    />
+                  ) : null}
+                  {autoBalloonRect ? (
+                    <div
+                      className="auto-balloon-selection"
+                      style={{
+                        left: `${autoBalloonRect.x * 100}%`,
+                        top: `${autoBalloonRect.y * 100}%`,
+                        width: `${autoBalloonRect.width * 100}%`,
+                        height: `${autoBalloonRect.height * 100}%`,
+                      }}
+                    />
+                  ) : null}
+                  <AutoBalloonPreview
+                    candidates={autoBalloonCandidates}
+                    width={canvasSize.width}
+                    height={canvasSize.height}
+                    showLeaderLine={balloonSettings.showLeaderLine}
+                  />
+                  {selected?.isPlaced !== false && selected?.page === pageNumber && balloonSettings.showLeaderLine ? (
+                    <button
+                      className="target-handle"
+                      style={{
+                        left: `${(selected.targetX ?? selected.x) * 100}%`,
+                        top: `${(selected.targetY ?? selected.y) * 100}%`,
+                      }}
+                      onPointerDown={(event) => beginTargetDrag(event, selected)}
+                      onPointerMove={moveBalloonDrag}
+                      onPointerUp={endBalloonDrag}
+                      onPointerCancel={endBalloonDrag}
+                      onClick={(event) => event.stopPropagation()}
+                      title={`Move target for balloon ${balloonLabel(selected)}`}
+                    />
+                  ) : null}
+                  {currentPageBalloons.map((item) => (
+                    <button
+                      key={item.id}
+                      className={`balloon ${balloonLabel(item).length > 3 ? "long-label" : ""} ${selectedId === item.id ? "selected" : ""}`}
+                      style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, "--balloon-label-length": balloonLabel(item).length }}
+                      onPointerDown={(event) => beginBalloonDrag(event, item)}
+                      onPointerMove={moveBalloonDrag}
+                      onPointerUp={endBalloonDrag}
+                      onPointerCancel={endBalloonDrag}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedId(item.id);
+                        setEditingBalloonId(null);
+                      }}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedId(item.id);
+                        setEditingBalloonId(item.id);
+                        setMessage(`Editing balloon ${balloonLabel(item)}.`);
+                      }}
+                      title={`Balloon ${balloonLabel(item)}`}
+                    >
+                      {balloonLabel(item)}
+                    </button>
+                  ))}
+                  {selected?.isPlaced !== false && selected?.page === pageNumber && editingBalloonId === selected.id ? (
+                    <div
+                      className="balloon-actions"
+                      style={{
+                        left: `${selected.x * 100}%`,
+                        top: `${selected.y * 100}%`,
+                      }}
+                      onClick={(event) => event.stopPropagation()}
+                      onPointerDown={(event) => event.stopPropagation()}
+                    >
+                      <input
+                        type="number"
+                        min="1"
+                        value={selected.balloonNo}
+                        aria-label="Reassign balloon number"
+                        onChange={(event) => reassignBalloonNo(selected.id, event.target.value)}
+                      />
+                      <button className="icon-button danger" onClick={deleteSelected} title="Delete selected balloon">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </section>
 
-          <div className="message">{message}</div>
-        </aside>
+          <ResizeHandle
+            axis="column"
+            onPointerDown={beginPanelResize}
+            onPointerMove={movePanelResize}
+            onPointerUp={endPanelResize}
+            onPointerCancel={endPanelResize}
+            onKeyDown={handlePanelResizeKey}
+            onDoubleClick={resetPanelResize}
+          />
 
-        <ResizeHandle
-          axis="row"
-          onPointerDown={beginPanelResize}
-          onPointerMove={movePanelResize}
-          onPointerUp={endPanelResize}
-          onPointerCancel={endPanelResize}
-          onKeyDown={handlePanelResizeKey}
-          onDoubleClick={resetPanelResize}
-        />
+          <aside ref={inspectorRef} className="inspector">
+            <div className="inspector-section drawing-info-section">
+              <div className="section-title">
+                <h2>Drawing Info</h2>
+              </div>
+              <div className="drawing-info-fields">
+                <div className="drawing-info-field drawing-info-field-no">
+                  <Field label="Drawing No" value={metadata.drawingNo} onChange={(value) => setMetadataValue(setMetadata, "drawingNo", value)} />
+                </div>
+                <div className="drawing-info-field drawing-info-field-rev">
+                  <Field label="Rev" value={metadata.revision} onChange={(value) => setMetadataValue(setMetadata, "revision", value)} compact />
+                </div>
+                <div className="drawing-info-field drawing-info-field-desc">
+                  <Field label="Description" value={metadata.description} onChange={(value) => setMetadataValue(setMetadata, "description", value)} wide />
+                </div>
+              </div>
+            </div>
 
-        <section ref={tablePanelRef} className="table-panel">
-        <div className="table-header">
-          <div>
-            <h2>QC / FAI Characteristics</h2>
-            <p>{characteristics.length} linked requirements</p>
-          </div>
-          <button
-            className="button secondary"
-            onClick={clearAllBalloons}
-            disabled={!characteristics.length}
-            title="Clear all balloons from drawing and table"
-          >
-            <Trash2 size={16} />
-            Clear All Balloons
-          </button>
+            <div className="inspector-section">
+              <div className="section-title">
+                <h2>Selected PDF Text</h2>
+              </div>
+              <div className="capture-panel">
+                <textarea
+                  value={selectedText}
+                  onChange={(event) => setSelectedText(event.target.value)}
+                  placeholder="Use Text Select, then click embedded text or drag a box around visible text for OCR."
+                />
+                <div className="capture-actions">
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("description")}>Description</button>
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("drawingNo")}>Drawing No</button>
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("revision")}>Rev</button>
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("nominal")}>Requirement</button>
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("tolerance")}>Tolerance</button>
+                  <button className="small-button" disabled={!selectedText || ocrBusy} onClick={() => applyCapturedText("notes")}>Notes</button>
+                </div>
+                {ocrBusy ? <p className="muted compact-note">OCR is reading the selected area...</p> : null}
+              </div>
+            </div>
+
+            <div className="inspector-section">
+              <div className="section-title">
+                <h2>Review Candidates</h2>
+                {autoBalloonCandidates.length ? <span className="candidate-count">{autoBalloonCandidates.length}</span> : null}
+              </div>
+              <AutoBalloonReview
+                busy={autoBalloonBusy}
+                open={autoBalloonReviewOpen}
+                candidates={autoBalloonCandidates}
+                onRemove={removeAutoBalloonCandidate}
+                onCancel={cancelAutoBalloonReview}
+                onCommit={commitAutoBalloonCandidates}
+              />
+            </div>
+
+            <div className="inspector-section">
+              {placementNext ? <p className="muted" role="status">Place {balloonLabel(placementNext)}: click its target. {characteristics.filter((item) => sameRequirement(item, placementNext) && item.isPlaced === false).length} remain. Escape pauses.</p> : null}
+              <div className="section-title">
+                <h2>Selected Balloon</h2>
+                <button className="icon-button danger" disabled={!selectedId} onClick={deleteSelected} title="Delete selected">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+              {selected ? (
+                <BalloonEditor
+                  item={selected}
+                  sampleCount={sampleCount}
+                  cloud={activeProject?.kind === "cloud"}
+                  hasUnplaced={characteristics.some((item) => sameRequirement(item, selected) && item.isPlaced === false)}
+                  onQuantity={applyQuantity}
+                  onResume={resumePlacement}
+                  onChange={(patch) => updateCharacteristic(selected.id, patch)}
+                  onReassign={(value) => reassignBalloonNo(selected.id, value)}
+                  onSampleChange={(index, value) => updateSample(selected.id, index, value)}
+                  onBatchSampleChange={updateBatchSamples}
+                  onAutoFillSingle={(id) => autoFillSamples("nominal", id)}
+                />
+              ) : (
+                <p className="muted">Select a balloon or add a new one to edit its inspection requirement.</p>
+              )}
+            </div>
+
+            <div className="inspector-section">
+              <div className="section-title">
+                <h2>Build Controls</h2>
+              </div>
+              <label className="stacked-label">
+                Samples
+                <div className="sample-count-row">
+                  <select value={sampleCount} onChange={(event) => setSampleCount(Number(event.target.value))}>
+                    {[1, 3, 5, 10].map((count) => (
+                      <option key={count} value={count}>{count}</option>
+                    ))}
+                    {![1, 3, 5, 10].includes(sampleCount) && (
+                      <option value={sampleCount}>{sampleCount}</option>
+                    )}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    className="sample-count-custom"
+                    placeholder="Custom"
+                    value={sampleCount}
+                    onChange={(event) => {
+                      const parsed = Math.max(1, Math.round(Number(event.target.value) || 1));
+                      setSampleCount(parsed);
+                    }}
+                  />
+                </div>
+              </label>
+              <div className="split-actions">
+                <button className="button secondary" onClick={addManualRow} disabled={!activeDrawingId}>
+                  <Plus size={16} />
+                  Add Row
+                </button>
+                <button className="button secondary" onClick={loadDemoRows} disabled={!activeDrawingId}>
+                  Demo Rows
+                </button>
+              </div>
+              <button
+                className="button secondary"
+                onClick={clearDrawingData}
+                disabled={!activeDrawingId || (!characteristics.length && !metadata.drawingNo)}
+              >
+                Clear Drawing Data
+              </button>
+            </div>
+
+            <div className="message">{message}</div>
+          </aside>
+
+          <ResizeHandle
+            axis="row"
+            onPointerDown={beginPanelResize}
+            onPointerMove={movePanelResize}
+            onPointerUp={endPanelResize}
+            onPointerCancel={endPanelResize}
+            onKeyDown={handlePanelResizeKey}
+            onDoubleClick={resetPanelResize}
+          />
+
+          <section ref={tablePanelRef} className="table-panel">
+            <div className="table-header">
+              <div>
+                <h2>QC / FAI Characteristics</h2>
+                <p>{characteristics.length} linked requirements</p>
+              </div>
+              <div className="table-header-actions">
+                <button
+                  type="button"
+                  className="small-button secondary"
+                  onClick={() => autoFillSamples("nominal")}
+                  disabled={!characteristics.length}
+                  title="Auto-fill empty sample cells with nominal values (or OK for visual/notes)"
+                >
+                  <Sparkles size={13} />
+                  Fill Nominals
+                </button>
+                <button
+                  type="button"
+                  className="small-button secondary"
+                  onClick={() => autoFillSamples("visuals-ok")}
+                  disabled={!characteristics.length}
+                  title="Auto-fill empty sample cells for visual and note requirements with OK"
+                >
+                  <CheckSquare size={13} />
+                  Fill Visuals OK
+                </button>
+                <button
+                  type="button"
+                  className="small-button secondary"
+                  onClick={clearAllSamples}
+                  disabled={!characteristics.some((item) => Object.keys(item.samples || {}).length > 0)}
+                  title="Clear all recorded sample measurements"
+                >
+                  <RotateCcw size={13} />
+                  Clear Samples
+                </button>
+                <button
+                  type="button"
+                  className="small-button secondary danger"
+                  onClick={clearAllBalloons}
+                  disabled={!characteristics.length}
+                  title="Clear all balloons from drawing and table"
+                >
+                  <Trash2 size={13} />
+                  Clear All
+                </button>
+              </div>
+            </div>
+            <CharacteristicTable
+              characteristics={characteristics}
+              selectedId={selectedId}
+              sampleCount={sampleCount}
+              onSelect={selectCharacteristic}
+              onChange={updateCharacteristic}
+              onReassign={reassignBalloonNo}
+              onSampleChange={updateSample}
+              onBatchSampleChange={updateBatchSamples}
+              onDelete={deleteCharacteristic}
+            />
+          </section>
+
         </div>
-        <CharacteristicTable
-          characteristics={characteristics}
-          selectedId={selectedId}
-          sampleCount={sampleCount}
-          onSelect={selectCharacteristic}
-          onChange={updateCharacteristic}
-          onReassign={reassignBalloonNo}
-          onSampleChange={updateSample}
-          onDelete={deleteCharacteristic}
-        />
-      </section>
-
-      </div>
       )}
       <ToleranceTableDialog
         open={toleranceTableOpen}
         onClose={() => setToleranceTableOpen(false)}
         autoTolerances={{ linear: generalTolerances, angle: autoAngleTolerances }}
+        savedTolerances={savedTolerances}
         toleranceOverrides={toleranceOverrides}
+        unitSystem={unitSystem}
+        onConfirmLinearUnit={confirmLinearToleranceUnit}
         onOverrideChange={applyToleranceOverride}
         onResetOverride={resetToleranceOverride}
         onApply={applyToleranceToMatching}
         countMatches={countToleranceMatches}
+      />
+      <FaiTemplateDialog
+        open={templateDialogOpen && (!templateDialogProject || templateDialogProject?.id === activeProject?.id)}
+        onClose={() => {
+          setTemplateDialogOpen(false);
+          setTemplateDialogProject(null);
+        }}
+        template={activeProject?.faiTemplate}
+        onSaveTemplate={handleSaveProjectTemplate}
+        onRemoveTemplate={handleRemoveProjectTemplate}
+        characteristics={characteristics}
+        sampleCount={sampleCount}
+        metadata={metadata}
       />
     </div>
   );
@@ -2396,6 +3474,18 @@ export default function App() {
       <Route path="/guide" element={guideElement} />
       <Route path="/guide/user-guide" element={userGuideElement} />
       <Route path="/guide/version-history" element={versionHistoryElement} />
+      <Route
+        path="/login"
+        element={supabaseEnabled ? <LoginPage onBack={() => navigate("/projects")} /> : <Navigate to="/projects" replace />}
+      />
+      <Route
+        path="/accept-invite"
+        element={supabaseEnabled ? <InviteAcceptPage /> : <Navigate to="/projects" replace />}
+      />
+      <Route
+        path="/onboarding"
+        element={supabaseEnabled && user ? <OnboardingScreen /> : <Navigate to="/projects" replace />}
+      />
       <Route path="*" element={<Navigate to="/projects" replace />} />
     </Routes>
   );

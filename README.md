@@ -15,11 +15,13 @@ Interactive drawing ballooning and QC/FAI inspection report builder. Upload an e
 - **Balloon tool** — click a dimension target once; QC Assistant places the next numbered balloon with a default red leader line
 - Drag balloons and leader targets independently to reposition after placement
 - Single-click selects a balloon; double-click or press `E` to open edit/delete actions
-- Balloons are numbered sequentially and renumber automatically on deletion
+- **Repeated dimensions** — support for `3X Ø10 ±0.1` expanding into linked sub-balloons (`5.1`, `5.2`, `5.3`) with guided target placement
+- Customizable balloon diameter, font family, font color, leader scale, and solid arrowhead terminations
 
 ### Text Extraction
 - **Text Select mode** — click embedded PDF text to capture it; send directly to any metadata field or QC row field
-- **OCR mode** — drag a rectangle over any area of the drawing (including non-selectable raster text); Tesseract.js reads it and populates the capture buffer
+- **OCR mode** — drag a rectangle over any area of the drawing (including non-selectable raster text); on-device Tesseract.js with adaptive binarization and contrast stretching
+- Automatic dual dimension parsing (`MM [IN]`) and Degrees-Minutes-Seconds (`45° 30' ±15'`) angle notation
 - Captured text can be applied to: Drawing No, Rev, Supplier, Description, Requirement, Tolerance, or Notes
 
 ### QC / FAI Characteristics Table
@@ -28,23 +30,39 @@ Each balloon corresponds to a row with:
 | Field | Options |
 |-------|---------|
 | Type | `dimension`, `gdt`, `note`, `visual` |
-| Unit | Free text (MM, Ø, POSITION, PROFILE, …) |
-| Nominal / Requirement | Numeric value or descriptive text |
-| Tolerance | Numeric (e.g. `0.13`), `MAX`, or `MIN` suffix |
+| Unit | Free text (`MM`, `IN`, `°`, `Ø`, `POSITION`, `PROFILE`, …) |
+| Nominal / Requirement | Numeric value, angle, or descriptive text |
+| Tolerance | Numeric (e.g. `0.13`), bilateral `+0.1/-0.05`, `MAX`, `MIN`, or DMS |
 | USL / LSL | Calculated automatically from nominal ± tolerance |
-| Measurement Method | DC, CMM, VS, VMS, HG, MIC, CG, PP, TG, PG |
-| Samples | 1, 3, 5, or 10 measurements per characteristic |
-| Status | `OPEN` → `OK` / `NG` — auto-evaluated against limits |
+| Measurement Method | DC, CMM, VS, VMS, HG, MIC, CG, PP, TG, PG, etc. |
+| Samples | 1, 3, 5, 10, or custom measurements per characteristic |
+| Batch Auto-Fill | Fill Nominals, Fill Visuals OK, or paste 2D grids directly from Excel/Sheets |
+| Status | `OPEN` → `OK` / `NG` — auto-evaluated conservatively against limits |
 
 Overall package status rolls up to **PASS / OPEN / FAIL** based on all characteristics.
 
 ### Exports
-- **Ballooned PDF** — original drawing with red numbered circles and leader lines burned in (via pdf-lib)
-- **Excel QC/FAI Workbook** — Final Inspection Report sheet with header metadata, all characteristics, per-sample measurements, MIN/MAX columns, and a measurement equipment abbreviation legend (via SheetJS)
+- **Ballooned PDF** — original drawing with red numbered circles, leader lines, and solid arrowheads burned in (via `pdf-lib`)
+- **AS9102 Rev C Excel FAI Workbook** — multi-sheet workbook with Form 1 (Part Number Accountability), Form 2 (Product Process Accountability), and Form 3 (Characteristic Accountability)
+- **Customer Excel FAI Templates** — upload any blank customer `.xlsx` form, map header cells and table columns, and export directly into the customer's exact submission layout
+- **Multi-Drawing Project Rollup** — one-click export for all drawings in a project into a merged multi-page PDF package or consolidated master Excel workbook with part index
 
 ### Help And Shortcuts
 - In-app Help explains the upload → balloon → capture → measure → export workflow
-- Keyboard shortcuts are documented in [SHORTCUTS.md](SHORTCUTS.md)
+- Keyboard shortcuts accessible via the in-app Help menu or `/guide`:
+  - `B`: Balloon tool
+  - `A`: Review / Auto-Balloon tool
+  - `V`: Select tool
+  - `H`: Pan tool
+  - `T`: Text Select / OCR tool
+  - `E`: Edit selected balloon
+  - `Enter`: Confirm candidate review or finish edit
+  - `Del` / `Backspace`: Delete selected requirement
+  - `D`: Cycle requirement type
+  - `↑` / `↓` (`J` / `K`): Navigate characteristic table rows
+  - `1`–`9`: Quick-set balloon number
+  - `+` / `−`: Zoom in / out
+  - `Esc`: Cancel active tool, review, or dialog
 
 ---
 
@@ -62,6 +80,14 @@ pnpm dev
 ```
 
 Open `http://127.0.0.1:5173/`.
+
+### Run Verification Test Suite
+
+```bash
+pnpm test
+```
+
+Runs all 13 deterministic verification suites covering math, parsing, occurrences, exports, and layout.
 
 ### Build
 

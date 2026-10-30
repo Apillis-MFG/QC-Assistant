@@ -1,4 +1,6 @@
-import { ZOOM_DEFAULT } from "./constants.js";
+import { normalizeOccurrence } from "./occurrences.js";
+import { ZOOM_DEFAULT, normalizeUnitSystem } from "./constants.js";
+import { normalizeFaiTemplate } from "./faiTemplate.js";
 
 const DB_NAME = "qca_projects_v1";
 const DB_VERSION = 1;
@@ -33,7 +35,9 @@ export async function listProjects() {
       return {
         ...project,
         drawingCount: projectDrawings.length,
-        totalBytes: projectDrawings.reduce((sum, drawing) => sum + (drawing.pdfByteLength || 0), 0),
+        totalBytes:
+          projectDrawings.reduce((sum, drawing) => sum + (drawing.pdfByteLength || 0), 0) +
+          (project.faiTemplate?.byteLength || 0),
         status: summarizeProjectStatus(projectDrawings),
       };
     })
@@ -77,6 +81,8 @@ export async function loadDrawing(drawingId) {
   if (!drawing) return null;
   return {
     ...drawing,
+    characteristics: (drawing.characteristics || []).map(normalizeOccurrence),
+    unitSystem: normalizeUnitSystem(drawing.unitSystem),
     pdfBytes: pdf?.pdfBytes || null,
   };
 }
@@ -196,6 +202,7 @@ function normalizeProject(project) {
     owner: project.owner?.trim() || "",
     estimatedDeliveryDate: project.estimatedDeliveryDate || "",
     notes: project.notes || "",
+    faiTemplate: normalizeFaiTemplate(project.faiTemplate),
     createdAt: project.createdAt || now,
     updatedAt: project.updatedAt || now,
   };
@@ -212,12 +219,14 @@ function normalizeDrawing(projectId, drawing) {
     pdfByteLength: drawing.pdfByteLength || drawing.pdfBytes?.byteLength || 0,
     pageCount: drawing.pageCount || 0,
     metadata: drawing.metadata || {},
+    unitSystem: normalizeUnitSystem(drawing.unitSystem),
     toleranceOverrides: {
       linear: drawing.toleranceOverrides?.linear || {},
       angle: drawing.toleranceOverrides?.angle || {},
+      linearUnitSystem: normalizeUnitSystem(drawing.toleranceOverrides?.linearUnitSystem),
     },
     sampleCount: drawing.sampleCount || 5,
-    characteristics: Array.isArray(drawing.characteristics) ? drawing.characteristics : [],
+    characteristics: Array.isArray(drawing.characteristics) ? drawing.characteristics.map(normalizeOccurrence) : [],
     pageNumber: drawing.pageNumber || 1,
     zoom: drawing.zoom || ZOOM_DEFAULT,
     status: drawing.status || "OPEN",

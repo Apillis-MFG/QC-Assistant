@@ -23,95 +23,100 @@ Primary goals when editing:
 
 ```text
 src/
-  main.jsx        — React root mount; no logic here
-  App.jsx         — all application state, layout, modes, event handlers, and rendering
-  exporters.js    — inspection math (getLimits, getStatus) and PDF/Excel export
-  sampleData.js   — demo characteristics used to seed the app on load
-  styles.css      — all CSS variables (:root) and component styles
+  main.jsx            — React root mount and router provider
+  App.jsx             — routes, application state coordination, and drawing-to-table event handlers
+  styles.css          — CSS design tokens (:root) and component styles
+  components/
+    panels.jsx        — Dashboard, Detail, Table, Inspector, Settings, Tolerance, and Template dialogs
+    widgets.jsx       — drawing toolbar, canvas overlays, text layer, and leader line rendering
+    AuthScreens.jsx   — optional cloud login and invite acceptance screens
+    OnboardingScreen.jsx — optional company onboarding
+    ErrorBoundary.jsx — error boundary wrapper
+  context/
+    AuthContext.jsx   — opt-in cloud authentication context
+  lib/
+    exporters.js      — pure inspection math (getLimits, getStatus) and PDF/Excel export builders
+    faiTemplate.js    — custom Excel FAI template validation, inspection, and filling
+    occurrences.js    — repeated-dimension occurrence math and stable identifier grouping
+    projectStore.js   — IndexedDB local project/drawing/PDF persistence
+    supabaseStore.js  — opt-in Supabase cloud collaboration integration
+    supabaseClient.js — Supabase SDK client initialization
+    ocrPreprocessing.js — contrast normalization and adaptive binarization
+    dimensionExtractor.js — title block tolerance parser and decimal-place matcher
+    autoBalloon.js    — embedded text and OCR balloon candidate detectors
+    utils.js          — geometric math, clipboard grid parsing, dimension parsing
+    constants.js      — shared constants, unit system definitions, default panel sizes
+    sampleData.js     — demo characteristics used to seed the app on load
 ```
-
-This is a flat structure. Do not create subdirectories, context files, or provider files unless asked.
 
 ## Architecture Reality
 
-- All state is managed with `useState`, `useMemo`, and `useRef` in `App.jsx`.
-- No context providers, reducers, or state management libraries.
-- No routing — single-page, single-component application.
-- No backend calls — no fetch, no auth, no cloud dependencies.
-- CSS is global with class-based selectors — no CSS modules, no Tailwind, no styled-components.
+- Application state is coordinated in `src/App.jsx` with routes provided via `react-router-dom`.
+- Inspection math in `src/lib/exporters.js` is strictly pure and deterministic (free of DOM/React dependencies).
+- Local persistence runs client-side via IndexedDB (`qca_projects_v1`).
+- Cloud synchronization (`supabaseStore.js`, `AuthContext.jsx`) is strictly opt-in per project; the default local workflow requires no network or login.
+- CSS is global with class-based tokens in `src/styles.css` — no CSS modules, no Tailwind, no styled-components.
 
 Practical guidance:
 
 - follow the existing patterns in the area you touch
 - prefer feature-local changes over broad refactors
-- do not add React context, Zustand, Redux, or other state management without explicit user request
-- do not add a router — the app is intentionally single-page
+- keep inspection math deterministic and conservative (default to `OPEN` when indeterminate)
+- use design tokens from `styles.css` (`var(--token)`)
 
 ## Current Architecture: App.jsx Sections
 
-`App.jsx` is organized in this order:
+`App.jsx` coordinates workspace interaction and project routing:
 
-1. Constants (`methods`, `types`, `emptyMetadata`)
+1. Imports, constants, and panel size loaders
 2. `createCharacteristic` factory function
-3. `App` component — state declarations
-4. Derived state (`useMemo` for `selected`, `currentPageBalloons`, `projectStatus`)
+3. `App` component — state declarations (projects, drawings, active drawing state)
+4. Derived state (`useMemo` for `selected`, `currentPageBalloons`, `resolvedTolerances`, `projectStatus`)
 5. PDF load and page render effects (`useEffect`)
-6. OCR logic (Tesseract.js integration)
-7. Interaction handlers (balloon placement, drag, pan, text-capture, OCR rect drawing)
-8. Render — topbar, drawing panel, inspector panel, table panel
-
-When adding new features, follow this order: new state → new derived state → new handlers → new render section.
+6. Text capture & OCR logic
+7. Interaction handlers (balloon placement, dragging, pan, auto-balloon review)
+8. Export handlers (PDF, Excel AS9102, custom template, batch rollups)
+9. Route definitions (Dashboard, Project Detail, Workspace, Settings, Help/Guides)
 
 ## Key Files
 
-### `exporters.js`
+### `src/lib/exporters.js`
 
 Contains all inspection math and export logic:
 
-- `parseNumber(value)` — safely extracts a number from any string/number/null input
-- `getLimits(characteristic)` — computes USL and LSL from nominal and tolerance (bilateral / MAX / MIN / null)
+- `parseNumber(value, unit)` — safely extracts numeric value (including DMS angles and fractions)
+- `getLimits(characteristic)` — computes USL and LSL from nominal and tolerance (bilateral, unilateral, MAX, MIN, DMS, null)
 - `getStatus(characteristic, sampleCount)` — returns `"OPEN"`, `"OK"`, or `"NG"`
-- `exportBalloonedPdf({ pdfBytes, characteristics, fileName })` — annotates PDF with balloon circles and leader lines
-- `exportInspectionWorkbook({ metadata, characteristics, sampleCount })` — generates Excel FAI report
+- `exportBalloonedPdf(...)` — annotates PDF with numbered circles, leader lines, and solid arrowheads
+- `buildInspectionWorkbook(...)` / `exportInspectionWorkbook(...)` — generates AS9102 Rev C compliant Excel FAI workbooks (Forms 1, 2, 3)
+- `buildBatchInspectionWorkbook(...)` / `exportBatchInspectionWorkbook(...)` — multi-drawing project rollup workbook
+- `generateBatchBalloonedPdf(...)` / `exportBatchBalloonedPdf(...)` — multi-drawing merged ballooned PDF package
 
-**Keep these functions pure.** Do not import React or access DOM from `exporters.js`.
+**Keep these functions pure.** Do not import React or access DOM from `src/lib/exporters.js`.
 
-When changing `getLimits` or `getStatus`, manually verify these branches:
+### `src/lib/faiTemplate.js`
 
-| Input | Expected output |
-| --- | --- |
-| bilateral: nominal=25, tolerance=0.13 | USL=25.13, LSL=24.87 |
-| MAX-only: tolerance="3 MAX" | USL=3, LSL="" |
-| MIN-only: tolerance="0.5 MIN" | USL="", LSL=0.5 |
-| null nominal, any tolerance | USL="", LSL="" |
-| note/visual type, all "OK" samples | status="OK" |
-| note/visual type, any non-"OK" sample | status="NG" |
-| no samples | status="OPEN" |
+Uploaded customer blank `.xlsx` template mapping engine:
+- `inspectTemplateWorkbook(bytes)` — inspects worksheets, dimensions, and ranges
+- `validateTemplateConfig(template, charCount, sampleCount)` — validates cell addresses, columns, and capacity
+- `fillCustomTemplateWorkbook(...)` — populates mapped headers and characteristics into the customer's exact format
+- `exportCustomInspectionWorkbook(...)` — downloads filled custom workbook
 
-### `sampleData.js`
+### `src/lib/occurrences.js`
 
-Demo characteristics loaded on first render. Keep the shape in sync with `createCharacteristic`. If the characteristic data shape changes in `App.jsx`, update `sampleData.js` seeds to match.
+Manages repeated-dimension occurrences (e.g. `3X Ø10 ±0.1` -> `5.1`, `5.2`, `5.3`):
+- `resizeOccurrences(items, id, quantity)`
+- `compareOccurrences(a, b)`
+- `balloonLabel(item)`
+- `missingOccurrences(items)`
 
-### `styles.css`
+### `src/styles.css`
 
 All CSS variables and component styles. Rules:
 
 - Add new semantic tokens to `:root`, not inline in component rules.
 - Never hardcode hex values in component selectors.
 - Status badge classes: `.status`, `.status.ok`, `.status.ng`, `.status.open`, `.status.pass`, `.status.fail`, `.status.mini`.
-- Table: `table`, `th`, `td`, `.id-cell`, `.readonly`.
-- Panels: `.drawing-panel`, `.inspector`, `.table-panel`.
-- Toolbar: `.panel-toolbar`, `.tool-group`, `.button`, `.icon-button`, `.icon-button.active`.
-
-## Tech Stack
-
-- React 19 (`useState`, `useMemo`, `useRef`, `useEffect`, `useCallback`)
-- Vite 6 (dev server, bundler)
-- pdfjs-dist 4.x (PDF rendering, text layer extraction)
-- pdf-lib (PDF annotation for balloon export)
-- Tesseract.js 7 (OCR for raster drawing areas)
-- SheetJS / xlsx (Excel workbook generation)
-- lucide-react (icons)
 
 ## Commands
 
@@ -120,39 +125,36 @@ Run from the project root (`../`):
 ```sh
 pnpm install
 pnpm dev        # http://127.0.0.1:5173/
-pnpm build      # output to dist/
+pnpm test       # runs all 13 deterministic verification suites
+pnpm build      # production build (Vite)
 pnpm preview
 ```
 
-No test runner or linter is configured. If adding one:
-
-- tests: `vitest` with `@testing-library/react`
-- linting: `eslint` with `eslint-plugin-react` and the Vite React preset
-
-## Generated Files
-
-No generated files. `pdfjs-dist` worker is imported as a URL:
-
-```js
-import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-```
-
-Do not hand-edit anything inside `node_modules/`.
-
 ## Testing Expectations
 
-No automated tests currently. When touching `getLimits` or `getStatus`:
+The project maintains 13 deterministic verification suites executed via `pnpm test`:
 
-1. Manually verify all branches listed in the `exporters.js` table above.
-2. Add a `vitest` unit test file (`src/exporters.test.js`) if the logic grows in complexity.
+- `verify-inspection-math.mjs` — limits, DMS angles, status evaluation
+- `verify-unit-parsing.mjs` — dual dimension parsing, imperial/metric conversions
+- `verify-repeated-dimensions.mjs` — occurrence resizing, sorting, base swaps
+- `verify-excel-export.mjs` — AS9102 Form 1, Form 2, and Form 3 structure
+- `verify-pdf-export.mjs` — coordinate transformation, leader arrowheads, multi-page export
+- `verify-text-capture.mjs` — rotated text, small fonts, hit detection
+- `verify-responsive-layout.mjs` — mobile/tablet breakpoints, touch targets
+- `verify-ocr-preprocessing.mjs` — contrast stretching, adaptive binarization
+- `verify-keyboard-shortcuts.mjs` — high-throughput shortcuts, modal guards
+- `verify-batch-samples.mjs` — auto-fill modes, clipboard matrix pasting
+- `verify-batch-pdf-export.mjs` — multi-drawing PDF package merging
+- `verify-batch-excel-export.mjs` — multi-drawing master workbook rollup
+- `verify-fai-template.mjs` — uploaded customer Excel template mapping & export
 
 After any change, run:
 
 ```sh
-pnpm build
+pnpm test && pnpm build
 ```
 
-A clean build is the minimum verification bar.
+A 100% test pass and clean build is the minimum verification bar.
 
 ## Editing Guidance
 
