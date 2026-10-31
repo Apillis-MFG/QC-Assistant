@@ -42,15 +42,15 @@ Jump to a section:
 
 Everything is stored locally in your browser (IndexedDB) under **Projects**. A project holds one or more **Drawings**; each drawing keeps its own PDF, metadata, balloons, tolerances, and measurements.
 
-![Dashboard, no projects yet](assets/screenshots/01-dashboard-empty.png)
+![Dashboard, no projects yet](./assets/screenshots/01-dashboard-empty.png)
 
 Click **New Project**, name it, and QC Assistant creates the project and drops you straight into the workspace with an empty drawing slot.
 
-![New Project dialog](assets/screenshots/03-new-project-dialog-filled.png)
+![New Project dialog](./assets/screenshots/03-new-project-dialog-filled.png)
 
 To manage a project's drawings without opening the workspace, go back to **Projects** and click **Manage** on a project card. From here you can edit the **Project Name**, **Project Code**, **Project Owner**, **Estimated Delivery Date**, and **Notes**, and add, rename, or delete drawings.
 
-![Project Detail page with one drawing added](assets/screenshots/06-project-detail-with-drawing.png)
+![Project Detail page with one drawing added](./assets/screenshots/06-project-detail-with-drawing.png)
 
 - **Add Drawing** accepts any PDF; it becomes a new drawing entry in the project.
 - Each drawing card's **Open** button loads it into the workspace; **Rename** / **Delete** work with a confirmation.
@@ -66,11 +66,11 @@ To manage a project's drawings without opening the workspace, go back to **Proje
 
 If a drawing has no PDF yet, the workspace shows an upload prompt:
 
-![Upload a drawing PDF prompt](assets/screenshots/04-workspace-upload-prompt.png)
+![Upload a drawing PDF prompt](./assets/screenshots/04-workspace-upload-prompt.png)
 
 Once a PDF is loaded, use the drawing toolbar to page through multi-page drawings and zoom from 65% to 220% in 10% steps.
 
-![Drawing-only layout, PDF loaded, no balloons yet](assets/screenshots/07-workspace-drawing-layout.png)
+![Drawing-only layout, PDF loaded, no balloons yet](./assets/screenshots/07-workspace-drawing-layout.png)
 
 ### Edit mode vs. Measurement mode
 
@@ -98,7 +98,7 @@ Panel sizes are resizable by dragging the divider between them, and your sizing 
 
 Rather than retyping values from the drawing, use the **Text Select** tool (`T`) to pull text straight off the PDF into the "Selected PDF Text" box in the right-hand inspector:
 
-![Text Select tool active](assets/screenshots/11-text-select-active.png)
+![Text Select tool active](./assets/screenshots/11-text-select-active.png)
 
 - Click any **embedded PDF text** item (real text, not a raster scan) to capture it.
 - If the text isn't selectable (e.g. a scanned/rasterized drawing), **drag a rectangle** over it instead — QC Assistant runs on-device OCR (Tesseract.js) with adaptive contrast enhancement and perimeter-based inversion (handling faint scans and dark CAD title blocks) on that cropped region and drops the recognized text into the same box.
@@ -119,13 +119,15 @@ Ballooning is how you turn a dimension on the drawing into a tracked inspection 
 
 ### Repeated Dimensions & Sub-Balloons
 
-When a drawing specifies repeated requirements (e.g. `3X Ø10 ±0.1`):
+When a drawing specifies repeated requirements (e.g. `4X Ø8.00`):
 
-1. QC Assistant detects the quantity prefix and sets **Quantity** to `3` in the inspector.
-2. Click **Create 3 instances** to expand the requirement into linked occurrences `5.1`, `5.2`, and `5.3`.
-3. The app enters guided placement: click the physical location for `5.2`, then `5.3`. Pressing `Escape` pauses placement; unplaced instances show a **Resume placement** action.
+1. QC Assistant detects the quantity prefix and sets **Quantity** to `4` in the inspector for Balloon `3`.
+2. Click **Create instances** to expand the requirement into linked occurrences `3.1`, `3.2`, `3.3`, and `3.4`.
+3. The app enters guided placement: click the physical location for `3.2`, then `3.3` and `3.4`. Pressing `Escape` pauses placement; unplaced instances show a **Resume placement** action.
 4. All instances share the requirement definition (nominal, tolerance, unit, method), but keep independent sample measurements, notes, and balloon coordinates.
-5. In Excel exports, each occurrence occupies its own numbered row (`5.1`, `5.2`, `5.3`).
+5. In Excel exports, each occurrence occupies its own numbered row (`3.1`, `3.2`, `3.3`, `3.4`).
+
+![Repeated dimensions: expanding 4X Ø8.00 creates linked sub-balloons 3.1–3.4 with guided placement](./assets/screenshots/18-repeated-dimensions.png)
 
 - **Single-click** a balloon to select it (its details appear in "Selected Balloon" on the right).
 - **Double-click**, or press `E` while selected, opens a small popover to **reassign its number** or **delete** it.
@@ -159,9 +161,9 @@ flowchart TD
     H -->|Cancel| J[Discard candidates]
 ```
 
-![Auto Balloon: selection box drawn, 3 candidates detected and shown for review](assets/screenshots/09-auto-balloon-review-candidates.png)
+![Auto Balloon: selection box drawn, 3 candidates detected and shown for review](./assets/screenshots/09-auto-balloon-review-candidates.png)
 
-![All six balloons placed — 3 manual, 3 from Auto Balloon](assets/screenshots/10-balloons-and-table.png)
+![All six balloons placed — 3 manual, 3 from Auto Balloon](./assets/screenshots/10-balloons-and-table.png)
 
 ---
 
@@ -193,6 +195,8 @@ To accelerate high-throughput data entry:
 - **Fill Visuals OK**: Sets "OK" for all visual and note requirements in one pass without altering numeric dimension measurements.
 - **Clear Samples**: Resets all recorded inspection measurements to empty while preserving drawing balloons and requirement definitions.
 
+![Characteristics table batch sample actions](./assets/screenshots/21-batch-sample-actions.png)
+
 ---
 
 ## 7. Tolerance Table
@@ -201,7 +205,7 @@ Rather than typing the same general tolerance into every dimension, QC Assistant
 
 Open it from the toolbar's **Tolerance** button.
 
-![Tolerance table with auto-detected linear and angular tolerances](assets/screenshots/12-tolerance-table.png)
+![Tolerance table with auto-detected linear and angular tolerances](./assets/screenshots/12-tolerance-table.png)
 
 - Each row is keyed by **decimal-place count** (e.g. 1, 2, or 3 places after the decimal) for linear dimensions, and by decimal places for angles (only matched against dimensions whose Unit contains `°` or `deg`).
 - A badge shows whether the value was **Auto**-detected, **Manual** (you overrode it), or **Not detected**.
@@ -215,7 +219,7 @@ Open it from the toolbar's **Tolerance** button.
 
 Switch to **Measurement** mode to enter sample values against each requirement, in a locked, view-only version of the drawing plus an editable table.
 
-![Measurement mode: table of 6 requirements with samples entered](assets/screenshots/14-measurement-mode.png)
+![Measurement mode: table of 6 requirements with samples entered](./assets/screenshots/14-measurement-mode.png)
 
 Each requirement's **Status** is computed conservatively — QC Assistant prefers to say "not finished" over incorrectly saying "passed":
 
@@ -242,7 +246,7 @@ The overall **project/drawing status** rolls this up the same way everywhere it'
 - Else any requirement **OPEN** → overall **OPEN**
 - Else → overall **PASS**
 
-![Requirement in progress — status stays OPEN until every sample is filled](assets/screenshots/15-measurement-mode-status.png)
+![Requirement in progress — status stays OPEN until every sample is filled](./assets/screenshots/15-measurement-mode-status.png)
 
 This means a half-filled inspection never silently reads as passing — it always reads as **OPEN** until it's actually complete, and any out-of-tolerance or non-numeric sample immediately fails it.
 
@@ -252,7 +256,7 @@ This means a half-filled inspection never silently reads as passing — it alway
 
 Open **Settings** (gear icon, top right) to adjust the toolbar and balloon appearance:
 
-![Settings dialog with live balloon preview](assets/screenshots/13-settings-dialog.png)
+![Settings dialog with live balloon preview](./assets/screenshots/13-settings-dialog.png)
 
 - **Button style**: Icon + Text or Icon Only for the toolbar buttons.
 - **Balloon diameter** (16–48px) and **Number font size** (8–18px).
@@ -269,7 +273,7 @@ Changes apply live (see the preview) and are saved automatically to your browser
 
 Once your characteristics table has at least one row, export actions in the toolbar and project detail page are enabled:
 
-![Export buttons enabled in the toolbar](assets/screenshots/16-export-toolbar.png)
+![Export buttons enabled in the toolbar](./assets/screenshots/16-export-toolbar.png)
 
 ### Single-Drawing Exports
 - **PDF** — downloads a copy of the drawing with red numbered circles, leader lines, and solid arrowheads burned in on the correct pages. Filename: `<drawing-file-name>_ballooned.pdf`.
@@ -287,6 +291,16 @@ When a customer requires their proprietary FAI form format:
 5. Define table start/end rows with live capacity validation.
 6. Map characteristic columns (Balloon #, Nominal, Tolerance, USL, LSL, Status, Samples #1..#N).
 7. Save the template. The export button dynamically displays `Excel (<Template Name>)`. Clicking it fills a fresh copy of the customer's original form with all limits and statuses. A secondary **Default** button remains available to export the standard AS9102 workbook at any time.
+
+![Customer Excel FAI Template dialog](./assets/screenshots/19-customer-template-dialog.png)
+
+**Template Validation & Protection (v0.9.3):**
+- **Formula Overwrite Protection**: The engine detects pre-existing Excel formulas (`=CONCATENATE(...)`, `=IF(...)`, etc.) in target header and table cells and blocks mapping to prevent clobbering customer workbook logic.
+- **Merged-Cell Collision Guards**: Inspection table rows cannot intersect merged cell ranges. Header targets that intersect merged areas must map directly to the top-left cell of the merge.
+- **Repeated-Dimension Capacity Checks**: Capacity validation calculates total required rows including expanded occurrences (`quantity > 1`), ensuring a `3X` dimension properly reserves 3 rows in the customer form.
+- **Dual-Dimension Notes Parity**: Exports into custom templates preserve bracketed secondary dimension callouts (`[Dual: ...]`) in the mapped notes column, matching standard Form 3 behavior.
+
+![Export controls: customer template export with Default fallback](./assets/screenshots/20-template-export-toolbar.png)
 
 ### Multi-Drawing Project Rollup Exports
 For projects containing multiple drawings:
@@ -315,7 +329,7 @@ Shortcuts are disabled while typing in any text field, and in Measurement mode (
 | `+` / `−` | Zoom drawing in and out |
 | `Esc` | Close the topmost open element — Settings/Tolerance dialog, candidate review, or pending balloon target |
 
-![Help dialog — quick workflow and shortcut reference](assets/screenshots/17-help-dialog.png)
+![Help dialog — quick workflow and shortcut reference](./assets/screenshots/17-help-dialog.png)
 
 You can always reopen this reference in the app itself via the **Help** button (or `?`).
 
