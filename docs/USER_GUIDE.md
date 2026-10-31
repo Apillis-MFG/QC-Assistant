@@ -119,15 +119,15 @@ Ballooning is how you turn a dimension on the drawing into a tracked inspection 
 
 ### Repeated Dimensions & Sub-Balloons
 
-When a drawing specifies repeated requirements (e.g. `3X Ø10 ±0.1`):
+When a drawing specifies repeated requirements (e.g. `4X Ø8.00`):
 
-1. QC Assistant detects the quantity prefix and sets **Quantity** to `3` in the inspector.
-2. Click **Create 3 instances** to expand the requirement into linked occurrences `5.1`, `5.2`, and `5.3`.
-3. The app enters guided placement: click the physical location for `5.2`, then `5.3`. Pressing `Escape` pauses placement; unplaced instances show a **Resume placement** action.
+1. QC Assistant detects the quantity prefix and sets **Quantity** to `4` in the inspector for Balloon `3`.
+2. Click **Create instances** to expand the requirement into linked occurrences `3.1`, `3.2`, `3.3`, and `3.4`.
+3. The app enters guided placement: click the physical location for `3.2`, then `3.3` and `3.4`. Pressing `Escape` pauses placement; unplaced instances show a **Resume placement** action.
 4. All instances share the requirement definition (nominal, tolerance, unit, method), but keep independent sample measurements, notes, and balloon coordinates.
-5. In Excel exports, each occurrence occupies its own numbered row (`5.1`, `5.2`, `5.3`).
+5. In Excel exports, each occurrence occupies its own numbered row (`3.1`, `3.2`, `3.3`, `3.4`).
 
-![Repeated dimensions: expanding 4X Ø8.00 creates linked sub-balloons 1.1–1.4 with guided placement](./assets/screenshots/18-repeated-dimensions.png)
+![Repeated dimensions: expanding 4X Ø8.00 creates linked sub-balloons 3.1–3.4 with guided placement](./assets/screenshots/18-repeated-dimensions.png)
 
 - **Single-click** a balloon to select it (its details appear in "Selected Balloon" on the right).
 - **Double-click**, or press `E` while selected, opens a small popover to **reassign its number** or **delete** it.
