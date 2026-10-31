@@ -21,6 +21,7 @@ import {
   Sparkles,
   CheckSquare,
   RotateCcw,
+  RotateCw,
   FileSpreadsheet,
   Settings2,
 } from "lucide-react";
@@ -68,6 +69,7 @@ import {
   buildDrawingSnapshot, updateDrawingSummary, getStorageWarning, getStorageErrorMessage,
   formatDate, setMetadataValue, mapTextItem, metadataLabel, fieldLabel,
   getNormalizedPoint, normalizeRect, getDefaultBalloonPosition, cropCanvasArea, clamp,
+  rotateCharacteristicCoordinates,
   parseDimension, getDimensionCaptureError, findNearestTextDimension, findDimensionAtPoint, findTextItemAtPoint, getTextItemBounds,
   computeAutoFillSampleUpdates,
 } from "./lib/utils.js";
@@ -197,6 +199,7 @@ export default function App() {
   const [pageNumber, setPageNumber] = useState(1);
   const [pageCount, setPageCount] = useState(0);
   const [zoom, setZoom] = useState(ZOOM_DEFAULT);
+  const [rotation, setRotation] = useState(0);
   const [workspaceMode, setWorkspaceMode] = useState("edit");
   const [mode, setMode] = useState("select");
   const [characteristics, setCharacteristics] = useState([]);
@@ -340,6 +343,7 @@ export default function App() {
     setPageNumber(1);
     setPageCount(0);
     setZoom(ZOOM_DEFAULT);
+    setRotation(0);
     setCharacteristics([]);
     setSelectedId(null);
     setEditingBalloonId(null);
@@ -426,6 +430,7 @@ export default function App() {
       setPageCount(loadedPdf?.numPages || drawing.pageCount || 0);
       setPageNumber(clamp(drawing.pageNumber || 1, 1, loadedPdf?.numPages || drawing.pageCount || 1));
       setZoom(drawing.zoom || ZOOM_DEFAULT);
+      setRotation(drawing.rotation || 0);
       setCharacteristics(
         (Array.isArray(drawing.characteristics) ? drawing.characteristics : [])
           .map((raw) => {
@@ -571,7 +576,8 @@ export default function App() {
     async function renderPage() {
       if (!pdfDoc || !canvasRef.current) return;
       const page = await pdfDoc.getPage(pageNumber);
-      const viewport = page.getViewport({ scale: zoom });
+      const effectiveRotation = ((page.rotate || 0) + rotation) % 360;
+      const viewport = page.getViewport({ scale: zoom, rotation: effectiveRotation });
       const canvas = canvasRef.current;
       const context = canvas.getContext("2d");
       const outputScale = window.devicePixelRatio || 1;
@@ -599,7 +605,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [pdfDoc, pageNumber, workspaceMode, zoom]);
+  }, [pdfDoc, pageNumber, workspaceMode, zoom, rotation]);
 
   useEffect(() => {
     setPendingTarget(null);
@@ -669,9 +675,15 @@ export default function App() {
       const now = new Date().toISOString();
       const isCloud = activeProject.kind === "cloud";
       const projectRecord = {
+        ...activeProject,
         id: activeProject.id,
         ownerOrgId: activeProject.ownerOrgId,
         name: activeProject.name || "Untitled Project",
+        code: activeProject.code || "",
+        owner: activeProject.owner || "",
+        estimatedDeliveryDate: activeProject.estimatedDeliveryDate || "",
+        notes: activeProject.notes || "",
+        faiTemplate: activeProject.faiTemplate || null,
         createdAt: activeProject.createdAt,
         updatedAt: now,
       };
@@ -688,6 +700,7 @@ export default function App() {
         pageCount,
         pageNumber,
         zoom,
+        rotation,
         characteristics,
         status: projectStatus,
         now,
@@ -769,10 +782,15 @@ export default function App() {
     return pendingSave;
   }, [
     activeDrawingId,
+    activeProject?.code,
     activeProject?.createdAt,
+    activeProject?.estimatedDeliveryDate,
+    activeProject?.faiTemplate,
     activeProject?.id,
     activeProject?.kind,
     activeProject?.name,
+    activeProject?.notes,
+    activeProject?.owner,
     activeProject?.ownerOrgId,
     characteristics,
     metadata,
@@ -788,6 +806,7 @@ export default function App() {
     rememberActiveProject,
     sampleCount,
     zoom,
+    rotation,
   ]);
 
   useEffect(() => {
@@ -876,6 +895,7 @@ export default function App() {
     projectsReady,
     sampleCount,
     zoom,
+    rotation,
   ]);
 
   useEffect(() => {
@@ -969,10 +989,15 @@ export default function App() {
       }
 
       const updatedProject = {
+        ...currentProject,
         id: currentProject.id,
         ownerOrgId: currentProject.ownerOrgId,
         name,
-        code: currentProject.code,
+        code: currentProject.code || "",
+        owner: currentProject.owner || "",
+        estimatedDeliveryDate: currentProject.estimatedDeliveryDate || "",
+        notes: currentProject.notes || "",
+        faiTemplate: currentProject.faiTemplate || null,
         createdAt: currentProject.createdAt,
         updatedAt: new Date().toISOString(),
       };
@@ -984,7 +1009,13 @@ export default function App() {
       if (activeProject?.id === updatedProject.id) setActiveProject((current) => ({ ...current, ...updatedProject }));
       if (detailProjectId === updatedProject.id) {
         setDetailProject(updatedProject);
-        setDetailFields({ name: updatedProject.name, code: updatedProject.code || "" });
+        setDetailFields({
+          name: updatedProject.name,
+          code: updatedProject.code || "",
+          owner: updatedProject.owner || "",
+          estimatedDeliveryDate: updatedProject.estimatedDeliveryDate || "",
+          notes: updatedProject.notes || "",
+        });
       }
       await refreshProjectList();
       setProjectDialog({ open: false, projectId: null, name: "" });
@@ -1077,6 +1108,7 @@ export default function App() {
       setPageCount(loadedPdf.numPages);
       setPageNumber(1);
       setZoom(ZOOM_DEFAULT);
+      setRotation(0);
       setCharacteristics([]);
       setSelectedId(null);
       setEditingBalloonId(null);
@@ -1184,6 +1216,13 @@ export default function App() {
 
   const zoomOut = useCallback(() => setZoom((v) => Math.max(ZOOM_MIN, v - ZOOM_STEP)), []);
   const zoomIn = useCallback(() => setZoom((v) => Math.min(ZOOM_MAX, v + ZOOM_STEP)), []);
+  const handleRotateClockwise = useCallback(() => {
+    if (!pdfDoc) return;
+    const nextRotation = (rotation + 90) % 360;
+    setRotation(nextRotation);
+    setCharacteristics((current) => rotateCharacteristicCoordinates(current, 90));
+    setMessage(`Rotated drawing to ${nextRotation}°.`);
+  }, [pdfDoc, rotation]);
   const prevPage = useCallback(() => setPageNumber((v) => v - 1), []);
   const nextPage = useCallback(() => setPageNumber((v) => v + 1), []);
 
@@ -2297,6 +2336,13 @@ export default function App() {
         zoomOut();
         return;
       }
+
+      // 10. Rotate Drawing: 'r' to rotate 90° clockwise
+      if (lowerKey === "r" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        handleRotateClockwise();
+        return;
+      }
     };
 
     window.addEventListener("keydown", handleShortcut);
@@ -2309,6 +2355,7 @@ export default function App() {
     commitAutoBalloonCandidates,
     deleteSelected,
     editingBalloonId,
+    handleRotateClockwise,
     isWorkspaceRoute,
     ocrRect,
     pageNumber,
@@ -2330,6 +2377,7 @@ export default function App() {
       await exportBalloonedPdf({
         pdfBytes,
         characteristics,
+        rotation,
         fileName: pdfName,
         showLeaderLine: balloonSettings.showLeaderLine,
         fontColor: balloonSettings.fontColor,
@@ -2345,6 +2393,7 @@ export default function App() {
     characteristics,
     pdfBytes,
     pdfName,
+    rotation,
     balloonSettings.showLeaderLine,
     balloonSettings.fontColor,
     balloonSettings.fontFamily,
@@ -2997,6 +3046,8 @@ export default function App() {
           pageNumber={pageNumber}
           pageCount={pageCount}
           zoom={zoom}
+          rotation={rotation}
+          onRotate={handleRotateClockwise}
           onZoomOut={zoomOut}
           onZoomIn={zoomIn}
           onPrevPage={prevPage}
@@ -3063,6 +3114,8 @@ export default function App() {
               </div>
               <DrawingNavToolbar
                 zoom={zoom}
+                rotation={rotation}
+                onRotate={handleRotateClockwise}
                 pageNumber={pageNumber}
                 pageCount={pageCount}
                 onZoomOut={zoomOut}
