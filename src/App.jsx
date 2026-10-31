@@ -675,9 +675,15 @@ export default function App() {
       const now = new Date().toISOString();
       const isCloud = activeProject.kind === "cloud";
       const projectRecord = {
+        ...activeProject,
         id: activeProject.id,
         ownerOrgId: activeProject.ownerOrgId,
         name: activeProject.name || "Untitled Project",
+        code: activeProject.code || "",
+        owner: activeProject.owner || "",
+        estimatedDeliveryDate: activeProject.estimatedDeliveryDate || "",
+        notes: activeProject.notes || "",
+        faiTemplate: activeProject.faiTemplate || null,
         createdAt: activeProject.createdAt,
         updatedAt: now,
       };
@@ -776,10 +782,15 @@ export default function App() {
     return pendingSave;
   }, [
     activeDrawingId,
+    activeProject?.code,
     activeProject?.createdAt,
+    activeProject?.estimatedDeliveryDate,
+    activeProject?.faiTemplate,
     activeProject?.id,
     activeProject?.kind,
     activeProject?.name,
+    activeProject?.notes,
+    activeProject?.owner,
     activeProject?.ownerOrgId,
     characteristics,
     metadata,
@@ -978,10 +989,15 @@ export default function App() {
       }
 
       const updatedProject = {
+        ...currentProject,
         id: currentProject.id,
         ownerOrgId: currentProject.ownerOrgId,
         name,
-        code: currentProject.code,
+        code: currentProject.code || "",
+        owner: currentProject.owner || "",
+        estimatedDeliveryDate: currentProject.estimatedDeliveryDate || "",
+        notes: currentProject.notes || "",
+        faiTemplate: currentProject.faiTemplate || null,
         createdAt: currentProject.createdAt,
         updatedAt: new Date().toISOString(),
       };
@@ -993,7 +1009,13 @@ export default function App() {
       if (activeProject?.id === updatedProject.id) setActiveProject((current) => ({ ...current, ...updatedProject }));
       if (detailProjectId === updatedProject.id) {
         setDetailProject(updatedProject);
-        setDetailFields({ name: updatedProject.name, code: updatedProject.code || "" });
+        setDetailFields({
+          name: updatedProject.name,
+          code: updatedProject.code || "",
+          owner: updatedProject.owner || "",
+          estimatedDeliveryDate: updatedProject.estimatedDeliveryDate || "",
+          notes: updatedProject.notes || "",
+        });
       }
       await refreshProjectList();
       setProjectDialog({ open: false, projectId: null, name: "" });
