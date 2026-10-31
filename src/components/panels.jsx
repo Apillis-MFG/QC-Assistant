@@ -288,6 +288,12 @@ export function GuidePage({ onBack }) {
 }
 
 export function VersionHistoryPage({ onBack }) {
+  const releaseNotes095 = [
+    "Drawing canvas 90° rotation: rotate drawing canvas in 90° clockwise increments (button or R shortcut) with synchronized coordinate transformation so placed balloons stay anchored to drawing features.",
+    "Synchronized PDF export rotation: exported ballooned PDFs automatically apply the drawing orientation with precisely aligned balloon coordinates.",
+    "Preserved project details: project code, owner, delivery date, notes, and custom FAI templates are fully preserved across project saves, updates, and active project switching.",
+  ];
+
   const releaseNotes093 = [
     "Hardened customer Excel FAI template validation: automatically verifies target worksheet existence and prevents overwriting pre-existing formula cells.",
     "Merged-cell collision protection: detects and rejects mapped inspection table cells intersecting merged ranges in the customer workbook.",
@@ -385,6 +391,14 @@ export function VersionHistoryPage({ onBack }) {
 
       <section className="help-dialog dashboard-main" aria-labelledby="version-history-title">
         <div className="help-content">
+          <div className="release-note">
+            <h3>v0.9.5</h3>
+            <ul>
+              {releaseNotes095.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
           <div className="release-note">
             <h3>v0.9.3</h3>
             <ul>

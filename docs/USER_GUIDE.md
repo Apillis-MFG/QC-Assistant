@@ -1,6 +1,6 @@
 # QC Assistant — User's Guide
 
-*Drawing ballooning and inspection report builder. Version covered: v0.9.3.*
+*Drawing ballooning and inspection report builder. Version covered: v0.9.5.*
 
 QC Assistant turns an engineering drawing PDF into a submittable First Article Inspection (FAI) package: you balloon the dimensions on the drawing, enter measured samples, and export a ballooned PDF plus an Excel FAI workbook. Everything runs locally in your browser — there is no server, no account, and no upload of your drawing anywhere.
 
@@ -353,6 +353,8 @@ You can always reopen this reference in the app itself via the **Help** button (
 ## 13. Appendix: Version History
 
 Sourced from the in-app Help dialog's changelog.
+
+**v0.9.5** — Drawing canvas 90° rotation: rotate drawing canvas in 90° clockwise increments (button or `R` shortcut) with synchronized coordinate transformation so placed balloons stay anchored to drawing features. Exported ballooned PDFs automatically apply drawing orientation with precisely aligned balloon coordinates. Preserved project details: project code, owner, delivery date, notes, and custom FAI templates are fully preserved across project saves, updates, and active project switching.
 
 **v0.9.3** — Hardened customer Excel FAI template validation: automated verification of target worksheet existence, prevention of pre-existing formula cell overwrite, and detection of merged-cell collisions in inspection rows. Repeated-dimension capacity checks against expanded occurrence counts for multi-instance requirements. Dual-dimension note preservation (`[Dual: ...]`) in custom exports. Modal keyboard and cloud boundary persistence safeguards.
 
