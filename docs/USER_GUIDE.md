@@ -68,7 +68,7 @@ If a drawing has no PDF yet, the workspace shows an upload prompt:
 
 ![Upload a drawing PDF prompt](./assets/screenshots/04-workspace-upload-prompt.png)
 
-Once a PDF is loaded, use the drawing toolbar to page through multi-page drawings and zoom from 65% to 220% in 10% steps.
+Once a PDF is loaded, use the drawing toolbar to page through multi-page drawings, zoom from 65% to 220% in 10% steps, and rotate the canvas in 90° clockwise increments (or press `R`). Any placed balloons stay anchored to their physical drawing features across rotations.
 
 ![Drawing-only layout, PDF loaded, no balloons yet](./assets/screenshots/07-workspace-drawing-layout.png)
 
@@ -327,6 +327,7 @@ Shortcuts are disabled while typing in any text field, and in Measurement mode (
 | `↑` / `↓` (or `K` / `J`) | Navigate characteristic rows in the table with selection wrapping |
 | `1`–`9` | Quick-assign balloon number to selected requirement |
 | `+` / `−` | Zoom drawing in and out |
+| `R` | Rotate drawing canvas 90° clockwise |
 | `Esc` | Close the topmost open element — Settings/Tolerance dialog, candidate review, or pending balloon target |
 
 ![Help dialog — quick workflow and shortcut reference](./assets/screenshots/17-help-dialog.png)

@@ -1,7 +1,7 @@
 import { balloonLabel } from "../lib/occurrences.js";
 import { getLeaderLine } from "../lib/utils.js";
 import { useEffect, useRef, useState } from "react";
-import { X, FilePlus2, ZoomIn, ZoomOut, Upload, HelpCircle, Keyboard, BookOpen, History } from "lucide-react";
+import { X, FilePlus2, ZoomIn, ZoomOut, RotateCw, Upload, HelpCircle, Keyboard, BookOpen, History } from "lucide-react";
 
 export function HelpMenu({ onOpenShortcuts, onOpenUserGuide, onOpenVersionHistory, labeled = false }) {
   const [open, setOpen] = useState(false);
@@ -299,7 +299,7 @@ export function AutoBalloonReview({ busy, open, candidates, onRemove, onCancel, 
   );
 }
 
-export function DrawingNavToolbar({ zoom, pageNumber, pageCount, onZoomOut, onZoomIn, onPrevPage, onNextPage }) {
+export function DrawingNavToolbar({ zoom, rotation, onRotate, pageNumber, pageCount, onZoomOut, onZoomIn, onPrevPage, onNextPage }) {
   return (
     <>
       <div className="tool-group">
@@ -310,6 +310,11 @@ export function DrawingNavToolbar({ zoom, pageNumber, pageCount, onZoomOut, onZo
         <button className="icon-button" onClick={onZoomIn} data-tooltip="Zoom in" aria-label="Zoom in">
           <ZoomIn size={17} />
         </button>
+        {onRotate ? (
+          <button className="icon-button" onClick={onRotate} data-tooltip="Rotate 90° clockwise (R)" aria-label="Rotate 90° clockwise">
+            <RotateCw size={17} />
+          </button>
+        ) : null}
       </div>
       <div className="page-control">
         <button className="small-button" disabled={pageNumber <= 1} onClick={onPrevPage}>Prev</button>

@@ -231,6 +231,7 @@ export function mapRelativeCoordinatesToPdf({ x, y, width, height, rotation = 0 
 export async function generateBalloonedPdf({
   pdfBytes,
   characteristics,
+  rotation = 0,
   showLeaderLine = true,
   fontColor = "#000000",
   fontFamily = "Times New Roman",
@@ -248,6 +249,15 @@ export async function generateBalloonedPdf({
   const font = await pdfDoc.embedFont(BALLOON_STANDARD_FONTS[fontFamily] || StandardFonts.TimesRomanBold);
   const textColor = hexToRgbColor(fontColor);
   const baseRadius = diameter / 2;
+
+  const rotNorm = ((Number(rotation) || 0) % 360 + 360) % 360;
+  if (rotNorm !== 0) {
+    for (let i = 0; i < pdfDoc.getPageCount(); i++) {
+      const p = pdfDoc.getPage(i);
+      const cur = p.getRotation()?.angle || 0;
+      p.setRotation(degrees(((cur + rotNorm) % 360 + 360) % 360));
+    }
+  }
 
   characteristics.forEach((item) => {
     const pageIndex = Math.max(0, Math.min((item.page || 1) - 1, pdfDoc.getPageCount() - 1));
@@ -330,10 +340,11 @@ export async function generateBalloonedPdf({
 export async function exportBalloonedPdf({
   pdfBytes,
   characteristics,
+  rotation = 0,
   fileName,
   ...options
 }) {
-  const bytes = await generateBalloonedPdf({ pdfBytes, characteristics, ...options });
+  const bytes = await generateBalloonedPdf({ pdfBytes, characteristics, rotation, ...options });
   const base = withoutExtension(fileName || "drawing") || "drawing";
   downloadBlob(bytes, "application/pdf", `${base}_ballooned.pdf`);
 }
@@ -374,6 +385,7 @@ export async function generateBatchBalloonedPdf({
       drawingBytes = await generateBalloonedPdf({
         pdfBytes: drawing.pdfBytes,
         characteristics: chars,
+        rotation: drawing.rotation || 0,
         showLeaderLine,
         fontColor,
         fontFamily,

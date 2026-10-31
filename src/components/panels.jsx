@@ -203,6 +203,7 @@ export function GuidePage({ onBack }) {
     ["↑ / ↓ (J/K)", "Navigate characteristic rows in table"],
     ["1–9", "Quick-set balloon number"],
     ["+ / −", "Zoom drawing in / out"],
+    ["R", "Rotate drawing 90° clockwise"],
     ["Esc", "Cancel current tool, dialog, or review"],
   ];
 
@@ -940,6 +941,8 @@ export function MeasurementWorkspace({
   pageNumber,
   pageCount,
   zoom,
+  rotation = 0,
+  onRotate,
   onZoomOut,
   onZoomIn,
   onPrevPage,
@@ -971,6 +974,8 @@ export function MeasurementWorkspace({
           </div>
           <DrawingNavToolbar
             zoom={zoom}
+            rotation={rotation}
+            onRotate={onRotate}
             pageNumber={pageNumber}
             pageCount={pageCount}
             onZoomOut={onZoomOut}

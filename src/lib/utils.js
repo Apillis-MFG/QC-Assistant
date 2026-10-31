@@ -31,6 +31,59 @@ export function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function roundCoord(val) {
+  return Math.round(val * 1e6) / 1e6;
+}
+
+/**
+ * Rotate normalized coordinates (0..1 fractions) by degrees clockwise.
+ * Supports orthogonal steps: 0, 90, 180, 270.
+ */
+export function rotateNormalizedPoint({ x, y }, degrees = 90) {
+  const rot = ((degrees % 360) + 360) % 360;
+  const nx = clamp(Number(x) || 0, 0, 1);
+  const ny = clamp(Number(y) || 0, 0, 1);
+
+  switch (rot) {
+    case 90:
+      return { x: roundCoord(1 - ny), y: roundCoord(nx) };
+    case 180:
+      return { x: roundCoord(1 - nx), y: roundCoord(1 - ny) };
+    case 270:
+      return { x: roundCoord(ny), y: roundCoord(1 - nx) };
+    case 0:
+    default:
+      return { x: roundCoord(nx), y: roundCoord(ny) };
+  }
+}
+
+/**
+ * Rotate all placed characteristic coordinates and leader targets by degrees clockwise.
+ */
+export function rotateCharacteristicCoordinates(characteristics = [], degrees = 90) {
+  if (!Array.isArray(characteristics) || !characteristics.length) return [];
+  const rot = ((degrees % 360) + 360) % 360;
+  if (rot === 0) return characteristics;
+
+  return characteristics.map((item) => {
+    if (item.isPlaced === false || item.x === undefined || item.y === undefined) {
+      return item;
+    }
+    const pt = rotateNormalizedPoint({ x: item.x, y: item.y }, rot);
+    const target =
+      item.targetX !== undefined && item.targetY !== undefined
+        ? rotateNormalizedPoint({ x: item.targetX, y: item.targetY }, rot)
+        : null;
+
+    return {
+      ...item,
+      x: pt.x,
+      y: pt.y,
+      ...(target ? { targetX: target.x, targetY: target.y } : {}),
+    };
+  });
+}
+
 export function buildDrawingSnapshot({
   drawing,
   activeDrawingId,
@@ -44,6 +97,7 @@ export function buildDrawingSnapshot({
   pageCount,
   pageNumber,
   zoom,
+  rotation = 0,
   characteristics,
   status,
   now,
@@ -64,6 +118,7 @@ export function buildDrawingSnapshot({
     characteristics,
     pageNumber,
     zoom,
+    rotation: ((rotation % 360) + 360) % 360,
     status,
     createdAt: drawing?.createdAt || now,
     updatedAt: now,
